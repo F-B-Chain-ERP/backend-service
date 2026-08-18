@@ -1,3 +1,20 @@
 spring:
   application:
     name: backend-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==}
+    access-token-expiry: ${JWT_ACCESS_EXPIRY:900}
+    refresh-token-expiry: ${JWT_REFRESH_EXPIRY:604800}
+  rate-limit:
+    anonymous:
+      capacity: ${RL_ANON_CAPACITY:20}
+      refill-tokens: ${RL_ANON_REFILL:20}
+      refill-seconds: ${RL_ANON_PERIOD:60}
+    authenticated:
+      capacity: ${RL_AUTH_CAPACITY:100}
+      refill-tokens: ${RL_AUTH_REFILL:100}
+      refill-seconds: ${RL_AUTH_PERIOD:60}

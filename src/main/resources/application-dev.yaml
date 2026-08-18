@@ -1,0 +1,47 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/erp_dev}
+    username: ${DB_USERNAME:erp_user}
+    password: ${DB_PASSWORD:erp_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: public
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+  liquibase:
+    enabled: false
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==}
+    access-token-expiry: 3600
+    refresh-token-expiry: 86400
+  rate-limit:
+    anonymous:
+      capacity: 200
+      refill-tokens: 200
+      refill-seconds: 60
+    authenticated:
+      capacity: 1000
+      refill-tokens: 1000
+      refill-seconds: 60
+
+logging:
+  level:
+    com.erp: DEBUG
+    org.springframework.security: DEBUG
+    io.jsonwebtoken: DEBUG

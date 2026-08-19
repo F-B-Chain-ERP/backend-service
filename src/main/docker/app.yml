@@ -1,0 +1,40 @@
+services:
+  backend-service:
+    image: erp-backend:latest
+    container_name: erp-backend
+    restart: unless-stopped
+    build:
+      context: ../../../
+      dockerfile: backend-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DB_URL=jdbc:postgresql://postgresql:5432/erp_dev
+      - DB_USERNAME=erp_user
+      - DB_PASSWORD=erp123456@
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=erp_redis_2026
+      - JWT_SECRET=ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgresql:
+    extends:
+      file: postgresql.yml
+      service: postgresql
+
+  redis:
+    extends:
+      file: redis.yml
+      service: redis
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

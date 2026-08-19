@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/erp_dev}
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:erp_dev}}
     username: ${DB_USERNAME:erp_user}
-    password: ${DB_PASSWORD:erp_pass}
+    password: ${DB_PASSWORD:erp123456@}
     driver-class-name: org.postgresql.Driver
   jpa:
     show-sql: true
@@ -19,7 +19,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:erp_redis_2026}
       timeout: 3000ms
   liquibase:
     enabled: false

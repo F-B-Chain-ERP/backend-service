@@ -1,6 +1,8 @@
+--liquibase formatted sql
+
+--changeset erp:001-init-schema
 -- ============================================================
--- changeSet id=001-init-schema  (tương đương 001-init-schema.yaml)
--- Chạy trực tiếp trên PostgreSQL, không qua Liquibase
+-- Schema initialization: Account, Role, Permission, Audit Log
 -- ============================================================
 
 CREATE TABLE account (

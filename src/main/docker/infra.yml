@@ -1,0 +1,16 @@
+services:
+  postgresql:
+    extends:
+      file: postgresql.yml
+      service: postgresql
+
+  redis:
+    extends:
+      file: redis.yml
+      service: redis
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

@@ -3,7 +3,7 @@ server:
 
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:erp_dev}}
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:163.61.72.183}:${DB_PORT:5432}/${DB_NAME:erp_dev}}
     username: ${DB_USERNAME:erp_user}
     password: ${DB_PASSWORD:erp123456@}
     driver-class-name: org.postgresql.Driver
@@ -17,7 +17,7 @@ spring:
         default_schema: public
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST:163.61.72.183}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:erp_redis_2026}
       timeout: 3000ms

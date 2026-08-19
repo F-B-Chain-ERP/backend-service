@@ -1,11 +1,8 @@
 services:
   backend-service:
-    image: erp-backend:latest
+    image: erp-backend:${APP_IMAGE_TAG:-latest}
     container_name: erp-backend
     restart: unless-stopped
-    build:
-      context: ../../../
-      dockerfile: backend-service/Dockerfile
     environment:
       - SPRING_PROFILES_ACTIVE=dev
       - DB_URL=jdbc:postgresql://postgresql:5432/erp_dev

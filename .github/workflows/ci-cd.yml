@@ -177,10 +177,40 @@ jobs:
             echo "  Target: ${TARGET_IMAGE}:${TARGET_TAG}"
             echo "=========================================================="
 
-            cd /opt/ERP-UTT/backend-service
+            REPO_URL="https://x-access-token:${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}@github.com/F-B-Chain-ERP/backend-service.git"
 
-            # Cập nhật scripts nếu có thay đổi qua git pull hoặc cấp quyền thực thi
+            # Nhận diện đường dẫn thư mục backend-service (ưu tiên ~/backend-service như server hiện tại)
+            if [ -d "${HOME}/backend-service" ]; then
+              APP_DIR="${HOME}/backend-service"
+            elif [ -d "/opt/ERP-UTT/backend-service" ]; then
+              APP_DIR="/opt/ERP-UTT/backend-service"
+            else
+              APP_DIR="${HOME}/backend-service"
+              mkdir -p "${APP_DIR}"
+            fi
+
+            echo "▶ Server Working Directory: ${APP_DIR}"
+            cd "${APP_DIR}"
+
+            # Nếu thư mục chưa khởi tạo git repo -> clone về
+            if [ ! -d ".git" ]; then
+              echo "▶ Clone backend-service về server..."
+              git clone -b dev "${REPO_URL}" .
+            fi
+
+            # Đồng bộ các scripts và docker-compose mới nhất từ nhánh dev
+            echo "▶ Đồng bộ source files mới nhất..."
+            git remote set-url origin "${REPO_URL}"
+            git fetch origin dev
+            git checkout dev
+            git reset --hard origin/dev
+
+            # Cấp quyền thực thi cho các scripts
             chmod +x deploy/scripts/*.sh
+
+            # Đăng nhập GHCR trên server để pull image
+            echo "▶ Xác thực GitHub Container Registry..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             # Chạy deploy script với cơ chế tự động rollback
             bash deploy/scripts/deploy.sh "${TARGET_IMAGE}" "${TARGET_TAG}"

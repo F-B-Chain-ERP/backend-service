@@ -70,8 +70,9 @@ Truy cập: **GitHub Repository → Settings → Secrets and variables → Actio
 | Secret Name | Giá trị | Mô tả |
 |---|---|---|
 | `SSH_HOST` | `163.61.72.183` | IP server triển khai |
-| `SSH_USER` | `root` | User SSH trên server |
-| `SSH_PRIVATE_KEY` | *(Nội dung Private Key Ed25519 / RSA)* | Private key để Actions SSH vào server |
+| `SSH_USER` | `devops` (hoặc `root`) | User SSH trên server |
+| `SSH_PRIVATE_KEY` | *(Nội dung Private Key)* | Private key để Actions SSH vào server |
+| `DISCORD_WEBHOOK` | `https://discord.com/api/webhooks/...` | Webhook URL kênh Discord nhận thông báo kết quả |
 | `GH_PAT` *(Tùy chọn)* | `ghp_...` (Quyền `repo`, `read:packages`) | Dùng khi `core-model` là private repo |
 
 > **Lưu ý:** `GITHUB_TOKEN` đã được cấp quyền tự động bởi GitHub Actions để push Docker image lên GitHub Packages (GHCR).

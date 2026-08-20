@@ -1,6 +1,7 @@
 package com.erp.backend_service.service.impl;
 
 import com.erp.backend_service.service.AccountRevocationService;
+import com.erp.backend_service.util.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -10,12 +11,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Triển khai {@link AccountRevocationService}: lưu mốc thời gian thu hồi tài khoản
+ * lên Redis để vô hiệu hóa các access token được cấp trước thời điểm đó.
+ */
 @Service
 public class AccountRevocationServiceImpl implements AccountRevocationService {
 
     private static final Logger log = LoggerFactory.getLogger(AccountRevocationServiceImpl.class);
 
-    private static final String REVOCATION_KEY_PREFIX = "revoked:account:";
     private final StringRedisTemplate stringRedisTemplate;
 
     public AccountRevocationServiceImpl(StringRedisTemplate stringRedisTemplate) {
@@ -27,7 +31,7 @@ public class AccountRevocationServiceImpl implements AccountRevocationService {
         if (accountId == null) {
             return;
         }
-        String key = REVOCATION_KEY_PREFIX + accountId;
+        String key = RedisKeys.accountRevocation(accountId);
         long nowMillis = Instant.now().toEpochMilli();
         try {
             stringRedisTemplate.opsForValue().set(key, String.valueOf(nowMillis), ttl);
@@ -42,7 +46,7 @@ public class AccountRevocationServiceImpl implements AccountRevocationService {
         if (accountId == null || tokenIssuedAt == null) {
             return false;
         }
-        String key = REVOCATION_KEY_PREFIX + accountId;
+        String key = RedisKeys.accountRevocation(accountId);
         try {
             String revokedAtStr = stringRedisTemplate.opsForValue().get(key);
             if (revokedAtStr == null) {

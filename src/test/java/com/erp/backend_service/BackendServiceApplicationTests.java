@@ -9,7 +9,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+		"spring.liquibase.enabled=true",
+		"spring.jpa.hibernate.ddl-auto=validate",
+		"app.jwt.secret=ZGV2LW9ubHktdGVzdC1zZWNyZXQtdGhhdC1pcy1hdC1sZWFzdC0zMi1ieXRlcw=="
+})
 @Testcontainers(disabledWithoutDocker = true)
 class BackendServiceApplicationTests {
 

@@ -2,7 +2,6 @@ package com.erp.backend_service.security;
 
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.core.dto.response.ApiResponse;
-import tools.jackson.databind.ObjectMapper;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Refill;
@@ -19,6 +18,7 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -27,6 +27,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Filter giới hạn tốc độ truy cập (rate limit) theo tài khoản hoặc IP,
+ * dùng Redis làm backend chính và Bucket4j cục bộ khi Redis không khả dụng.
+ */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -35,27 +39,29 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final StringRedisTemplate stringRedisTemplate;
     private final JwtProvider jwtProvider;
     private final ObjectMapper objectMapper;
+    private final long anonymousCapacity;
+    private final long anonymousRefillSeconds;
+    private final long authenticatedCapacity;
+    private final long authenticatedRefillSeconds;
 
-    public RateLimitFilter(StringRedisTemplate stringRedisTemplate, JwtProvider jwtProvider, ObjectMapper objectMapper) {
+    public RateLimitFilter(StringRedisTemplate stringRedisTemplate, JwtProvider jwtProvider,
+                           ObjectMapper objectMapper,
+                           @Value("${app.rate-limit.anonymous.capacity}") long anonymousCapacity,
+                           @Value("${app.rate-limit.anonymous.refill-seconds}") long anonymousRefillSeconds,
+                           @Value("${app.rate-limit.authenticated.capacity}") long authenticatedCapacity,
+                           @Value("${app.rate-limit.authenticated.refill-seconds}") long authenticatedRefillSeconds) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.jwtProvider = jwtProvider;
         this.objectMapper = objectMapper;
+        this.anonymousCapacity = anonymousCapacity;
+        this.anonymousRefillSeconds = anonymousRefillSeconds;
+        this.authenticatedCapacity = authenticatedCapacity;
+        this.authenticatedRefillSeconds = authenticatedRefillSeconds;
     }
-
-    @Value("${app.rate-limit.anonymous.capacity:20}")
-    private long anonCapacity;
-
-    @Value("${app.rate-limit.anonymous.refill-seconds:60}")
-    private long anonRefillSeconds;
-
-    @Value("${app.rate-limit.authenticated.capacity:100}")
-    private long authCapacity;
-
-    @Value("${app.rate-limit.authenticated.refill-seconds:60}")
-    private long authRefillSeconds;
 
     private final Map<String, Bucket> localBuckets = new ConcurrentHashMap<>();
 
+    /** Áp dụng giới hạn tốc độ cho mỗi request, từ chối (429) nếu vượt quá. */
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
@@ -66,8 +72,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String clientKey = resolveClientKey(request);
         boolean isAuthenticated = clientKey.startsWith("rl:user:");
 
-        long capacity = isAuthenticated ? authCapacity : anonCapacity;
-        long windowSeconds = isAuthenticated ? authRefillSeconds : anonRefillSeconds;
+        long capacity;
+        long windowSeconds;
+        if (isAuthenticated) {
+            capacity = authenticatedCapacity;
+            windowSeconds = authenticatedRefillSeconds;
+        } else {
+            capacity = anonymousCapacity;
+            windowSeconds = anonymousRefillSeconds;
+        }
 
         boolean allowed = checkRateLimit(clientKey, capacity, windowSeconds);
 
@@ -90,6 +103,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    /** Kiểm tra và tăng bộ đếm truy cập trên Redis, trả về false nếu vượt quota. */
     private boolean checkRateLimit(String key, long capacity, long windowSeconds) {
         try {
             Long currentCount = stringRedisTemplate.opsForValue().increment(key);
@@ -106,6 +120,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
+    /** Dự phòng giới hạn tốc độ cục bộ bằng Bucket4j khi Redis lỗi. */
     private boolean checkLocalBucket(String key, long capacity, long windowSeconds) {
         Bucket bucket = localBuckets.computeIfAbsent(key, k -> {
             Refill refill = Refill.greedy(capacity, Duration.ofSeconds(windowSeconds));
@@ -115,6 +130,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return bucket.tryConsume(1);
     }
 
+    /** Xác định khóa giới hạn: dùng accountId từ token nếu có, ngược lại dùng IP. */
     private String resolveClientKey(HttpServletRequest request) {
         // 1. Try to extract accountId from Bearer token
         Optional<String> tokenOpt = SecurityUtils.extractBearerToken(request);
@@ -137,6 +153,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             ip = request.getRemoteAddr();
         }
 
-        return "rl:ip:" + (ip != null ? ip : "unknown");
+        String ipValue;
+        if (ip != null) {
+            ipValue = ip;
+        } else {
+            ipValue = "unknown";
+        }
+        return "rl:ip:" + ipValue;
     }
 }

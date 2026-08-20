@@ -17,9 +17,14 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Tập trung xử lý ngoại lệ toàn cục, chuyển đổi các lỗi thành ApiResponse chuẩn
+ * (mã lỗi, thông báo) với HTTP status tương ứng.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** Xử lý các ngoại lệ không được phân loại (500). */
     @ExceptionHandler(value = Exception.class)
     public ResponseEntity<ApiResponse<Void>> handlingRuntimeException(Exception exception) {
         ApiResponse<Void> apiResponse = ApiResponse.error(
@@ -30,6 +35,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(apiResponse);
     }
 
+    /** Xử lý ngoại lệ nghiệp vụ kế thừa BaseException (dùng mã lỗi tương ứng). */
     @ExceptionHandler(value = BaseException.class)
     public ResponseEntity<ApiResponse<Void>> handlingBaseException(BaseException exception) {
         ErrorCode errorCode = exception.getErrorCode();
@@ -41,6 +47,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(errorCode.getStatusCode()).body(apiResponse);
     }
 
+    /** Xử lý sai thông tin đăng nhập (401). */
     @ExceptionHandler(value = BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handlingBadCredentials(BadCredentialsException exception) {
         ApiResponse<Void> apiResponse = ApiResponse.error(
@@ -51,11 +58,9 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(apiResponse);
     }
 
-    @ExceptionHandler(value = {
-            DisabledException.class,
-            LockedException.class
-    })
-    public ResponseEntity<ApiResponse<Void>> handlingAccountDisabled(Exception exception) {
+    /** Xử lý tài khoản bị vô hiệu hóa (403). */
+    @ExceptionHandler(value = DisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handlingAccountDisabled(DisabledException exception) {
         ApiResponse<Void> apiResponse = ApiResponse.error(
                 ErrorCode.ACCOUNT_DISABLED.getStatusCode(),
                 ErrorCode.ACCOUNT_DISABLED.getCode(),
@@ -64,6 +69,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiResponse);
     }
 
+    /** Xử lý tài khoản bị khóa tạm thời (401). */
+    @ExceptionHandler(value = LockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handlingAccountLocked(LockedException exception) {
+        ErrorCode code = ErrorCode.ACCOUNT_LOCKED;
+        return ResponseEntity.status(code.getStatusCode()).body(
+                ApiResponse.error(code.getStatusCode(), code.getCode(), code.getMessage())
+        );
+    }
+
+    /** Xử lý các lỗi xác thực chung (401). */
     @ExceptionHandler(value = AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handlingAuthenticationException(AuthenticationException exception) {
         ApiResponse<Void> apiResponse = ApiResponse.error(
@@ -74,6 +89,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(apiResponse);
     }
 
+    /** Xử lý truy cập bị từ chối do thiếu quyền (403). */
     @ExceptionHandler(value = AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handlingAccessDeniedException(AccessDeniedException exception) {
         ApiResponse<Void> apiResponse = ApiResponse.error(
@@ -84,6 +100,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiResponse);
     }
 
+    /** Xử lý lỗi validate request (400), trả về chi tiết từng trường không hợp lệ. */
     @ExceptionHandler(value = MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handlingValidation(MethodArgumentNotValidException exception) {
         Map<String, String> errors = new HashMap<>();

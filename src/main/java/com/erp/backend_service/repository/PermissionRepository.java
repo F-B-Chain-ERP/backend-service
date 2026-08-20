@@ -7,8 +7,11 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
+/** Truy vấn dữ liệu quyền (Permission). */
 @Repository
 public interface PermissionRepository extends JpaRepository<Permission, UUID> {
+
+    /** Tìm quyền theo mã (code). */
     Optional<Permission> findByCode(String code);
 }
 

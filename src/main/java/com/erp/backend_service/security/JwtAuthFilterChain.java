@@ -25,6 +25,10 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Filter xác thực JWT: trích xuất Bearer token, kiểm tra loại token, phát hành
+ * và thu hồi, sau đó thiết lập thông tin xác thực vào SecurityContext.
+ */
 @Component
 public class JwtAuthFilterChain extends OncePerRequestFilter {
 
@@ -44,6 +48,7 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
         this.objectMapper = objectMapper;
     }
 
+    /** Xử lý xác thực cho mỗi request: parse token, kiểm tra thu hồi, set context. */
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
@@ -60,16 +65,18 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
 
         String token = tokenOpt.get();
 
-        if (!jwtProvider.validateToken(token) || !jwtProvider.isAccessToken(token)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         try {
             Claims claims = jwtProvider.extractAllClaims(token);
+            if (!JwtProvider.TOKEN_TYPE_ACCESS.equals(claims.get("type", String.class))) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             UUID accountId = UUID.fromString(claims.getSubject());
             Date iatDate = claims.getIssuedAt();
-            Instant issuedAt = iatDate != null ? iatDate.toInstant() : Instant.now();
+            if (iatDate == null) {
+                throw new io.jsonwebtoken.JwtException("Missing issued-at claim");
+            }
+            Instant issuedAt = iatDate.toInstant();
 
             if (accountRevocationService.isRevoked(accountId, issuedAt)) {
                 log.warn("Access token for account {} issued at {} has been revoked", accountId, issuedAt);

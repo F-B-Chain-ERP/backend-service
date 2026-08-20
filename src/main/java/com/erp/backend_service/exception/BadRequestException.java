@@ -1,7 +1,7 @@
 package com.erp.backend_service.exception;
 
 /**
- * Exception for 400 Bad Request cases.
+ * Ngoại lệ cho các trường hợp lỗi 400 Bad Request.
  */
 public class BadRequestException extends BaseException {
 

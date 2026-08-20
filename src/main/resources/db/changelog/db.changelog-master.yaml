@@ -3,3 +3,5 @@ databaseChangeLog:
       file: db/changelog/changeset/001-init-schema.sql
   - include:
       file: db/changelog/changeset/002-init-seed-data.sql
+  - include:
+      file: db/changelog/changeset/003-auth-scope-foundation.sql

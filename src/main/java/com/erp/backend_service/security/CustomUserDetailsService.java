@@ -5,97 +5,126 @@ import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.PermissionRepository;
 import com.erp.backend_service.repository.RolePermissionRepository;
 import com.erp.backend_service.repository.RoleRepository;
+import com.erp.backend_service.repository.ScopeRepository;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Permission;
 import com.erp.core.domain.Role;
 import com.erp.core.domain.RolePermission;
+import com.erp.core.domain.Scope;
+import com.erp.core.dto.auth.ScopeResponse;
+import com.erp.core.enums.EntityStatus;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
+/**
+ * Tải thông tin người dùng từ cơ sở dữ liệu để xây dựng {@link CustomUserDetails},
+ * bao gồm các vai trò, quyền và phạm vi đang active của tài khoản.
+ */
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
-
-    private static final Logger log = LoggerFactory.getLogger(CustomUserDetailsService.class);
-
     private final AccountRepository accountRepository;
     private final AccountRoleRepository accountRoleRepository;
     private final RoleRepository roleRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final PermissionRepository permissionRepository;
+    private final ScopeRepository scopeRepository;
 
-    public CustomUserDetailsService(
-            AccountRepository accountRepository,
-            AccountRoleRepository accountRoleRepository,
-            RoleRepository roleRepository,
-            RolePermissionRepository rolePermissionRepository,
-            PermissionRepository permissionRepository
-    ) {
+    public CustomUserDetailsService(AccountRepository accountRepository,
+                                    AccountRoleRepository accountRoleRepository,
+                                    RoleRepository roleRepository,
+                                    RolePermissionRepository rolePermissionRepository,
+                                    PermissionRepository permissionRepository,
+                                    ScopeRepository scopeRepository) {
         this.accountRepository = accountRepository;
         this.accountRoleRepository = accountRoleRepository;
         this.roleRepository = roleRepository;
         this.rolePermissionRepository = rolePermissionRepository;
         this.permissionRepository = permissionRepository;
+        this.scopeRepository = scopeRepository;
     }
 
+    /** Tải người dùng theo id hoặc username/email và xây dựng CustomUserDetails. */
     @Override
     @Transactional(readOnly = true)
-    public UserDetails loadUserByUsername(@NonNull String usernameOrEmailOrId) throws UsernameNotFoundException {
-        Account account = findAccount(usernameOrEmailOrId);
-        if (account == null) {
-            log.warn("Account not found for identifier: {}", usernameOrEmailOrId);
-            throw new UsernameNotFoundException("Account not found: " + usernameOrEmailOrId);
-        }
-
-        // 1. Fetch active account roles
-        List<AccountRole> accountRoles = accountRoleRepository.findByAccountIdAndStatus(account.getId(), "ACTIVE");
-        List<UUID> roleIds = accountRoles.stream().map(AccountRole::getRoleId).distinct().toList();
-
-        List<String> roleCodes = Collections.emptyList();
-        List<String> permissionCodes = Collections.emptyList();
-
-        if (!roleIds.isEmpty()) {
-            // 2. Fetch role codes
-            List<Role> roles = roleRepository.findAllById(roleIds);
-            roleCodes = roles.stream()
-                    .filter(r -> "ACTIVE".equalsIgnoreCase(r.getStatus()))
-                    .map(Role::getCode)
-                    .toList();
-
-            // 3. Fetch permissions assigned to these roles
-            List<RolePermission> rolePermissions = rolePermissionRepository.findByRoleIdIn(roleIds);
-            List<UUID> permissionIds = rolePermissions.stream().map(RolePermission::getPermissionId).distinct().toList();
-
-            if (!permissionIds.isEmpty()) {
-                List<Permission> permissions = permissionRepository.findAllById(permissionIds);
-                permissionCodes = permissions.stream()
-                        .filter(p -> "ACTIVE".equalsIgnoreCase(p.getStatus()))
-                        .map(Permission::getCode)
-                        .toList();
-            }
-        }
-
-        return CustomUserDetails.fromAccount(account, roleCodes, permissionCodes);
+    public UserDetails loadUserByUsername(@NonNull String identifier) throws UsernameNotFoundException {
+        Account account = findAccount(identifier);
+        List<Grant> grants = readGrants(account.getId());
+        return CustomUserDetails.fromAccount(
+                account,
+                grants.stream().map(Grant::roleCode).distinct().toList(),
+                grants.stream().map(Grant::permissionCode).distinct().toList(),
+                grants.stream().map(Grant::scope).distinct().toList()
+        );
     }
 
+    /** Đọc và tính toán các cặp (vai trò, quyền, phạm vi) đang active của tài khoản. */
+    private List<Grant> readGrants(UUID accountId) {
+        List<AccountRole> assignments = accountRoleRepository
+                .findEffectiveByAccountId(accountId, EntityStatus.ACTIVE, Instant.now());
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, Role> roles = roleRepository.findAllById(
+                        assignments.stream().map(AccountRole::getRoleId).distinct().toList()
+                ).stream().filter(role -> role.getStatus() == EntityStatus.ACTIVE)
+                .collect(Collectors.toMap(Role::getId, Function.identity()));
+        Map<UUID, Scope> scopes = scopeRepository.findAllById(
+                        assignments.stream().map(AccountRole::getScopeId).distinct().toList()
+                ).stream().filter(scope -> scope.getStatus() == EntityStatus.ACTIVE)
+                .collect(Collectors.toMap(Scope::getId, Function.identity()));
+        List<RolePermission> mappings = rolePermissionRepository.findByRoleIdIn(roles.keySet());
+        Map<UUID, Permission> permissions = permissionRepository.findAllById(
+                        mappings.stream().map(RolePermission::getPermissionId).distinct().toList()
+                ).stream().filter(permission -> permission.getStatus() == EntityStatus.ACTIVE)
+                .collect(Collectors.toMap(Permission::getId, Function.identity()));
+
+        return assignments.stream()
+                .filter(assignment -> roles.containsKey(assignment.getRoleId()))
+                .filter(assignment -> scopes.containsKey(assignment.getScopeId()))
+                .flatMap(assignment -> mappings.stream()
+                        .filter(mapping -> mapping.getRoleId().equals(assignment.getRoleId()))
+                        .map(RolePermission::getPermissionId)
+                        .filter(permissions::containsKey)
+                        .map(permissionId -> toGrant(roles.get(assignment.getRoleId()),
+                                permissions.get(permissionId), scopes.get(assignment.getScopeId()))))
+                .toList();
+    }
+
+    /** Tạo bản ghi grant từ vai trò, quyền và phạm vi. */
+    private Grant toGrant(Role role, Permission permission, Scope scope) {
+        return new Grant(role.getCode(), permission.getCode(),
+                new ScopeResponse(scope.getId(), scope.getScopeType(), scope.getBranchId()));
+    }
+
+    /** Tìm tài khoản theo UUID hoặc username/email. */
     private Account findAccount(String identifier) {
         try {
-            UUID id = UUID.fromString(identifier);
-            Optional<Account> byId = accountRepository.findById(id);
-            if (byId.isPresent()) {
-                return byId.get();
-            }
+            return accountRepository.findById(UUID.fromString(identifier))
+                    .orElseThrow(() -> notFound(identifier));
         } catch (IllegalArgumentException ignored) {
-            // Not a UUID, search by username or email
+            return accountRepository.findByUsernameOrEmail(identifier, identifier)
+                    .orElseThrow(() -> notFound(identifier));
         }
-        return accountRepository.findByUsernameOrEmail(identifier, identifier).orElse(null);
+    }
+
+    /** Tạo ngoại lệ tài khoản không tồn tại. */
+    private UsernameNotFoundException notFound(String identifier) {
+        return new UsernameNotFoundException("Account not found for supplied identifier");
+    }
+
+    private record Grant(String roleCode, String permissionCode, ScopeResponse scope) {
     }
 }

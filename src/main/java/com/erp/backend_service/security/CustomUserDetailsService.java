@@ -10,6 +10,7 @@ import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Permission;
 import com.erp.core.domain.Role;
 import com.erp.core.domain.RolePermission;
+import com.erp.core.enums.EntityStatus;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,21 +64,33 @@ public class CustomUserDetailsService implements UserDetailsService {
         List<String> permissionCodes = Collections.emptyList();
 
         if (!roleIds.isEmpty()) {
-            // 2. Fetch role codes
-            List<Role> roles = roleRepository.findAllById(roleIds);
-            roleCodes = roles.stream()
-                    .filter(r -> "ACTIVE".equalsIgnoreCase(r.getStatus()))
+            List<Role> activeRoles = roleRepository.findAllById(roleIds)
+                    .stream()
+                    .filter(role -> EntityStatus.ACTIVE.equals(role.getStatus()))
+                    .toList();
+
+            roleCodes = activeRoles.stream()
                     .map(Role::getCode)
                     .toList();
 
-            // 3. Fetch permissions assigned to these roles
-            List<RolePermission> rolePermissions = rolePermissionRepository.findByRoleIdIn(roleIds);
-            List<UUID> permissionIds = rolePermissions.stream().map(RolePermission::getPermissionId).distinct().toList();
+            List<UUID> activeRoleIds = activeRoles.stream()
+                    .map(Role::getId)
+                    .toList();
+
+            List<UUID> permissionIds = rolePermissionRepository
+                    .findByRoleIdIn(activeRoleIds)
+                    .stream()
+                    .map(RolePermission::getPermissionId)
+                    .distinct()
+                    .toList();
 
             if (!permissionIds.isEmpty()) {
-                List<Permission> permissions = permissionRepository.findAllById(permissionIds);
+                List<Permission> permissions =
+                        permissionRepository.findAllById(permissionIds);
+
                 permissionCodes = permissions.stream()
-                        .filter(p -> "ACTIVE".equalsIgnoreCase(p.getStatus()))
+                        .filter(permission ->
+                                "ACTIVE".equalsIgnoreCase(permission.getStatus()))
                         .map(Permission::getCode)
                         .toList();
             }

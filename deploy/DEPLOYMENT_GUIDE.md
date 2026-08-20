@@ -5,10 +5,10 @@ Server triển khai: **Ubuntu 24.04 LTS** (IP: `163.61.72.183`, Hostname: `vm081
 ---
 
 ## 1. Cấu trúc Triển khai trên Server
-
-Thư mục trên Server: `/opt/ERP-UTT/backend-service`
+ 
+Thư mục trên Server: `~/backend-service` (hoặc `/home/devops/backend-service`)
 ```
-/opt/ERP-UTT/backend-service/
+~/backend-service/
 ├── .github/
 │   └── workflows/
 │       └── ci-cd.yml                 # GitHub Actions Pipeline (Build -> GHCR -> SSH Deploy)
@@ -104,7 +104,7 @@ Nếu phát hiện bug nghiệp vụ sau khi đã deploy thành công:
 
 ```bash
 ssh root@163.61.72.183
-cd /opt/ERP-UTT/backend-service
+cd ~/backend-service
 
 # Cách 1: Khôi phục tự động về phiên bản stable gần nhất
 sudo bash deploy/scripts/rollback.sh
@@ -122,7 +122,7 @@ Giữ nguyên quy trình cũ để phòng khi server mất kết nối Internet 
 ### Bước 1: Khởi động Hạ tầng
 ```bash
 ssh root@163.61.72.183
-cd /opt/ERP-UTT/backend-service
+cd ~/backend-service
 chmod +x deploy/scripts/*.sh
 sudo bash deploy/scripts/01-server-infra.sh
 ```
@@ -136,7 +136,7 @@ sudo bash deploy/scripts/01-server-infra.sh
 ### Bước 3: Khởi chạy trên Server
 ```bash
 ssh root@163.61.72.183
-cd /opt/ERP-UTT/backend-service
+cd ~/backend-service
 sudo bash deploy/scripts/03-deploy-app.sh latest
 ```
 
@@ -145,7 +145,7 @@ sudo bash deploy/scripts/03-deploy-app.sh latest
 ## 7. Các lệnh Quản trị thường dùng trên Server
 
 ```bash
-cd /opt/ERP-UTT/backend-service
+cd ~/backend-service
 
 # Xem logs backend realtime
 docker logs -f erp-backend

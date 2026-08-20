@@ -16,6 +16,7 @@ public class BaseException extends RuntimeException {
         this.errorCode = errorCode;
     }
 
+    /** Lấy mã lỗi (ErrorCode) đi kèm ngoại lệ. */
     public ErrorCode getErrorCode() {
         return errorCode;
     }

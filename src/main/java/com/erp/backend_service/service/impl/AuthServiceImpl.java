@@ -13,6 +13,7 @@ import com.erp.backend_service.security.CustomUserDetailsService;
 import com.erp.backend_service.security.JwtProvider;
 import com.erp.backend_service.service.AuditService;
 import com.erp.backend_service.service.AuthService;
+import com.erp.backend_service.service.PermissionService;
 import com.erp.core.domain.Account;
 import com.erp.core.dto.auth.AuthResponse;
 import com.erp.core.dto.auth.LoginRequest;
@@ -39,21 +40,25 @@ public class AuthServiceImpl implements AuthService {
     private final AccountRepository accountRepository;
     private final AuditService auditService;
     private final AuthMapper authMapper;
+    private final PermissionService permissionService;
 
     public AuthServiceImpl(AuthenticationManager authenticationManager,
                            JwtProvider jwtProvider,
                            CustomUserDetailsService userDetailsService,
                            AccountRepository accountRepository,
-                             AuditService auditService,
-                             AuthMapper authMapper) {
+                              AuditService auditService,
+                              AuthMapper authMapper,
+                              PermissionService permissionService) {
         this.authenticationManager = authenticationManager;
         this.jwtProvider = jwtProvider;
         this.userDetailsService = userDetailsService;
         this.accountRepository = accountRepository;
         this.auditService = auditService;
         this.authMapper = authMapper;
+        this.permissionService = permissionService;
     }
 
+    /** {@inheritDoc} */
     @Override
     @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResponse login(LoginRequest request) {
@@ -73,11 +78,13 @@ public class AuthServiceImpl implements AuthService {
 
         String accessToken = jwtProvider.generateAccessToken(userDetails);
         String refreshToken = jwtProvider.generateRefreshToken(account.getId());
+        permissionService.saveSnapshot(account.getId(), permissionService.snapshotFromDetails(userDetails));
         auditLogin(account.getId(), AuditAction.LOGIN_SUCCESS,
                 Map.of("requiresScopeAssignment", userDetails.getScopes().isEmpty()));
-        return authMapper.toResponse(accessToken, refreshToken, jwtProvider.getAccessTokenExpiry(), userDetails, account);
+        return authMapper.toResponse(accessToken, refreshToken, userDetails.getScopes().isEmpty(), account);
     }
 
+    /** {@inheritDoc} */
     @Override
     @Transactional(readOnly = true)
     public AuthResponse refreshToken(RefreshTokenRequest request) {
@@ -95,9 +102,12 @@ public class AuthServiceImpl implements AuthService {
 
         String newAccessToken = jwtProvider.generateAccessToken(userDetails);
         String newRefreshToken = jwtProvider.generateRefreshToken(accountId);
-        return authMapper.toResponse(newAccessToken, newRefreshToken, jwtProvider.getAccessTokenExpiry(), userDetails, requiredAccount(accountId));
+        permissionService.saveSnapshot(accountId, permissionService.snapshotFromDetails(userDetails));
+        return authMapper.toResponse(newAccessToken, newRefreshToken,
+                userDetails.getScopes().isEmpty(), requiredAccount(accountId));
     }
 
+    /** {@inheritDoc} */
     @Override
     public void logout(String accessToken) {
         if (accessToken == null || accessToken.isBlank()) {
@@ -116,11 +126,12 @@ public class AuthServiceImpl implements AuthService {
      */
     private CustomUserDetails authenticate(LoginRequest request) {
         var authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.usernameOrEmail(), request.password())
+                new UsernamePasswordAuthenticationToken(request.usernameOrEmail().trim(), request.password())
         );
         return (CustomUserDetails) authentication.getPrincipal();
     }
 
+    /** Ghi nhận một sự kiện đăng nhập (thành công/thất bại) vào audit log. */
     private void auditLogin(UUID accountId, AuditAction action, Map<String, Object> details) {
         auditService.record(new AuditEvent(
                 accountId,

@@ -11,6 +11,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Tiện ích truy xuất thông tin xác thực hiện tại từ {@code SecurityContextHolder}
+ * (accountId, username, quyền, vai trò) và trích xuất Bearer token từ request.
+ */
 public final class SecurityUtils {
 
     private SecurityUtils() {
@@ -19,11 +23,6 @@ public final class SecurityUtils {
     /** Lấy accountId của tài khoản đang xác thực, rỗng nếu chưa đăng nhập. */
     public static Optional<UUID> getCurrentAccountId() {
         return getCurrentUserDetails().map(CustomUserDetails::getAccountId);
-    }
-
-    /** Lấy tên đăng nhập của tài khoản đang xác thực. */
-    public static Optional<String> getCurrentUsername() {
-        return getCurrentUserDetails().map(CustomUserDetails::getUsername);
     }
 
     /** Lấy đối tượng CustomUserDetails của người dùng hiện tại (nếu có). */
@@ -46,17 +45,6 @@ public final class SecurityUtils {
                         .map(GrantedAuthority::getAuthority).filter(Objects::nonNull)
                         .anyMatch(a -> a.equals(authority)))
                 .orElse(false);
-    }
-
-    /** Kiểm tra người dùng hiện tại có vai trò được chỉ định (tự động thêm tiền tố ROLE_). */
-    public static boolean hasRole(String role) {
-        String roleName;
-        if (role.startsWith("ROLE_")) {
-            roleName = role;
-        } else {
-            roleName = "ROLE_" + role;
-        }
-        return hasAuthority(roleName);
     }
 
     /** Kiểm tra người dùng hiện tại có mã quyền được chỉ định hay không. */

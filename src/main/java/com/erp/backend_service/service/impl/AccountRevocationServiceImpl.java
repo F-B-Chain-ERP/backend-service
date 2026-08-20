@@ -26,6 +26,7 @@ public class AccountRevocationServiceImpl implements AccountRevocationService {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
+    /** {@inheritDoc} */
     @Override
     public void revokeAccount(UUID accountId, Duration ttl) {
         if (accountId == null) {
@@ -41,6 +42,7 @@ public class AccountRevocationServiceImpl implements AccountRevocationService {
         }
     }
 
+    /** {@inheritDoc} */
     @Override
     public boolean isRevoked(UUID accountId, Instant tokenIssuedAt) {
         if (accountId == null || tokenIssuedAt == null) {

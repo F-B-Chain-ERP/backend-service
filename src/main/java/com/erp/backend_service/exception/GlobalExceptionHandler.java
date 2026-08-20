@@ -1,6 +1,7 @@
 package com.erp.backend_service.exception;
 
 import com.erp.core.dto.response.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -9,8 +10,10 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
@@ -119,5 +122,45 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(apiResponse);
+    }
+
+    /** Xử lý lỗi validate ở header/path/query param (400). */
+    @ExceptionHandler(value = ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handlingConstraintViolation(ConstraintViolationException exception) {
+        Map<String, String> errors = new HashMap<>();
+        exception.getConstraintViolations().forEach(violation -> {
+            String fieldName = violation.getPropertyPath().toString();
+            errors.put(fieldName, violation.getMessage());
+        });
+        return ResponseEntity.badRequest().body(validationResponse(errors));
+    }
+
+    /** Xử lý thiếu header bắt buộc (400). */
+    @ExceptionHandler(value = MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handlingMissingRequestHeader(MissingRequestHeaderException exception) {
+        Map<String, String> errors = new HashMap<>();
+        errors.put(exception.getHeaderName(), exception.getHeaderName() + " header is required");
+        return ResponseEntity.badRequest().body(validationResponse(errors));
+    }
+
+    /** Xử lý JSON body sai định dạng hoặc thiếu body (400). */
+    @ExceptionHandler(value = HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handlingUnreadableBody(HttpMessageNotReadableException exception) {
+        ApiResponse<Void> apiResponse = ApiResponse.error(
+                HttpStatus.BAD_REQUEST.value(),
+                "ERR_VALIDATION",
+                "Request body is missing or malformed"
+        );
+        return ResponseEntity.badRequest().body(apiResponse);
+    }
+
+    private <T> ApiResponse<T> validationResponse(T errors) {
+        return new ApiResponse<>(
+                HttpStatus.BAD_REQUEST.value(),
+                "ERR_VALIDATION",
+                "Validation error",
+                errors,
+                Instant.now()
+        );
     }
 }

@@ -125,6 +125,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         return new UsernameNotFoundException("Account not found for supplied identifier");
     }
 
+    /** Bản ghi tạm chứa một cặp (vai trò, quyền) kèm phạm vi tương ứng. */
     private record Grant(String roleCode, String permissionCode, ScopeResponse scope) {
     }
 }

@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 
@@ -28,12 +27,8 @@ public class JwtProvider {
     public static final String TOKEN_TYPE_ACCESS = "ACCESS";
     public static final String TOKEN_TYPE_REFRESH = "REFRESH";
     private static final String CLAIM_USERNAME = "username";
-    private static final String CLAIM_FULL_NAME = "fullName";
-    private static final String CLAIM_EMAIL = "email";
-    private static final String CLAIM_ROLES = "roles";
-    private static final String CLAIM_PERMISSIONS = "permissions";
-    private static final String CLAIM_SCOPES = "scopes";
     private static final String CLAIM_TOKEN_TYPE = "type";
+    private static final String CLAIM_ROLE_CODES = "roleCodes";
 
     private final long accessTokenExpiry;
     private final long refreshTokenExpiry;
@@ -47,16 +42,6 @@ public class JwtProvider {
         this.signingKey = createSigningKey(secret);
     }
 
-    /** Lấy thời gian hết hạn của access token (giây). */
-    public long getAccessTokenExpiry() {
-        return accessTokenExpiry;
-    }
-
-    /** Lấy thời gian hết hạn của refresh token (giây). */
-    public long getRefreshTokenExpiry() {
-        return refreshTokenExpiry;
-    }
-
     /** Tạo khóa ký từ chuỗi bí mật (giải mã base64 nếu có thể). */
     private SecretKey createSigningKey(String secret) {
         byte[] keyBytes;
@@ -68,7 +53,7 @@ public class JwtProvider {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    /** Tạo access token chứa đầy đủ thông tin tài khoản, vai trò, quyền và phạm vi. */
+    /** Tạo access token có role; quyền/phạm vi nằm trong Redis. */
     public String generateAccessToken(CustomUserDetails userDetails) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + (accessTokenExpiry * 1000L));
@@ -76,11 +61,7 @@ public class JwtProvider {
         return Jwts.builder()
                 .subject(userDetails.getAccountId().toString())
                 .claim(CLAIM_USERNAME, userDetails.getUsername())
-                .claim(CLAIM_FULL_NAME, userDetails.getFullName())
-                .claim(CLAIM_EMAIL, userDetails.getEmail())
-                .claim(CLAIM_ROLES, userDetails.getRoles())
-                .claim(CLAIM_PERMISSIONS, userDetails.getPermissions())
-                .claim(CLAIM_SCOPES, userDetails.getScopes())
+                .claim(CLAIM_ROLE_CODES, userDetails.getRoles())
                 .claim(CLAIM_TOKEN_TYPE, TOKEN_TYPE_ACCESS)
                 .id(UUID.randomUUID().toString())
                 .issuedAt(now)
@@ -117,22 +98,6 @@ public class JwtProvider {
     public UUID extractAccountId(String token) {
         Claims claims = extractAllClaims(token);
         return UUID.fromString(claims.getSubject());
-    }
-
-    /** Trích xuất tên đăng nhập từ token. */
-    public String extractUsername(String token) {
-        Claims claims = extractAllClaims(token);
-        return claims.get(CLAIM_USERNAME, String.class);
-    }
-
-    /** Trích xuất thời điểm phát hành token (ném lỗi nếu thiếu). */
-    public Instant extractIssuedAt(String token) {
-        Claims claims = extractAllClaims(token);
-        Date iat = claims.getIssuedAt();
-        if (iat == null) {
-            throw new JwtException("Missing issued-at claim");
-        }
-        return iat.toInstant();
     }
 
     /** Kiểm tra token có hợp lệ (chữ ký đúng, chưa bị sửa đổi). */

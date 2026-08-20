@@ -2,6 +2,7 @@ package com.erp.backend_service.security;
 
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.service.AccountRevocationService;
+import com.erp.backend_service.service.PermissionService;
 import com.erp.core.dto.response.ApiResponse;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
@@ -36,15 +37,18 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
     private final AccountRevocationService accountRevocationService;
+    private final PermissionService permissionService;
     private final ObjectMapper objectMapper;
 
     public JwtAuthFilterChain(
             JwtProvider jwtProvider,
             AccountRevocationService accountRevocationService,
+            PermissionService permissionService,
             ObjectMapper objectMapper
     ) {
         this.jwtProvider = jwtProvider;
         this.accountRevocationService = accountRevocationService;
+        this.permissionService = permissionService;
         this.objectMapper = objectMapper;
     }
 
@@ -93,7 +97,7 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
                 return;
             }
 
-            CustomUserDetails userDetails = CustomUserDetails.fromClaims(claims);
+            CustomUserDetails userDetails = CustomUserDetails.fromClaims(claims, permissionService.getSnapshot(accountId));
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

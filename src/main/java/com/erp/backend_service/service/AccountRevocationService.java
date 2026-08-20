@@ -4,6 +4,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Quản lý việc thu hồi phiên/token của tài khoản: vô hiệu hóa các access token
+ * được cấp trước một thời điểm và kiểm tra một token có bị thu hồi hay không.
+ */
 public interface AccountRevocationService {
 
     /**

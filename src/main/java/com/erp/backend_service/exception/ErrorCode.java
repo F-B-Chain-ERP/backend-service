@@ -41,14 +41,17 @@ public enum ErrorCode {
         this.message = message;
     }
 
+    /** Lấy HTTP status code tương ứng với mã lỗi. */
     public int getStatusCode() {
         return statusCode;
     }
 
+    /** Lấy mã lỗi nội bộ (ví dụ: ERR_401). */
     public String getCode() {
         return code;
     }
 
+    /** Lấy thông báo mặc định của mã lỗi. */
     public String getMessage() {
         return message;
     }

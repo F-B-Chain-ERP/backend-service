@@ -10,11 +10,12 @@ import com.erp.backend_service.mapper.RoleAssignmentMapper;
 import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.RoleRepository;
-import com.erp.backend_service.repository.ScopeRepository;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.AccountRevocationService;
 import com.erp.backend_service.service.AuditService;
+import com.erp.backend_service.service.PermissionService;
 import com.erp.backend_service.service.RoleService;
+import com.erp.backend_service.service.ScopeService;
 import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.RoleAssignmentRequest;
@@ -31,8 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Triển khai {@link RoleService}: gán/thu hồi vai trò cho tài khoản, kiểm tra
@@ -42,33 +41,37 @@ import java.util.stream.Collectors;
 public class RoleServiceImpl implements RoleService {
     private final AccountRepository accountRepository;
     private final RoleRepository roleRepository;
-    private final ScopeRepository scopeRepository;
     private final AccountRoleRepository accountRoleRepository;
     private final AuditService auditService;
     private final AccountRevocationService revocationService;
+    private final PermissionService permissionService;
+    private final ScopeService scopeService;
     private final RoleAssignmentMapper assignmentMapper;
     private final Duration accessTokenLifetime;
 
     public RoleServiceImpl(AccountRepository accountRepository,
                            RoleRepository roleRepository,
-                            ScopeRepository scopeRepository,
-                             AccountRoleRepository accountRoleRepository,
-                             AuditService auditService,
-                             AccountRevocationService revocationService,
-                             RoleAssignmentMapper assignmentMapper,
-                            @Value("${app.jwt.access-token-expiry}") long accessTokenExpiry) {
+                           AccountRoleRepository accountRoleRepository,
+                           AuditService auditService,
+                           AccountRevocationService revocationService,
+                           PermissionService permissionService,
+                           ScopeService scopeService,
+                           RoleAssignmentMapper assignmentMapper,
+                             @Value("${app.jwt.access-token-expiry}") long accessTokenExpiry) {
         this.accountRepository = accountRepository;
         this.roleRepository = roleRepository;
-        this.scopeRepository = scopeRepository;
         this.accountRoleRepository = accountRoleRepository;
         this.auditService = auditService;
         this.revocationService = revocationService;
+        this.permissionService = permissionService;
+        this.scopeService = scopeService;
         this.assignmentMapper = assignmentMapper;
         this.accessTokenLifetime = Duration.ofSeconds(accessTokenExpiry);
     }
     /**
      * Gán vai trò cho tài khoản tại một phạm vi cụ thể.
      */
+    /** {@inheritDoc} */
     @Override
     @Transactional
     public RoleAssignmentResponse assign(RoleAssignmentRequest request) {
@@ -88,14 +91,14 @@ public class RoleServiceImpl implements RoleService {
         }
 
         auditService.record(assignmentEvent(AuditAction.ASSIGN_ROLE, accountRole));
+        permissionService.evictSnapshot(request.accountId());
         revocationService.revokeAccount(request.accountId(), accessTokenLifetime);
-        Scope scope = scopeRepository.findById(request.scopeId())
-                .orElseThrow(() -> new BaseException(ErrorCode.SCOPE_NOT_FOUND));
-        return assignmentMapper.toResponse(accountRole, scope);
+        return assignmentMapper.toResponse(accountRole, scopeService.getActive(request.scopeId()));
     }
     /**
      * Thu hồi vai trò khỏi tài khoản.
      */
+    /** {@inheritDoc} */
     @Override
     @Transactional
     public void revoke(UUID assignmentId) {
@@ -105,9 +108,11 @@ public class RoleServiceImpl implements RoleService {
         accountRole.setStatus(EntityStatus.INACTIVE);
         accountRoleRepository.save(accountRole);
         auditService.record(assignmentEvent(AuditAction.REVOKE_ROLE, accountRole));
+        permissionService.evictSnapshot(accountRole.getAccountId());
         revocationService.revokeAccount(accountRole.getAccountId(), accessTokenLifetime);
     }
 
+    /** {@inheritDoc} */
     @Override
     @Transactional(readOnly = true)
     public List<RoleAssignmentResponse> findByAccount(UUID accountId) {
@@ -115,9 +120,7 @@ public class RoleServiceImpl implements RoleService {
             throw new BaseException(ErrorCode.ACCOUNT_NOT_FOUND);
         }
         List<AccountRole> accountRoles = accountRoleRepository.findByAccountId(accountId);
-        Map<UUID, Scope> scopes = scopeRepository.findAllById(
-                accountRoles.stream().map(AccountRole::getScopeId).distinct().toList()
-        ).stream().collect(Collectors.toMap(Scope::getId, Function.identity()));
+        Map<UUID, Scope> scopes = scopeService.findAllById(accountRoles.stream().map(AccountRole::getScopeId).distinct().toList());
         return accountRoles.stream()
                 .map(accountRole -> assignmentMapper.toResponse(accountRole, requiredScope(scopes, accountRole)))
                 .toList();
@@ -137,11 +140,7 @@ public class RoleServiceImpl implements RoleService {
         if (role.getStatus() != EntityStatus.ACTIVE) {
             throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
         }
-        var scope = scopeRepository.findById(request.scopeId())
-                .orElseThrow(() -> new BaseException(ErrorCode.SCOPE_NOT_FOUND));
-        if (scope.getStatus() != EntityStatus.ACTIVE) {
-            throw new BaseException(ErrorCode.SCOPE_NOT_FOUND);
-        }
+        scopeService.getActive(request.scopeId());
     }
 
     /**
@@ -169,6 +168,7 @@ public class RoleServiceImpl implements RoleService {
         accountRole.setExpiresAt(request.expiresAt());
     }
 
+    /** Tạo sự kiện audit cho hành động gán/thu hồi vai trò của một tài khoản. */
     private AuditEvent assignmentEvent(AuditAction action, AccountRole accountRole) {
         return new AuditEvent(
                 SecurityUtils.getCurrentAccountId().orElse(null),
@@ -184,6 +184,7 @@ public class RoleServiceImpl implements RoleService {
         );
     }
 
+    /** Lấy phạm vi từ map, ném lỗi nếu bản ghi gán vai trò tham chiếu phạm vi không tồn tại. */
     private Scope requiredScope(Map<UUID, Scope> scopes, AccountRole accountRole) {
         Scope scope = scopes.get(accountRole.getScopeId());
         if (scope == null) {

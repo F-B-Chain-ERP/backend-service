@@ -1,5 +1,8 @@
 package com.erp.backend_service.service;
 
+import com.erp.backend_service.security.CustomUserDetails;
+import com.erp.backend_service.security.PermissionSnapshot;
+
 import java.util.UUID;
 
 /**
@@ -42,4 +45,36 @@ public interface PermissionService {
      * @param branchId       id chi nhánh áp dụng
      */
     void requireAccess(String permissionCode, UUID branchId);
+
+    /**
+     * Lấy ảnh chụp quyền hạn của tài khoản, ưu tiên từ cache, nếu chưa có thì
+     * tính toán từ DB và lưu cache.
+     *
+     * @param accountId id tài khoản
+     * @return ảnh chụp quyền hạn (không {@code null})
+     */
+    PermissionSnapshot getSnapshot(UUID accountId);
+
+    /**
+     * Lưu ảnh chụp quyền hạn của tài khoản vào cache.
+     *
+     * @param accountId id tài khoản
+     * @param snapshot  ảnh chụp quyền hạn cần lưu
+     */
+    void saveSnapshot(UUID accountId, PermissionSnapshot snapshot);
+
+    /**
+     * Xoá ảnh chụp quyền hạn đã lưu trên cache của tài khoản.
+     *
+     * @param accountId id tài khoản
+     */
+    void evictSnapshot(UUID accountId);
+
+    /**
+     * Xây dựng ảnh chụp quyền hạn trực tiếp từ {@link CustomUserDetails} (không qua DB).
+     *
+     * @param details thông tin người dùng đã xác thực
+     * @return ảnh chụp quyền hạn tương ứng
+     */
+    PermissionSnapshot snapshotFromDetails(CustomUserDetails details);
 }

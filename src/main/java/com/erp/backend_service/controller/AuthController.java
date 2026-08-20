@@ -6,7 +6,9 @@ import com.erp.core.dto.auth.LoginRequest;
 import com.erp.core.dto.auth.RefreshTokenRequest;
 import com.erp.core.dto.response.ApiResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/v1/auth")
+@Validated
 public class AuthController {
 
     private final AuthService authService;
@@ -38,16 +41,12 @@ public class AuthController {
 
     /** Đăng xuất: kiểm tra access token trong header Authorization rồi trả về thành công. */
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader(value = "Authorization", required = false) String token) {
-        if (token != null) {
-            String accessToken;
-            if (token.startsWith("Bearer ")) {
-                accessToken = token.substring(7);
-            } else {
-                accessToken = token;
-            }
-            authService.logout(accessToken);
-        }
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @NotBlank(message = "Authorization header must not be blank")
+            @RequestHeader("Authorization") String token
+    ) {
+        String accessToken = token.startsWith("Bearer ") ? token.substring(7) : token;
+        authService.logout(accessToken);
         return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully"));
     }
 }

@@ -2,7 +2,6 @@ package com.erp.backend_service.security;
 
 import com.erp.core.domain.Account;
 import com.erp.core.dto.auth.ScopeResponse;
-import com.erp.core.enums.ScopeType;
 import com.erp.core.enums.EntityStatus;
 import io.jsonwebtoken.Claims;
 import org.springframework.security.core.GrantedAuthority;
@@ -18,17 +17,10 @@ import java.util.*;
  */
 public class CustomUserDetails implements UserDetails {
     private static final String CLAIM_USERNAME = "username";
-    private static final String CLAIM_FULL_NAME = "fullName";
-    private static final String CLAIM_EMAIL = "email";
-    private static final String CLAIM_ROLES = "roles";
-    private static final String CLAIM_PERMISSIONS = "permissions";
-    private static final String CLAIM_SCOPES = "scopes";
-
+    private static final String CLAIM_ROLE_CODES = "roleCodes";
     private final UUID accountId;
     private final String username;
     private final String password;
-    private final String fullName;
-    private final String email;
     private final boolean enabled;
     private final Collection<GrantedAuthority> authorities;
     private final List<String> roles;
@@ -40,8 +32,6 @@ public class CustomUserDetails implements UserDetails {
             UUID accountId,
             String username,
             String password,
-            String fullName,
-            String email,
             boolean enabled,
             Collection<GrantedAuthority> authorities,
             List<String> roles,
@@ -52,8 +42,6 @@ public class CustomUserDetails implements UserDetails {
         this.accountId = accountId;
         this.username = username;
         this.password = password;
-        this.fullName = fullName;
-        this.email = email;
         this.enabled = enabled;
         if (authorities != null) {
             this.authorities = authorities;
@@ -78,28 +66,38 @@ public class CustomUserDetails implements UserDetails {
         this.issuedAt = issuedAt;
     }
 
+    private CustomUserDetails(
+            UUID accountId,
+            String username,
+            boolean enabled,
+            Collection<GrantedAuthority> authorities,
+            List<String> roles,
+            List<String> permissions,
+            List<ScopeResponse> scopes,
+            Instant issuedAt
+    ) {
+        this(accountId, username, null, enabled, authorities, roles, permissions, scopes, issuedAt);
+    }
+
+    /** Lấy id tài khoản. */
     public UUID getAccountId() {
         return accountId;
     }
 
-    public String getFullName() {
-        return fullName;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
+    /** Lấy danh sách mã vai trò (đã có tiền tố ROLE_). */
     public List<String> getRoles() {
         return roles;
     }
 
+    /** Lấy danh sách mã quyền của tài khoản. */
     public List<String> getPermissions() {
         return permissions;
     }
 
+    /** Lấy danh sách phạm vi (scope) áp dụng cho tài khoản. */
     public List<ScopeResponse> getScopes() { return scopes; }
 
+    /** Lấy thời điểm token được phát hành. */
     public Instant getIssuedAt() {
         return issuedAt;
     }
@@ -141,8 +139,6 @@ public class CustomUserDetails implements UserDetails {
                 account.getId(),
                 account.getUsername(),
                 account.getPassword(),
-                account.getFullName(),
-                account.getEmail(),
                 isActive,
                 authorities,
                 normalizedRoles,
@@ -152,21 +148,24 @@ public class CustomUserDetails implements UserDetails {
         );
     }
 
-    /** Xây dựng UserDetails từ claims của JWT (dùng trong filter, không truy vấn DB). */
+    /** Xây dựng UserDetails từ claims JWT và quyền/phạm vi trong Redis. */
     @SuppressWarnings("unchecked")
-    public static CustomUserDetails fromClaims(Claims claims) {
+    public static CustomUserDetails fromClaims(Claims claims, PermissionSnapshot snapshot) {
         UUID accountId = UUID.fromString(claims.getSubject());
         String username = claims.get(CLAIM_USERNAME, String.class);
-        String fullName = claims.get(CLAIM_FULL_NAME, String.class);
-        String email = claims.get(CLAIM_EMAIL, String.class);
-
-        List<String> roles = claims.get(CLAIM_ROLES, List.class);
-        List<String> permissions = claims.get(CLAIM_PERMISSIONS, List.class);
-        List<Map<String, Object>> scopeClaims = claims.get(CLAIM_SCOPES, List.class);
-        List<ScopeResponse> scopes = scopeClaims == null ? Collections.emptyList() : scopeClaims.stream()
-                .map(CustomUserDetails::scopeFromClaim)
-                .filter(Objects::nonNull)
-                .toList();
+        List<String> roles = claims.get(CLAIM_ROLE_CODES, List.class);
+        if (roles == null && snapshot != null) {
+            roles = snapshot.roles();
+        }
+        List<String> permissions;
+        List<ScopeResponse> scopes;
+        if (snapshot == null) {
+            permissions = Collections.emptyList();
+            scopes = Collections.emptyList();
+        } else {
+            permissions = snapshot.permissions();
+            scopes = snapshot.scopes();
+        }
 
         Set<GrantedAuthority> authorities = new HashSet<>();
         if (roles != null) {
@@ -197,9 +196,6 @@ public class CustomUserDetails implements UserDetails {
         return new CustomUserDetails(
                 accountId,
                 username,
-                null,
-                fullName,
-                email,
                 true,
                 authorities,
                 roles != null ? roles : Collections.emptyList(),
@@ -209,54 +205,43 @@ public class CustomUserDetails implements UserDetails {
         );
     }
 
-    /** Chuyển đổi một claim phạm vi thành đối tượng ScopeResponse (null nếu lỗi). */
-    private static ScopeResponse scopeFromClaim(Map<String, Object> claim) {
-        try {
-            UUID id = UUID.fromString(String.valueOf(claim.get("id")));
-            ScopeType type = ScopeType.valueOf(String.valueOf(claim.get("scopeType")));
-            Object branch = claim.get("branchId");
-            UUID branchId;
-            if (branch == null) {
-                branchId = null;
-            } else {
-                branchId = UUID.fromString(String.valueOf(branch));
-            }
-            return new ScopeResponse(id, type, branchId);
-        } catch (RuntimeException ignored) {
-            return null;
-        }
-    }
-
+    /** {@inheritDoc} */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return authorities;
     }
 
+    /** {@inheritDoc} */
     @Override
     public String getPassword() {
         return password;
     }
 
+    /** {@inheritDoc} */
     @Override
     public String getUsername() {
         return username;
     }
 
+    /** {@inheritDoc} */
     @Override
     public boolean isAccountNonExpired() {
         return true;
     }
 
+    /** {@inheritDoc} */
     @Override
     public boolean isAccountNonLocked() {
         return enabled;
     }
 
+    /** {@inheritDoc} */
     @Override
     public boolean isCredentialsNonExpired() {
         return true;
     }
 
+    /** {@inheritDoc} */
     @Override
     public boolean isEnabled() {
         return enabled;

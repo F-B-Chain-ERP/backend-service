@@ -1,167 +1,154 @@
 package com.erp.backend_service.service.impl;
 
+import com.erp.backend_service.util.audit.AuditAction;
+import com.erp.backend_service.util.audit.AuditEvent;
+import com.erp.backend_service.util.audit.AuditModule;
+import com.erp.backend_service.util.audit.AuditTargetType;
 import com.erp.backend_service.exception.BadRequestException;
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.mapper.AuthMapper;
 import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.CustomUserDetailsService;
 import com.erp.backend_service.security.JwtProvider;
+import com.erp.backend_service.service.AuditService;
 import com.erp.backend_service.service.AuthService;
+import com.erp.backend_service.service.PermissionService;
+import com.erp.core.domain.Account;
 import com.erp.core.dto.auth.AuthResponse;
 import com.erp.core.dto.auth.LoginRequest;
 import com.erp.core.dto.auth.RefreshTokenRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Objects;
+import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Triển khai {@link AuthService}: xác thực đăng nhập, cấp phát và làm mới JWT,
+ * đồng thời ghi nhận sự kiện đăng nhập thành công/thất bại vào audit log.
+ */
 @Service
 public class AuthServiceImpl implements AuthService {
-
-    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
-
-    private static final String REFRESH_TOKEN_KEY_PREFIX = "rt:";
-
     private final AuthenticationManager authenticationManager;
     private final JwtProvider jwtProvider;
-    private final CustomUserDetailsService customUserDetailsService;
+    private final CustomUserDetailsService userDetailsService;
     private final AccountRepository accountRepository;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final AuditService auditService;
+    private final AuthMapper authMapper;
+    private final PermissionService permissionService;
 
-    public AuthServiceImpl(
-            AuthenticationManager authenticationManager,
-            JwtProvider jwtProvider,
-            CustomUserDetailsService customUserDetailsService,
-            AccountRepository accountRepository,
-            StringRedisTemplate stringRedisTemplate
-    ) {
+    public AuthServiceImpl(AuthenticationManager authenticationManager,
+                           JwtProvider jwtProvider,
+                           CustomUserDetailsService userDetailsService,
+                           AccountRepository accountRepository,
+                              AuditService auditService,
+                              AuthMapper authMapper,
+                              PermissionService permissionService) {
         this.authenticationManager = authenticationManager;
         this.jwtProvider = jwtProvider;
-        this.customUserDetailsService = customUserDetailsService;
+        this.userDetailsService = userDetailsService;
         this.accountRepository = accountRepository;
-        this.stringRedisTemplate = stringRedisTemplate;
+        this.auditService = auditService;
+        this.authMapper = authMapper;
+        this.permissionService = permissionService;
     }
 
+    /** {@inheritDoc} */
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResponse login(LoginRequest request) {
-        log.info("Processing login for user: {}", request.usernameOrEmail());
-
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.usernameOrEmail(), request.password())
-        );
-
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-
-        String accessToken = jwtProvider.generateAccessToken(Objects.requireNonNull(userDetails));
-        String refreshToken = jwtProvider.generateRefreshToken(userDetails.getAccountId());
-
-        // Store refresh token in Redis with TTL
-        String rtKey = REFRESH_TOKEN_KEY_PREFIX + userDetails.getAccountId();
+        CustomUserDetails userDetails;
         try {
-            stringRedisTemplate.opsForValue().set(
-                    rtKey,
-                    refreshToken,
-                    Duration.ofSeconds(jwtProvider.getRefreshTokenExpiry())
-            );
-        } catch (Exception e) {
-            log.error("Failed to store refresh token in Redis for user {}", userDetails.getAccountId(), e);
+            userDetails = authenticate(request);
+        } catch (BadCredentialsException exception) {
+            UUID accountId = accountRepository.findByUsernameOrEmail(request.usernameOrEmail(), request.usernameOrEmail())
+                    .map(Account::getId).orElse(null);
+            auditLogin(accountId, AuditAction.LOGIN_FAILED, Map.of("reason", ErrorCode.BAD_CREDENTIALS.getCode()));
+            throw exception;
         }
 
-        // Update last login timestamp asynchronously / in current transaction
-        accountRepository.findById(userDetails.getAccountId()).ifPresent(account -> {
-            account.setLastLoginAt(Instant.now());
-            accountRepository.save(account);
-        });
+        Account account = requiredAccount(userDetails.getAccountId());
+        account.setLastLoginAt(Instant.now());
+        accountRepository.save(account);
 
-        return new AuthResponse(
-                accessToken,
-                refreshToken,
-                "Bearer",
-                jwtProvider.getAccessTokenExpiry()
-        );
+        String accessToken = jwtProvider.generateAccessToken(userDetails);
+        String refreshToken = jwtProvider.generateRefreshToken(account.getId());
+        permissionService.saveSnapshot(account.getId(), permissionService.snapshotFromDetails(userDetails));
+        auditLogin(account.getId(), AuditAction.LOGIN_SUCCESS,
+                Map.of("requiresScopeAssignment", userDetails.getScopes().isEmpty()));
+        return authMapper.toResponse(accessToken, refreshToken, userDetails.getScopes().isEmpty(), account);
     }
 
+    /** {@inheritDoc} */
     @Override
     @Transactional(readOnly = true)
     public AuthResponse refreshToken(RefreshTokenRequest request) {
-        String refreshToken = request.refreshToken();
-
-        // 1. Validate signature, expiration and type
-        if (!jwtProvider.validateToken(refreshToken) || !jwtProvider.isRefreshToken(refreshToken)) {
+        String currentToken = request.refreshToken();
+        if (!jwtProvider.validateToken(currentToken) || !jwtProvider.isRefreshToken(currentToken)) {
             throw new BadRequestException(ErrorCode.INVALID_TOKEN);
         }
 
-        UUID accountId = jwtProvider.extractAccountId(refreshToken);
-
-        // 2. Verify against Redis to prevent token replay attacks
-        String rtKey = REFRESH_TOKEN_KEY_PREFIX + accountId;
-        String storedRt = stringRedisTemplate.opsForValue().get(rtKey);
-        if (storedRt == null || !storedRt.equals(refreshToken)) {
-            log.warn("Refresh token reuse or revoked attempt detected for account {}", accountId);
-            throw new BadRequestException(ErrorCode.TOKEN_REVOKED);
-        }
-
-        // 3. Load up-to-date user details and permissions
-        UserDetails ud = customUserDetailsService.loadUserByUsername(accountId.toString());
-        if (!(ud instanceof CustomUserDetails userDetails)) {
-            throw new BadRequestException(ErrorCode.USER_NOT_EXISTED);
-        }
-
+        UUID accountId = jwtProvider.extractAccountId(currentToken);
+        CustomUserDetails userDetails = (CustomUserDetails) userDetailsService
+                .loadUserByUsername(accountId.toString());
         if (!userDetails.isEnabled()) {
             throw new BadRequestException(ErrorCode.ACCOUNT_DISABLED);
         }
 
-        // 4. Issue new token pair
         String newAccessToken = jwtProvider.generateAccessToken(userDetails);
         String newRefreshToken = jwtProvider.generateRefreshToken(accountId);
-
-        // 5. Rotate refresh token in Redis
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    rtKey,
-                    newRefreshToken,
-                    Duration.ofSeconds(jwtProvider.getRefreshTokenExpiry())
-            );
-        } catch (Exception e) {
-            log.error("Failed to update refresh token in Redis for user {}", accountId, e);
-        }
-
-        return new AuthResponse(
-                newAccessToken,
-                newRefreshToken,
-                "Bearer",
-                jwtProvider.getAccessTokenExpiry()
-        );
+        permissionService.saveSnapshot(accountId, permissionService.snapshotFromDetails(userDetails));
+        return authMapper.toResponse(newAccessToken, newRefreshToken,
+                userDetails.getScopes().isEmpty(), requiredAccount(accountId));
     }
 
+    /** {@inheritDoc} */
     @Override
     public void logout(String accessToken) {
         if (accessToken == null || accessToken.isBlank()) {
             return;
         }
-
-        String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7).trim() : accessToken.trim();
-
-        if (jwtProvider.validateToken(rawToken)) {
-            try {
-                UUID accountId = jwtProvider.extractAccountId(rawToken);
-                String rtKey = REFRESH_TOKEN_KEY_PREFIX + accountId;
-                stringRedisTemplate.delete(rtKey);
-                log.info("User {} logged out, refresh token revoked from Redis", accountId);
-            } catch (Exception e) {
-                log.warn("Failed to delete refresh token on logout: {}", e.getMessage());
-            }
+        String token = accessToken.startsWith("Bearer ")
+                ? accessToken.substring("Bearer ".length()).trim()
+                : accessToken.trim();
+        if (!jwtProvider.validateToken(token) || !jwtProvider.isAccessToken(token)) {
+            throw new BadRequestException(ErrorCode.INVALID_TOKEN);
         }
     }
+
+    /**
+     * Thực hiện xác thực username/password qua {@code AuthenticationManager}.
+     */
+    private CustomUserDetails authenticate(LoginRequest request) {
+        var authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.usernameOrEmail().trim(), request.password())
+        );
+        return (CustomUserDetails) authentication.getPrincipal();
+    }
+
+    /** Ghi nhận một sự kiện đăng nhập (thành công/thất bại) vào audit log. */
+    private void auditLogin(UUID accountId, AuditAction action, Map<String, Object> details) {
+        auditService.record(new AuditEvent(
+                accountId,
+                action,
+                AuditModule.SYS,
+                AuditTargetType.ACCOUNT,
+                accountId,
+                details
+        ));
+    }
+
+    /**
+     * Lấy tài khoản theo id, ném lỗi nếu không tồn tại.
+     */
+    private Account requiredAccount(UUID accountId) {
+        return accountRepository.findById(accountId)
+                .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
+    }
+
 }

@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/**
+ * Xử lý khi chưa xác thực (401): trả về response JSON chuẩn thay vì trang đăng nhập.
+ */
 @Component
 public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
@@ -25,6 +28,7 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
         this.objectMapper = objectMapper;
     }
 
+    /** Ghi log và trả về lỗi 401 dạng ApiResponse khi truy cập chưa xác thực. */
     @Override
     public void commence(
             HttpServletRequest request,

@@ -1,7 +1,7 @@
 package com.erp.backend_service.exception;
 
 /**
- * Exception for 404 Not Found cases.
+ * Ngoại lệ cho các trường hợp không tìm thấy tài nguyên (404 Not Found).
  */
 public class NotFoundException extends BaseException {
 

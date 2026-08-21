@@ -5,8 +5,10 @@ import com.erp.core.dto.auth.RoleAssignmentRequest;
 import com.erp.core.dto.auth.RoleAssignmentResponse;
 import com.erp.core.dto.response.ApiResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,6 +25,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/role-assignments")
+@Validated
 public class RoleAssignmentController {
     private final RoleService roleService;
 
@@ -38,7 +41,10 @@ public class RoleAssignmentController {
     /** Thu hồi (vô hiệu hóa) bản ghi gán vai trò theo id. */
     @DeleteMapping("/{assignmentId}")
     @PreAuthorize("hasAuthority('sys:assignment:manage')")
-    public ResponseEntity<ApiResponse<Void>> revoke(@PathVariable UUID assignmentId) {
+    public ResponseEntity<ApiResponse<Void>> revoke(
+            @NotNull(message = "Assignment id must not be null")
+            @PathVariable UUID assignmentId
+    ) {
         roleService.revoke(assignmentId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -46,7 +52,10 @@ public class RoleAssignmentController {
     /** Lấy danh sách vai trò đã gán cho một tài khoản. */
     @GetMapping("/account/{accountId}")
     @PreAuthorize("hasAuthority('sys:assignment:manage')")
-    public ResponseEntity<ApiResponse<List<RoleAssignmentResponse>>> byAccount(@PathVariable UUID accountId) {
+    public ResponseEntity<ApiResponse<List<RoleAssignmentResponse>>> byAccount(
+            @NotNull(message = "Account id must not be null")
+            @PathVariable UUID accountId
+    ) {
         return ResponseEntity.ok(ApiResponse.success(roleService.findByAccount(accountId)));
     }
 }

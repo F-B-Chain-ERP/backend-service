@@ -14,31 +14,26 @@ import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.AccountRevocationService;
 import com.erp.backend_service.service.AuditService;
 import com.erp.backend_service.service.PermissionService;
-import com.erp.backend_service.exception.BaseException;
-import com.erp.backend_service.exception.ErrorCode;
-import com.erp.backend_service.repository.RoleRepository;
 import com.erp.backend_service.service.RoleService;
 import com.erp.backend_service.service.ScopeService;
 import com.erp.core.domain.AccountRole;
+import com.erp.core.domain.Role;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.RoleAssignmentRequest;
 import com.erp.core.dto.auth.RoleAssignmentResponse;
-import com.erp.core.enums.EntityStatus;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataIntegrityViolationException;
-import com.erp.core.domain.Role;
 import com.erp.core.dto.auth.RoleResponse;
 import com.erp.core.dto.request.role.CreateRoleRequest;
 import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.enums.RoleType;
 import com.erp.core.enums.EntityStatus;
-import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -219,7 +214,7 @@ public class RoleServiceImpl implements RoleService {
         role.setCode(code);
         role.setName(request.name());
         role.setDescription(request.description());
-        role.setType(request.type());
+        role.setRoleType(request.roleType());
         role.setStatus(request.status());
 
         Role saved = roleRepository.save(role);
@@ -274,7 +269,7 @@ public class RoleServiceImpl implements RoleService {
         role.setName(request.name());
         role.setCode(code);
         role.setDescription(request.description());
-        role.setType(request.type());
+        role.setRoleType(request.roleType());
         role.setStatus(request.status());
 
         Role updated = roleRepository.save(role);
@@ -295,7 +290,7 @@ public class RoleServiceImpl implements RoleService {
                 role.getCode(),
                 role.getName(),
                 role.getDescription(),
-                role.getType(),
+                role.getRoleType(),
                 role.getStatus()
         );
     }

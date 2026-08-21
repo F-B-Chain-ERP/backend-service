@@ -9,10 +9,14 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 
+/**
+ * Cấu hình các bean truy cập Redis: RedisTemplate (JSON) và StringRedisTemplate.
+ */
 @Configuration
 @EnableCaching
 public class RedisConfiguration {
 
+    /** RedisTemplate chính dùng serializer JSON cho value, string cho key. */
     @Bean
     @Primary
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
@@ -31,6 +35,7 @@ public class RedisConfiguration {
         return template;
     }
 
+    /** StringRedisTemplate dùng cho các thao tác giá trị chuỗi (token, counter). */
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
         return new StringRedisTemplate(connectionFactory);

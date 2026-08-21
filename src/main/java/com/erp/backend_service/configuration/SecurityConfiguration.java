@@ -29,6 +29,10 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+/**
+ * Cấu hình bảo mật: vô hiệu hóa CSRF, phi trạng thái (stateless), CORS,
+ * endpoint công khai, chuỗi filter JWT/rate-limit và mã hóa mật khẩu BCrypt.
+ */
 public class SecurityConfiguration {
 
     private final JwtAuthFilterChain jwtAuthFilterChain;
@@ -52,7 +56,8 @@ public class SecurityConfiguration {
     }
 
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/api/v1/auth/**",
+            "/api/v1/auth/login",
+            "/api/v1/auth/refresh-token",
             "/actuator/health",
             "/actuator/info",
             "/v3/api-docs/**",
@@ -60,6 +65,7 @@ public class SecurityConfiguration {
             "/swagger-ui.html"
     };
 
+    /** Khởi tạo SecurityFilterChain với các chính sách bảo mật đã cấu hình. */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) {
         return http
@@ -75,11 +81,12 @@ public class SecurityConfiguration {
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilterChain, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(rateLimitFilter, JwtAuthFilterChain.class)
                 .build();
     }
 
+    /** Cung cấp AuthenticationProvider sử dụng CustomUserDetailsService và BCrypt. */
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(customUserDetailsService);
@@ -87,16 +94,19 @@ public class SecurityConfiguration {
         return authProvider;
     }
 
+    /** Lấy AuthenticationManager từ cấu hình xác thực của Spring. */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) {
         return config.getAuthenticationManager();
     }
 
+    /** Cung cấp BCryptPasswordEncoder (độ mạnh 12) để mã hóa mật khẩu. */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
     }
 
+    /** Cấu hình nguồn CORS áp dụng cho toàn bộ endpoint. */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

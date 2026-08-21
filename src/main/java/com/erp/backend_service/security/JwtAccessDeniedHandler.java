@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/**
+ * Xử lý khi đã xác thực nhưng không đủ quyền (403): trả về response JSON chuẩn.
+ */
 @Component
 public class JwtAccessDeniedHandler implements AccessDeniedHandler {
 
@@ -25,6 +28,7 @@ public class JwtAccessDeniedHandler implements AccessDeniedHandler {
         this.objectMapper = objectMapper;
     }
 
+    /** Ghi log và trả về lỗi 403 dạng ApiResponse khi bị từ chối quyền truy cập. */
     @Override
     public void handle(
             HttpServletRequest request,

@@ -1,0 +1,72 @@
+groups:
+  - name: ERP_System_Alerts
+    rules:
+      # 1. Ổ Cứng Server sắp đầy (< 15% Free Space)
+      - alert: HostDiskSpaceRunningLow
+        expr: (node_filesystem_free_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100) < 15
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CẢNH BÁO: Dung lượng ổ đĩa VPS dưới 15%"
+          description: "Dung lượng ổ cứng VPS chỉ còn {{ $value | printf \"%.2f\" }}%. Cần kiểm tra dọn log hoặc backup ngay."
+
+      # 2. Máy chủ VPS bị quá tải CPU liên tục (> 85% trong 5 phút)
+      - alert: HostCpuHighUsage
+        expr: (100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CẢNH BÁO: CPU VPS vượt ngưỡng 85%"
+          description: "Mức sử dụng CPU trung bình trong 5 phút qua là {{ $value | printf \"%.2f\" }}%."
+
+      # 3. Máy chủ VPS bị đầy RAM (> 90% trong 5 phút)
+      - alert: HostMemoryHighUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CẢNH BÁO: RAM máy chủ vượt ngưỡng 90%"
+          description: "RAM khả dụng trên host chỉ còn dưới 10% (đang dùng {{ $value | printf \"%.2f\" }}%). Nguy cơ bị OOM Killer."
+
+      # 4. JVM Heap Memory Quá Tải (> 85% trong 5 phút)
+      - alert: BackendJvmHeapHighUsage
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} * 100) > 85
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CẢNH BÁO: JVM Heap Memory vượt 85%"
+          description: "Ứng dụng Spring Boot đang chiếm {{ $value | printf \"%.2f\" }}% Max Heap. Kiểm tra nguy cơ rò rỉ bộ nhớ (Memory Leak) hoặc cần tăng -Xmx."
+
+      # 5. Connection Pool Database Bị Nghẽn (HikariCP Pending Connections > 3 trong 2 phút)
+      - alert: DatabasePoolExhaustion
+        expr: hikaricp_connections_pending{pool="HikariPool-1"} > 3
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NGUY HIỂM: Database Connection Pool bị nghẽn (> 3 pending connections)!"
+          description: "Có {{ $value }} yêu cầu kết nối DB đang phải xếp hàng chờ phục vụ liên tục trong 2 phút."
+
+      # 6. Tỉ lệ lỗi HTTP 5xx của Backend quá cao (> 2% trong 3 phút)
+      - alert: BackendHighHttp5xxRate
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count[5m])) * 100 > 2
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TỈ LỆ LỖI BACKEND 5XX VƯỢT QUÁ 2%"
+          description: "Tỉ lệ lỗi máy chủ 5xx hiện đang ở mức {{ $value | printf \"%.2f\" }}% trên tổng lưu lượng."
+
+      # 7. Container Bị Crash hoặc Restart Liên Tục (> 2 lần trong 15 phút)
+      - alert: ContainerRestartingFrequently
+        expr: increase(container_restart_count{name=~"erp-.*"}[15m]) > 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} bị restart bất thường"
+          description: "Container {{ $labels.name }} đã khởi động lại {{ $value }} lần trong 15 phút qua."

@@ -45,3 +45,24 @@ logging:
     com.erp: DEBUG
     org.springframework.security: DEBUG
     io.jsonwebtoken: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name:backend-service}
+      env: dev
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+

@@ -2,7 +2,13 @@ package com.erp.backend_service.service;
 
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.PermissionSnapshot;
+import com.erp.core.dto.request.permission.CreatePermissionRequest;
+import com.erp.core.dto.request.permission.UpdatePermissionRequest;
+import com.erp.core.dto.response.PageResponse;
+import com.erp.core.dto.response.PermissionResponse;
+import com.erp.core.enums.EntityStatus;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -77,4 +83,59 @@ public interface PermissionService {
      * @return ảnh chụp quyền hạn tương ứng
      */
     PermissionSnapshot snapshotFromDetails(CustomUserDetails details);
+
+    // ==================== Quản trị danh mục quyền (CRUD) ====================
+
+    /**
+     * Tạo quyền mới trong danh mục. Mã quyền phải duy nhất (đã chuẩn hoá chữ thường).
+     *
+     * @param request thông tin quyền cần tạo
+     * @return quyền vừa được tạo
+     */
+    PermissionResponse create(CreatePermissionRequest request);
+
+    /**
+     * Lấy quyền theo id.
+     *
+     * @param id id của quyền
+     * @return thông tin quyền
+     */
+    PermissionResponse getById(UUID id);
+
+    /**
+     * Phân trang + tìm kiếm danh sách quyền với bộ lọc tuỳ chọn.
+     *
+     * @param page   chỉ số trang (bắt đầu từ 0)
+     * @param size   số bản ghi mỗi trang (1..100)
+     * @param search từ khoá tìm kiếm trên code/name/module (có thể null)
+     * @param module lọc theo module chính xác (có thể null)
+     * @param status lọc theo trạng thái (có thể null)
+     * @return trang dữ liệu quyền
+     */
+    PageResponse<PermissionResponse> getAll(int page, int size, String search, String module, EntityStatus status);
+
+    /**
+     * Danh sách các module đang tồn tại trong danh mục quyền.
+     *
+     * @return tên module (đã sắp xếp)
+     */
+    List<String> getModules();
+
+    /**
+     * Cập nhật quyền: name/module/description/status. Mã quyền không được đổi.
+     * Snapshot quyền của các tài khoản đang sở hữu quyền này được làm mới ngay.
+     *
+     * @param id      id của quyền
+     * @param request thông tin cần cập nhật
+     * @return quyền sau khi cập nhật
+     */
+    PermissionResponse update(UUID id, UpdatePermissionRequest request);
+
+    /**
+     * Xoá quyền khỏi danh mục. Từ chối nếu quyền vẫn còn gắn với vai trò nào đó —
+     * cần gỡ khỏi vai trò hoặc chuyển trạng thái INACTIVE thay vì xoá.
+     *
+     * @param id id của quyền
+     */
+    void delete(UUID id);
 }

@@ -15,6 +15,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -141,6 +142,17 @@ public class GlobalExceptionHandler {
         Map<String, String> errors = new HashMap<>();
         errors.put(exception.getHeaderName(), exception.getHeaderName() + " header is required");
         return ResponseEntity.badRequest().body(validationResponse(errors));
+    }
+
+    /** Xử lý tham số path/query sai định dạng, ví dụ id không phải UUID (400). */
+    @ExceptionHandler(value = MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handlingTypeMismatch(MethodArgumentTypeMismatchException exception) {
+        ApiResponse<Void> apiResponse = ApiResponse.error(
+                HttpStatus.BAD_REQUEST.value(),
+                "ERR_VALIDATION",
+                "Invalid value '" + exception.getValue() + "' for parameter '" + exception.getName() + "'"
+        );
+        return ResponseEntity.badRequest().body(apiResponse);
     }
 
     /** Xử lý JSON body sai định dạng hoặc thiếu body (400). */

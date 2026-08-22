@@ -16,5 +16,9 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
     List<RolePermission> findByRoleIdIn(Collection<UUID> roleIds);
 
     /** Lấy các quyền của một vai trò. */
+    /** Lấy toàn bộ ánh xạ của một vai trò. */
     List<RolePermission> findByRoleId(UUID roleId);
+
+    /** Lấy toàn bộ ánh xạ trỏ tới một quyền (các vai trò đang sở hữu quyền này). */
+    List<RolePermission> findByPermissionId(UUID permissionId);
 }

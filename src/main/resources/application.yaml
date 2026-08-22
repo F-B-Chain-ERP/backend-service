@@ -18,3 +18,12 @@ app:
       capacity: ${RL_AUTH_CAPACITY:100}
       refill-tokens: ${RL_AUTH_REFILL:100}
       refill-seconds: ${RL_AUTH_PERIOD:60}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized

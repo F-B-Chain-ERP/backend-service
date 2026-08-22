@@ -17,7 +17,7 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
     scrape_interval: 5s
     static_configs:
-      - targets: ['backend-service:8080', 'host.docker.internal:8080']
+      - targets: ['backend-service:8080']
         labels:
           application: 'backend-service'
           environment: 'production'
@@ -26,7 +26,7 @@ scrape_configs:
   - job_name: 'erp-node-exporter'
     scrape_interval: 5s
     static_configs:
-      - targets: ['node-exporter:9100', 'host.docker.internal:9100']
+      - targets: ['node-exporter:9100']
         labels:
           tier: 'infrastructure'
 
@@ -34,7 +34,7 @@ scrape_configs:
   - job_name: 'erp-postgres-exporter'
     scrape_interval: 5s
     static_configs:
-      - targets: ['postgres-exporter:9187', 'host.docker.internal:9187']
+      - targets: ['postgres-exporter:9187']
         labels:
           tier: 'database'
 
@@ -42,7 +42,7 @@ scrape_configs:
   - job_name: 'erp-redis-exporter'
     scrape_interval: 5s
     static_configs:
-      - targets: ['redis-exporter:9121', 'host.docker.internal:9121']
+      - targets: ['redis-exporter:9121']
         labels:
           tier: 'cache'
 
@@ -50,6 +50,6 @@ scrape_configs:
   - job_name: 'erp-cadvisor'
     scrape_interval: 5s
     static_configs:
-      - targets: ['cadvisor:8080', 'host.docker.internal:8081']
+      - targets: ['cadvisor:8080']
         labels:
           tier: 'container'

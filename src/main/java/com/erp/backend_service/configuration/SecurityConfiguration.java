@@ -58,8 +58,7 @@ public class SecurityConfiguration {
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/login",
             "/api/v1/auth/refresh-token",
-            "/actuator/health",
-            "/actuator/info",
+            "/actuator/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"

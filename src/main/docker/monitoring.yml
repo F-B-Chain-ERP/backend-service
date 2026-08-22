@@ -10,9 +10,8 @@ services:
     extends:
       file: grafana.yml
       service: grafana
-    depends_on:
-      prometheus:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   node-exporter:
     image: prom/node-exporter:v1.7.0
@@ -60,8 +59,4 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
-    driver: local
-  postgres_data:
-    driver: local
-  redis_data:
     driver: local

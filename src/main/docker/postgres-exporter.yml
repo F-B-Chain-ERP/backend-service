@@ -4,14 +4,8 @@ services:
     container_name: erp-postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://erp_user:erp123456@@postgresql:5432/erp_dev?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://erp_user:erp123456@@host.docker.internal:5432/erp_dev?sslmode=disable"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:9187:9187"
-    depends_on:
-      postgresql:
-        condition: service_healthy
-
-  postgresql:
-    extends:
-      file: postgresql.yml
-      service: postgresql

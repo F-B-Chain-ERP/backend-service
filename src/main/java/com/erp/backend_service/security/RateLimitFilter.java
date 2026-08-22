@@ -61,6 +61,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final Map<String, Bucket> localBuckets = new ConcurrentHashMap<>();
 
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path != null && path.startsWith("/actuator");
+    }
+
     /** Áp dụng giới hạn tốc độ cho mỗi request, từ chối (429) nếu vượt quá. */
     @Override
     protected void doFilterInternal(

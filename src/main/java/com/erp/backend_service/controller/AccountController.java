@@ -9,6 +9,7 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,18 +38,21 @@ public class AccountController {
 
     /** Tạo tài khoản nội bộ mới (do admin cấp). */
     @PostMapping
+    @PreAuthorize("hasAuthority('sys:account:create')")
     public ResponseEntity<ApiResponse<AccountResponse>> create(@Valid @RequestBody CreateAccountRequest request) {
         return ResponseEntity.ok(ApiResponse.success(accountService.createAccount(request)));
     }
 
     /** Lấy thông tin một tài khoản theo id. */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('sys:account:view')")
     public ResponseEntity<ApiResponse<AccountResponse>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(accountService.getAccount(id)));
     }
 
     /** Lấy danh sách tài khoản phân trang, hỗ trợ tìm kiếm. */
     @GetMapping
+    @PreAuthorize("hasAuthority('sys:account:view')")
     public ResponseEntity<ApiResponse<PageResponse<AccountResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -58,6 +62,7 @@ public class AccountController {
 
     /** Cập nhật thông tin tài khoản. */
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('sys:account:update')")
     public ResponseEntity<ApiResponse<AccountResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateAccountRequest request) {
@@ -66,6 +71,7 @@ public class AccountController {
 
     /** Vô hiệu hóa (xóa mềm) tài khoản. */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('sys:account:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         accountService.deleteAccount(id);
         return ResponseEntity.ok(ApiResponse.success(null));
@@ -73,6 +79,7 @@ public class AccountController {
 
     /** Đặt lại mật khẩu cho tài khoản. */
     @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasAuthority('sys:account:update')")
     public ResponseEntity<ApiResponse<AccountResponse>> resetPassword(
             @PathVariable UUID id,
             @Valid @RequestBody ResetPasswordRequest request) {

@@ -83,10 +83,11 @@ Từ máy local dev, mở DBeaver / DataGrip hoặc terminal:
 ### Bước 3: Chạy SQL Migration thủ công (Liquibase changesets)
 Dev mở các file SQL trong `src/main/resources/db/changelog/changeset/` và chạy lần lượt vào DB trên Server:
 1. `001-init-schema.sql`: Khởi tạo toàn bộ schema (baseline, hợp nhất từ các changeset cũ)
-2. `002-init-data.sql`: Thêm dữ liệu seed (role, permission, scope, admin `admin` / `123456789`)
+2. `003-branch.sql` … `011-platform.sql`: Tạo schema từng module (branch, inv, proc, menu, store, pos, fin, platform)
+3. `012-permission-seed.sql`: Seed 199 permission + bootstrap tối thiểu (scope `ALL_SYSTEM`, role `ADMIN`, tài khoản `admin` / `123456789`) và gán full quyền cho `ADMIN`
 
-> **Lưu ý:** Các file đã được gộp thành 1 schema + 1 data. Nếu DB cũ đã chạy migration,
-> hãy `TRUNCATE TABLE databasechangelog;` trước khi chạy lại để tránh trùng lịch sử.
+> **Lưu ý:** Dữ liệu init/test cũ (role USER, test account `manager01`/`staff01`/khách hàng test…) đã được xóa.
+> Nếu DB cũ đã chạy migration, hãy `TRUNCATE TABLE databasechangelog;` trước khi chạy lại để tránh trùng lịch sử.
 
 ### Bước 4: Chạy Backend Local kết nối Server DB
 Trong `application-dev.yaml`, cấu hình đã mặc định trỏ về IP server `163.61.72.183`. Chạy backend:

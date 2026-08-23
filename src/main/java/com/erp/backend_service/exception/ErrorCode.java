@@ -35,7 +35,10 @@ public enum ErrorCode {
     EMAIL_REQUIRED(400, "ERR_400_EMAIL_REQUIRED", "Email is required to verify the account"),
     OTP_INVALID(400, "ERR_400_OTP_INVALID", "Invalid verification code"),
     OTP_EXPIRED(400, "ERR_400_OTP_EXPIRED", "Verification code has expired, please request a new one"),
-    OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Too many failed attempts, please request a new code");
+    OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Too many failed attempts, please request a new code"),
+    PHONE_EXISTED(400,"ERR_400_PHONE_EXISTED","Phone number already existed"),
+    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email already existed"),;
+
 
     private final int statusCode;
     private final String code;

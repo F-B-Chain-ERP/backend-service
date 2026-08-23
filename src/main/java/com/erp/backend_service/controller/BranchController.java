@@ -30,40 +30,43 @@ public class BranchController {
 
     /** Danh sách tất cả chi nhánh (kèm tên chi nhánh cha). */
     @GetMapping
+    @PreAuthorize("hasAuthority('sys:branch:view')")
     public ResponseEntity<ApiResponse<List<BranchResponse>>> list() {
         return ResponseEntity.ok(ApiResponse.success(branchService.findAll()));
     }
 
     /** Danh sách chi nhánh thuộc phạm vi (scope) của tài khoản đang đăng nhập. */
     @GetMapping("/mine")
+    @PreAuthorize("hasAuthority('sys:branch:view')")
     public ResponseEntity<ApiResponse<List<BranchResponse>>> mine() {
         return ResponseEntity.ok(ApiResponse.success(branchService.findMine()));
     }
 
     /** Chi tiết một chi nhánh. */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('sys:branch:view')")
     public ResponseEntity<ApiResponse<BranchResponse>> get(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(branchService.findById(id)));
     }
 
     /** Tạo mới chi nhánh (quản trị). */
-//    @PreAuthorize("hasAuthority('FULL_PERMISSION')")
     @PostMapping
+    @PreAuthorize("hasAuthority('sys:branch:create')")
     public ResponseEntity<ApiResponse<BranchResponse>> create(@Valid @RequestBody CreateBranchRequest request) {
         return ResponseEntity.ok(ApiResponse.success(branchService.create(request)));
     }
 
     /** Cập nhật chi nhánh (quản trị). */
-//    @PreAuthorize("hasAuthority('FULL_PERMISSION')")
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('sys:branch:update')")
     public ResponseEntity<ApiResponse<BranchResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateBranchRequest request) {
         return ResponseEntity.ok(ApiResponse.success(branchService.update(id, request)));
     }
 
     /** Xóa chi nhánh (quản trị). */
-//    @PreAuthorize("hasAuthority('FULL_PERMISSION')")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('sys:branch:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         branchService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));

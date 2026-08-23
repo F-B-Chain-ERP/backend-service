@@ -153,6 +153,7 @@ ALTER TABLE account_role_assignment ADD CONSTRAINT fk_account_role_scope FOREIGN
 CREATE TABLE IF NOT EXISTS customer (
     id                 uuid        NOT NULL,
     customer_code      varchar(50) NOT NULL,
+    username           varchar(100),
     full_name          varchar(150) NOT NULL,
     phone              varchar(20),
     email              varchar(150),
@@ -174,6 +175,7 @@ CREATE TABLE IF NOT EXISTS customer (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_code ON customer (customer_code);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_username ON customer (username);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_phone ON customer (phone);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_email ON customer (email);
 CREATE INDEX IF NOT EXISTS idx_customer_status ON customer (status);

@@ -2,8 +2,20 @@ databaseChangeLog:
   - include:
       file: db/changelog/changeset/001-init-schema.sql
   - include:
-      file: db/changelog/changeset/002-init-data.sql
+      file: db/changelog/changeset/002-branch.sql
   - include:
-      file: db/changelog/changeset/003-branch.sql
+      file: db/changelog/changeset/003-inv.sql
   - include:
-      file: db/changelog/changeset/004-test-login-data.sql
+      file: db/changelog/changeset/004-proc.sql
+  - include:
+      file: db/changelog/changeset/005-menu.sql
+  - include:
+      file: db/changelog/changeset/006-store.sql
+  - include:
+      file: db/changelog/changeset/007-pos.sql
+  - include:
+      file: db/changelog/changeset/008-fin.sql
+  - include:
+      file: db/changelog/changeset/009-platform.sql
+  - include:
+      file: db/changelog/changeset/010-permission-seed.sql

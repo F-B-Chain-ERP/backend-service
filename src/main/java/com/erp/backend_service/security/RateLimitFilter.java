@@ -61,6 +61,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final Map<String, Bucket> localBuckets = new ConcurrentHashMap<>();
 
+    /** Áp dụng giới hạn tốc độ cho mỗi request, từ chối (429) nếu vượt quá. */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
@@ -144,7 +145,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             String token = tokenOpt.get();
             if (jwtProvider.validateToken(token) && jwtProvider.isAccessToken(token)) {
                 try {
-                    UUID accountId = jwtProvider.extractAccountId(token);
+                    UUID accountId = jwtProvider.extractPrincipalId(token);
                     return "rl:user:" + accountId;
                 } catch (Exception ignored) {
                 }

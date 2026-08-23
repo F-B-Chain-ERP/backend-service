@@ -25,10 +25,11 @@ public class AuditServiceImpl implements AuditService {
     @Transactional
     public void record(AuditEvent event) {
         AuditLog log = new AuditLog();
-        log.setActorAccountId(event.actorAccountId());
+        log.setActorType(event.actorType());
+        log.setActorId(event.actorId());
         log.setAction(event.action().name());
         log.setModule(event.module().name());
-        log.setTargetType(event.targetType().name());
+        log.setTargetType(event.targetType() != null ? event.targetType().name() : null);
         log.setTargetId(event.targetId());
         log.setAfterData(event.details());
         HttpServletRequest request = currentRequest();

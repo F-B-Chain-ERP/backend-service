@@ -25,6 +25,7 @@ import com.erp.core.domain.RolePermission;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.ScopeResponse;
 import com.erp.core.enums.EntityStatus;
+import com.erp.core.enums.PrincipalType;
 import com.erp.core.enums.ScopeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -191,7 +192,7 @@ public class PermissionServiceImpl implements PermissionService {
     /** {@inheritDoc} */
     @Override
     public void requirePermission(String permissionCode) {
-        UUID accountId = currentAccountId();
+        UUID accountId = currentPrincipalId();
         if (!hasPermission(accountId, permissionCode)) {
             auditDenied(accountId, AuditTargetType.PERMISSION, null, Map.of("permissionCode", permissionCode));
             throw new BaseException(ErrorCode.PERMISSION_DENIED);
@@ -201,7 +202,7 @@ public class PermissionServiceImpl implements PermissionService {
     /** {@inheritDoc} */
     @Override
     public void requireAccess(String permissionCode, UUID branchId) {
-        UUID accountId = currentAccountId();
+        UUID accountId = currentPrincipalId();
         if (!isAllowed(accountId, permissionCode, branchId)) {
             auditDenied(accountId, AuditTargetType.SCOPE, branchId,
                     Map.of("permissionCode", permissionCode, "branchId", branchId.toString()));
@@ -216,18 +217,19 @@ public class PermissionServiceImpl implements PermissionService {
                 .orElse(false);
     }
 
-    /** Lấy accountId của người dùng hiện tại, ném lỗi nếu chưa xác thực. */
-    private UUID currentAccountId() {
-        return SecurityUtils.getCurrentAccountId()
+    /** Lấy id thực thể hiện tại, ném lỗi nếu chưa xác thực. */
+    private UUID currentPrincipalId() {
+        return SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
     }
 
     /**
      * Ghi nhận một sự kiện bị từ chối truy cập vào audit log.
      */
-    private void auditDenied(UUID accountId, AuditTargetType targetType,
-                              UUID targetId, Map<String, Object> details) {
-        auditService.record(new AuditEvent(accountId, AuditAction.ACCESS_DENIED,
+    private void auditDenied(UUID principalId, AuditTargetType targetType,
+                               UUID targetId, Map<String, Object> details) {
+        PrincipalType actorType = SecurityUtils.getCurrentPrincipalType().orElse(null);
+        auditService.record(new AuditEvent(actorType, principalId, AuditAction.ACCESS_DENIED,
                 AuditModule.SYS, targetType, targetId, details));
     }
 

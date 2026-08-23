@@ -15,9 +15,12 @@ public class AccountMapper {
                 account.getUsername(),
                 account.getEmail(),
                 account.getFullName(),
+                account.getPhone(),
+                account.getAvatarUrl(),
                 account.getAuthProvider(),
-                account.getPassword() != null,
+                account.isHasLocalPassword(),
                 account.getStatus(),
+                account.getPrimaryBranchId(),
                 account.getLastLoginAt(),
                 account.getCreatedAt(),
                 account.getUpdatedAt()

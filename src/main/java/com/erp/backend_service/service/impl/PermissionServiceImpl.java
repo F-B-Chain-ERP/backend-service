@@ -25,15 +25,12 @@ import com.erp.core.domain.Role;
 import com.erp.core.domain.RolePermission;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.ScopeResponse;
-import com.erp.core.dto.request.permission.CreatePermissionRequest;
-import com.erp.core.dto.request.permission.UpdatePermissionRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.PermissionResponse;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -45,7 +42,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -167,45 +163,6 @@ public class PermissionServiceImpl implements PermissionService {
         return new PermissionSnapshot(details.getRoles(), details.getPermissions(), details.getScopes());
     }
 
-    // ==================== Quản trị danh mục quyền (CRUD) ====================
-
-    /** {@inheritDoc} */
-    @Override
-    @Transactional
-    public PermissionResponse create(CreatePermissionRequest request) {
-        String code = request.code().trim().toLowerCase();
-        if (permissionRepository.existsByCode(code)) {
-            throw new BaseException(ErrorCode.PERMISSION_CODE_EXISTS,
-                    "Permission code already exists: " + code);
-        }
-
-        Permission permission = new Permission();
-        permission.setCode(code);
-        permission.setName(request.name().trim());
-        permission.setModule(request.module().trim().toUpperCase());
-        permission.setDescription(trimToNull(request.description()));
-        permission.setStatus(request.status());
-
-        Permission saved;
-        try {
-            saved = permissionRepository.saveAndFlush(permission);
-        } catch (DataIntegrityViolationException exception) {
-            // phòng trường hợp race-condition vượt qua bước existsByCode (unique index ở DB)
-            throw new BaseException(ErrorCode.PERMISSION_CODE_EXISTS,
-                    "Permission code already exists: " + code);
-        }
-
-        auditService.record(new AuditEvent(
-                SecurityUtils.getCurrentAccountId().orElse(null),
-                AuditAction.CREATE_PERMISSION,
-                AuditModule.SYS,
-                AuditTargetType.PERMISSION,
-                saved.getId(),
-                Map.of("code", saved.getCode(), "module", saved.getModule(), "status", saved.getStatus().name())
-        ));
-        return permissionMapper.toResponse(saved);
-    }
-
     /** {@inheritDoc} */
     @Override
     @Transactional(readOnly = true)
@@ -237,96 +194,12 @@ public class PermissionServiceImpl implements PermissionService {
         return permissionRepository.findDistinctModules(null);
     }
 
-    /**
-     * Cập nhật quyền (không cho đổi code). Snapshot quyền trên Redis của mọi tài khoản
-     * đang sở hữu quyền này bị vô hiệu hoá để request kế tiếp tính toán lại từ DB —
-     * thay đổi có hiệu lực ngay không cần đăng nhập lại.
-     */
-    /** {@inheritDoc} */
-    @Override
-    @Transactional
-    public PermissionResponse update(UUID id, UpdatePermissionRequest request) {
-        Permission permission = getExisting(id);
-
-        Map<String, Object> before = new HashMap<>();
-        before.put("name", permission.getName());
-        before.put("module", permission.getModule());
-        before.put("description", permission.getDescription());
-        before.put("status", permission.getStatus() == null ? null : permission.getStatus().name());
-
-        permission.setName(request.name().trim());
-        permission.setModule(request.module().trim().toUpperCase());
-        permission.setDescription(trimToNull(request.description()));
-        permission.setStatus(request.status());
-
-        Permission updated = permissionRepository.save(permission);
-
-        refreshSnapshotsOfAccountsHolding(id);
-        Map<String, Object> details = new HashMap<>();
-        details.put("before", before);
-        details.put("after", Map.of(
-                "name", updated.getName(),
-                "module", updated.getModule(),
-                "description", updated.getDescription() == null ? "" : updated.getDescription(),
-                "status", updated.getStatus().name()
-        ));
-        auditService.record(new AuditEvent(
-                SecurityUtils.getCurrentAccountId().orElse(null),
-                AuditAction.UPDATE_PERMISSION,
-                AuditModule.SYS,
-                AuditTargetType.PERMISSION,
-                id,
-                details
-        ));
-        return permissionMapper.toResponse(updated);
-    }
-
-    /**
-     * Xoá quyền khỏi danh mục. Từ chối nếu quyền vẫn còn gắn với vai trò:
-     * caller phải gỡ ánh xạ trước, hoặc chuyển quyền sang INACTIVE nếu chỉ muốn ngưng hiệu lực.
-     */
-    /** {@inheritDoc} */
-    @Override
-    @Transactional
-    public void delete(UUID id) {
-        Permission permission = getExisting(id);
-        List<RolePermission> mappings = rolePermissionRepository.findByPermissionId(id);
-        if (!mappings.isEmpty()) {
-            throw new BaseException(ErrorCode.PERMISSION_IN_USE,
-                    "Permission '" + permission.getCode() + "' is still assigned to " + mappings.size() + " role(s)");
-        }
-        permissionRepository.delete(permission);
-        auditService.record(new AuditEvent(
-                SecurityUtils.getCurrentAccountId().orElse(null),
-                AuditAction.DELETE_PERMISSION,
-                AuditModule.SYS,
-                AuditTargetType.PERMISSION,
-                id,
-                Map.of("code", permission.getCode(), "module", permission.getModule())
-        ));
-    }
-
     // ==================== Hàm phụ cho quản trị danh mục quyền ====================
 
     /** Lấy quyền theo id, ném PERMISSION_NOT_FOUND nếu không tồn tại. */
     private Permission getExisting(UUID id) {
         return permissionRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.PERMISSION_NOT_FOUND));
-    }
-
-    /**
-     * Vô hiệu hoá snapshot quyền của các tài khoản đang active với các vai trò sở hữu quyền này.
-     */
-    private void refreshSnapshotsOfAccountsHolding(UUID permissionId) {
-        List<UUID> roleIds = rolePermissionRepository.findByPermissionId(permissionId).stream()
-                .map(RolePermission::getRoleId)
-                .distinct()
-                .toList();
-        if (roleIds.isEmpty()) {
-            return;
-        }
-        accountRoleRepository.findAccountIdsByRoleIdIn(roleIds, EntityStatus.ACTIVE)
-                .forEach(this::evictSnapshot);
     }
 
     /** Từ khoá tìm kiếm: trim, rỗng thì trả null (bỏ qua tiêu chí). */

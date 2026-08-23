@@ -2,8 +2,6 @@ package com.erp.backend_service.service;
 
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.PermissionSnapshot;
-import com.erp.core.dto.request.permission.CreatePermissionRequest;
-import com.erp.core.dto.request.permission.UpdatePermissionRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.PermissionResponse;
 import com.erp.core.enums.EntityStatus;
@@ -84,16 +82,6 @@ public interface PermissionService {
      */
     PermissionSnapshot snapshotFromDetails(CustomUserDetails details);
 
-    // ==================== Quản trị danh mục quyền (CRUD) ====================
-
-    /**
-     * Tạo quyền mới trong danh mục. Mã quyền phải duy nhất (đã chuẩn hoá chữ thường).
-     *
-     * @param request thông tin quyền cần tạo
-     * @return quyền vừa được tạo
-     */
-    PermissionResponse create(CreatePermissionRequest request);
-
     /**
      * Lấy quyền theo id.
      *
@@ -120,22 +108,4 @@ public interface PermissionService {
      * @return tên module (đã sắp xếp)
      */
     List<String> getModules();
-
-    /**
-     * Cập nhật quyền: name/module/description/status. Mã quyền không được đổi.
-     * Snapshot quyền của các tài khoản đang sở hữu quyền này được làm mới ngay.
-     *
-     * @param id      id của quyền
-     * @param request thông tin cần cập nhật
-     * @return quyền sau khi cập nhật
-     */
-    PermissionResponse update(UUID id, UpdatePermissionRequest request);
-
-    /**
-     * Xoá quyền khỏi danh mục. Từ chối nếu quyền vẫn còn gắn với vai trò nào đó —
-     * cần gỡ khỏi vai trò hoặc chuyển trạng thái INACTIVE thay vì xoá.
-     *
-     * @param id id của quyền
-     */
-    void delete(UUID id);
 }

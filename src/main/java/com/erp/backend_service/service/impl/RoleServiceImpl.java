@@ -26,6 +26,7 @@ import com.erp.core.dto.request.role.CreateRoleRequest;
 import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.enums.EntityStatus;
+import com.erp.core.enums.PrincipalType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -173,15 +174,17 @@ public class RoleServiceImpl implements RoleService {
         accountRole.setScopeId(request.scopeId());
         accountRole.setStatus(EntityStatus.ACTIVE);
         accountRole.setAssignedAt(Instant.now());
-        accountRole.setAssignedBy(SecurityUtils.getCurrentAccountId()
+        accountRole.setAssignedBy(SecurityUtils.getCurrentPrincipalId()
                 .map(UUID::toString).orElse("SYSTEM"));
         accountRole.setExpiresAt(request.expiresAt());
     }
 
     /** Tạo sự kiện audit cho hành động gán/thu hồi vai trò của một tài khoản. */
     private AuditEvent assignmentEvent(AuditAction action, AccountRole accountRole) {
+        PrincipalType actorType = SecurityUtils.getCurrentPrincipalType().orElse(null);
         return new AuditEvent(
-                SecurityUtils.getCurrentAccountId().orElse(null),
+                actorType,
+                SecurityUtils.getCurrentPrincipalId().orElse(null),
                 action,
                 AuditModule.SYS,
                 AuditTargetType.ACCOUNT,

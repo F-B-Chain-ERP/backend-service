@@ -4,6 +4,7 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.service.AccountRevocationService;
 import com.erp.backend_service.service.PermissionService;
 import com.erp.core.dto.response.ApiResponse;
+import com.erp.core.enums.PrincipalType;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -75,15 +76,17 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
                 filterChain.doFilter(request, response);
                 return;
             }
-            UUID accountId = UUID.fromString(claims.getSubject());
+            PrincipalType principalType = jwtProvider.extractPrincipalType(token);
+            UUID principalId = UUID.fromString(claims.getSubject());
             Date iatDate = claims.getIssuedAt();
             if (iatDate == null) {
                 throw new io.jsonwebtoken.JwtException("Missing issued-at claim");
             }
             Instant issuedAt = iatDate.toInstant();
 
-            if (accountRevocationService.isRevoked(accountId, issuedAt)) {
-                log.warn("Access token for account {} issued at {} has been revoked", accountId, issuedAt);
+            if (principalType == PrincipalType.ACCOUNT
+                    && accountRevocationService.isRevoked(principalId, issuedAt)) {
+                log.warn("Access token for account {} issued at {} has been revoked", principalId, issuedAt);
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding("UTF-8");
@@ -97,7 +100,9 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
                 return;
             }
 
-            CustomUserDetails userDetails = CustomUserDetails.fromClaims(claims, permissionService.getSnapshot(accountId));
+            PermissionSnapshot snapshot = principalType == PrincipalType.ACCOUNT
+                    ? permissionService.getSnapshot(principalId) : null;
+            CustomUserDetails userDetails = CustomUserDetails.fromClaims(claims, snapshot);
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

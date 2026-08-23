@@ -1,33 +1,53 @@
 package com.erp.backend_service.mapper;
 
-import com.erp.core.domain.Account;
+import com.erp.core.domain.Customer;
 import com.erp.core.dto.auth.AuthResponse;
+import com.erp.core.dto.auth.CustomerResponse;
+import com.erp.core.enums.PrincipalType;
 import org.springframework.stereotype.Component;
 
 /**
- * Chuyển đổi thông tin xác thực thành {@link AuthResponse} tối giản.
+ * Chuyển đổi thông tin xác thực thành {@link AuthResponse}.
  */
 @Component
 public class AuthMapper {
     private static final String TOKEN_TYPE = "Bearer";
 
-    private final AccountMapper accountMapper;
-
-    public AuthMapper(AccountMapper accountMapper) {
-        this.accountMapper = accountMapper;
-    }
-
-    /** Tạo response xác thực từ token và thông tin tài khoản. */
+    /** Tạo response xác thực từ token và thông tin thực thể. */
     public AuthResponse toResponse(String accessToken,
                                     String refreshToken,
+                                    PrincipalType principalType,
+                                    CustomerResponse customer,
                                     boolean requiresScopeAssignment,
-                                    Account account) {
+                                    boolean requiresEmailVerification,
+                                    String verifyToken) {
         return new AuthResponse(
                 accessToken,
                 refreshToken,
                 TOKEN_TYPE,
-                accountMapper.toResponse(account),
-                requiresScopeAssignment
+                principalType,
+                customer,
+                requiresScopeAssignment,
+                requiresEmailVerification,
+                verifyToken
+        );
+    }
+
+    /** Ánh xạ Customer sang CustomerResponse. */
+    public CustomerResponse toCustomerResponse(Customer customer) {
+        return new CustomerResponse(
+                customer.getId(),
+                customer.getCustomerCode(),
+                customer.getFullName(),
+                customer.getPhone(),
+                customer.getEmail(),
+                customer.getAuthProvider(),
+                customer.isHasLocalPassword(),
+                customer.isEmailVerified(),
+                customer.getStatus(),
+                customer.getLastLoginAt(),
+                customer.getCreatedAt(),
+                customer.getUpdatedAt()
         );
     }
 }

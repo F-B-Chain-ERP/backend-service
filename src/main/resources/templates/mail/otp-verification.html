@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="vi">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Xác thực email</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:Arial, Helvetica, sans-serif;">
+<div style="max-width:600px; margin:0 auto; padding:24px;">
+    <div style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#6f4e37,#a47551); padding:28px 24px; text-align:center;">
+            <h1 style="color:#ffffff; margin:0; font-size:22px;" th:text="${appName}">Dịch vụ Đồ uống &amp; Cà phê</h1>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:28px 24px; color:#333333; line-height:1.6;">
+            <p style="font-size:16px; margin-top:0;" th:text="'Xin chào ' + ${fullName} + ','">Xin chào bạn,</p>
+            <p style="font-size:15px;" th:text="${message}">Đây là mã xác thực email của bạn:</p>
+            <div style="text-align:center; margin:28px 0;">
+                <span style="display:inline-block; background:#f3ede7; color:#6f4e37; font-size:32px; font-weight:bold;
+                        letter-spacing:8px; padding:14px 24px; border-radius:8px;" th:text="${otp}">123456</span>
+            </div>
+            <p style="font-size:14px; color:#555555;">
+                Mã có hiệu lực trong <b th:text="${expiryMinutes}">15</b> phút. Vui lòng không chia sẻ mã này với bất kỳ ai.
+            </p>
+            <p style="font-size:13px; color:#888888;">
+                Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="background:#fafafa; padding:16px 24px; border-top:1px solid #eeeeee; text-align:center;">
+            <p style="margin:0; font-size:12px; color:#999999;">
+                © <span th:text="${year}">2026</span> <span th:text="${appName}">Dịch vụ Đồ uống &amp; Cà phê</span>.
+                Mọi quyền được bảo lưu.
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -2,6 +2,8 @@ package com.erp.backend_service.exception;
 
 import com.erp.core.dto.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -27,9 +29,13 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     /** Xử lý các ngoại lệ không được phân loại (500). */
     @ExceptionHandler(value = Exception.class)
     public ResponseEntity<ApiResponse<Void>> handlingRuntimeException(Exception exception) {
+        // Ghi log stack trace để dễ dàng truy vết nguyên nhân thật (vd: lỗi Redis/DB).
+        log.error("Lỗi không phân loại (ERR_500): {}", exception.getMessage(), exception);
         ApiResponse<Void> apiResponse = ApiResponse.error(
                 ErrorCode.UNCATEGORIZED_EXCEPTION.getStatusCode(),
                 ErrorCode.UNCATEGORIZED_EXCEPTION.getCode(),

@@ -30,6 +30,7 @@ app:
     secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==}
     access-token-expiry: 3600
     refresh-token-expiry: 86400
+    password-reset-expiry: 900
   rate-limit:
     anonymous:
       capacity: 200
@@ -39,6 +40,11 @@ app:
       capacity: 1000
       refill-tokens: 1000
       refill-seconds: 60
+  otp:
+    length: 6
+    expiry-seconds: 900
+    max-attempts: 5
+    resend-cooldown-seconds: 60
 
 logging:
   level:

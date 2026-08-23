@@ -8,6 +8,8 @@ public enum ErrorCode {
     UNCATEGORIZED_EXCEPTION(500, "ERR_500", "Uncategorized error"),
     INVALID_KEY(400, "ERR_400", "Invalid key"),
     BAD_REQUEST(400, "ERR_400_BAD_REQUEST", "Bad request"),
+    INVALID_REQUEST(400, "ERR_400_INVALID_REQUEST", "Invalid request"),
+    DUPLICATE_RESOURCE(409, "ERR_409_DUPLICATE", "Resource already exists"),
     RESOURCE_NOT_FOUND(404, "ERR_404_NOT_FOUND", "Resource not found"),
     USER_EXISTED(400, "ERR_400_USER_EXISTED", "User already existed"),
     USER_NOT_EXISTED(404, "ERR_404_USER_NOT_EXISTED", "User not existed"),
@@ -29,7 +31,11 @@ public enum ErrorCode {
     CROSS_SCOPE_DENIED(403, "CROSS_SCOPE_DENIED", "Data is outside the assigned scope"),
     CANNOT_MODIFY_ADMIN(400, "CANNOT_MODIFY_ADMIN", "Root administrator assignment cannot be modified"),
     ACCOUNT_SESSION_REVOKED(401, "ACCOUNT_SESSION_REVOKED", "Account session has been revoked"),
-    INTERNAL_ERROR(500, "INTERNAL_ERROR", "Internal service error");
+    INTERNAL_ERROR(500, "INTERNAL_ERROR", "Internal service error"),
+    EMAIL_REQUIRED(400, "ERR_400_EMAIL_REQUIRED", "Email is required to verify the account"),
+    OTP_INVALID(400, "ERR_400_OTP_INVALID", "Invalid verification code"),
+    OTP_EXPIRED(400, "ERR_400_OTP_EXPIRED", "Verification code has expired, please request a new one"),
+    OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Too many failed attempts, please request a new code");
 
     private final int statusCode;
     private final String code;

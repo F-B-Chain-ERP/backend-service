@@ -20,9 +20,14 @@ public final class SecurityUtils {
     private SecurityUtils() {
     }
 
-    /** Lấy accountId của tài khoản đang xác thực, rỗng nếu chưa đăng nhập. */
-    public static Optional<UUID> getCurrentAccountId() {
-        return getCurrentUserDetails().map(CustomUserDetails::getAccountId);
+    /** Lấy id thực thể đang xác thực (account hoặc customer), rỗng nếu chưa đăng nhập. */
+    public static Optional<UUID> getCurrentPrincipalId() {
+        return getCurrentUserDetails().map(CustomUserDetails::getPrincipalId);
+    }
+
+    /** Lấy loại thực thể đang xác thực (ACCOUNT / CUSTOMER), rỗng nếu chưa đăng nhập. */
+    public static Optional<com.erp.core.enums.PrincipalType> getCurrentPrincipalType() {
+        return getCurrentUserDetails().map(CustomUserDetails::getPrincipalType);
     }
 
     /** Lấy đối tượng CustomUserDetails của người dùng hiện tại (nếu có). */

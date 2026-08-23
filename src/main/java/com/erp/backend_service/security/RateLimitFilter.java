@@ -138,7 +138,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             String token = tokenOpt.get();
             if (jwtProvider.validateToken(token) && jwtProvider.isAccessToken(token)) {
                 try {
-                    UUID accountId = jwtProvider.extractAccountId(token);
+                    UUID accountId = jwtProvider.extractPrincipalId(token);
                     return "rl:user:" + accountId;
                 } catch (Exception ignored) {
                 }

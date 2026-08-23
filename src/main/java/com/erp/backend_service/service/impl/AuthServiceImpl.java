@@ -155,7 +155,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse registerCustomer(RegisterCustomerRequest request) {
         if (request.phone() != null && customerRepository.existsByPhone(request.phone())) {
-            throw new BadRequestException(ErrorCode.USER_EXISTED);
+            throw new BadRequestException(ErrorCode.PHONE_EXISTED);
         }
 
         if (request.email() != null && customerRepository.existsByEmail(request.email())) {
@@ -177,7 +177,7 @@ public class AuthServiceImpl implements AuthService {
                 sendWelcomeEmail(existing);
                 return issueTokens(userDetails, false, authMapper.toCustomerResponse(existing));
             }
-            throw new BadRequestException(ErrorCode.USER_EXISTED);
+            throw new BadRequestException(ErrorCode.EMAIL_EXISTED);
         }
 
         Customer customer = new Customer();

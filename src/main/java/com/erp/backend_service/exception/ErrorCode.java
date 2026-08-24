@@ -39,8 +39,10 @@ public enum ErrorCode {
     OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Quá số lần thử sai, vui lòng yêu cầu mã mới"),
     PHONE_EXISTED(400, "ERR_400_PHONE_EXISTED", "Số điện thoại đã tồn tại"),
     EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),
-
-    // --- Purchase Order (PROC) ---
+    SUPPLIER_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp"),
+    MATERIAL_NOT_FOUND(404,"PROC_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu"),
+    SUPPLIER_MATERIAL_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nguyên vật liệu của nhà cung cấp"),
+    SUPPLIER_MATERIAL_EXISTS(409, "PROC_409_SUPPLIER_MATERIAL_EXISTS", "Nhà cung cấp đã được liên kết với nguyên vật liệu này"),
     PROC_404_PO_NOT_FOUND(404, "PROC_404_PO_NOT_FOUND", "Đơn mua hàng không tồn tại."),
     PROC_400_PO_INVALID_STATUS_FOR_EDIT(400, "PROC_400_PO_INVALID_STATUS_FOR_EDIT", "Chỉ có thể chỉnh sửa đơn mua hàng ở trạng thái DRAFT."),
     PROC_400_PO_INVALID_STATUS_FOR_SUBMIT(400, "PROC_400_PO_INVALID_STATUS_FOR_SUBMIT", "Chỉ có thể trình duyệt đơn ở trạng thái DRAFT."),

@@ -3,7 +3,7 @@ package com.erp.backend_service.service;
 import com.erp.core.dto.request.proc.CreateSupplierRequest;
 import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.SupplierResponse;
+import com.erp.core.dto.response.proc.SupplierResponse;
 
 import java.util.UUID;
 

@@ -25,6 +25,7 @@ public class AuditServiceImpl implements AuditService {
     @Transactional
     public void record(AuditEvent event) {
         AuditLog log = new AuditLog();
+        log.setStatus(com.erp.core.enums.EntityStatus.ACTIVE);
         log.setActorType(event.actorType());
         log.setActorId(event.actorId());
         log.setAction(event.action().name());

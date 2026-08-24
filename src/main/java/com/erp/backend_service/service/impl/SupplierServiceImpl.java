@@ -9,7 +9,7 @@ import com.erp.core.domain.Supplier;
 import com.erp.core.dto.request.proc.CreateSupplierRequest;
 import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.SupplierResponse;
+import com.erp.core.dto.response.proc.SupplierResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;

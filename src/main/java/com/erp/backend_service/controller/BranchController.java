@@ -4,7 +4,7 @@ import com.erp.backend_service.service.BranchService;
 import com.erp.core.dto.request.branch.CreateBranchRequest;
 import com.erp.core.dto.request.branch.UpdateBranchRequest;
 import com.erp.core.dto.response.ApiResponse;
-import com.erp.core.dto.response.BranchResponse;
+import com.erp.core.dto.response.branch.BranchResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;

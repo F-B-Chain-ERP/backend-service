@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,4 +37,18 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, UUID> 
 
     /** Lấy tất cả bản ghi gán vai trò của một tài khoản. */
     List<AccountRole> findByAccountId(UUID accountId);
+
+    /**
+     * Lấy danh sách tài khoản (không trùng) đang được gán effective một trong các
+     * vai trò chỉ định, dùng để làm mới snapshot quyền khi quyền/vai trò thay đổi.
+     */
+    @Query("""
+            select distinct a.accountId from AccountRole a
+            where a.roleId in :roleIds
+              and a.status = :status
+            """)
+    List<UUID> findAccountIdsByRoleIdIn(
+            @Param("roleIds") Collection<UUID> roleIds,
+            @Param("status") EntityStatus status
+    );
 }

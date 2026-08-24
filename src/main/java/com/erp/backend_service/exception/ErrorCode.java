@@ -38,7 +38,28 @@ public enum ErrorCode {
     OTP_EXPIRED(400, "ERR_400_OTP_EXPIRED", "Mã xác thực đã hết hạn, vui lòng yêu cầu mã mới"),
     OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Quá số lần thử sai, vui lòng yêu cầu mã mới"),
     PHONE_EXISTED(400, "ERR_400_PHONE_EXISTED", "Số điện thoại đã tồn tại"),
-    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),;
+    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),
+
+    // --- Purchase Order (PROC) ---
+    PROC_404_PO_NOT_FOUND(404, "PROC_404_PO_NOT_FOUND", "Đơn mua hàng không tồn tại."),
+    PROC_400_PO_INVALID_STATUS_FOR_EDIT(400, "PROC_400_PO_INVALID_STATUS_FOR_EDIT", "Chỉ có thể chỉnh sửa đơn mua hàng ở trạng thái DRAFT."),
+    PROC_400_PO_INVALID_STATUS_FOR_SUBMIT(400, "PROC_400_PO_INVALID_STATUS_FOR_SUBMIT", "Chỉ có thể trình duyệt đơn ở trạng thái DRAFT."),
+    PROC_400_PO_INVALID_STATUS_FOR_APPROVE(400, "PROC_400_PO_INVALID_STATUS_FOR_APPROVE", "Chỉ có thể phê duyệt đơn ở trạng thái SUBMITTED."),
+    PROC_400_PO_INVALID_STATUS_FOR_REJECT(400, "PROC_400_PO_INVALID_STATUS_FOR_REJECT", "Chỉ có thể từ chối đơn đang SUBMITTED."),
+    PROC_400_PO_INVALID_STATUS_FOR_CANCEL(400, "PROC_400_PO_INVALID_STATUS_FOR_CANCEL", "Không thể hủy đơn mua hàng ở trạng thái hiện tại."),
+    PROC_400_PO_INVALID_STATUS_FOR_RECEIVE(400, "PROC_400_PO_INVALID_STATUS_FOR_RECEIVE", "Chỉ có thể ghi nhận nhận hàng khi đơn ở trạng thái APPROVED hoặc PARTIALLY_RECEIVED."),
+    PROC_400_PO_ITEMS_EMPTY(400, "PROC_400_PO_ITEMS_EMPTY", "Đơn đặt mua hàng phải có ít nhất một mặt hàng."),
+    PROC_400_PO_INVALID_ITEM(400, "PROC_400_PO_INVALID_ITEM", "Dòng nguyên vật liệu không hợp lệ."),
+    PROC_400_PO_INVALID_FILTER(400, "PROC_400_PO_INVALID_FILTER", "Khoảng ngày hoặc giá trị lọc không hợp lệ."),
+    PROC_404_SUPPLIER_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp."),
+    PROC_400_SUPPLIER_INACTIVE(400, "PROC_400_SUPPLIER_INACTIVE", "Nhà cung cấp đang ngừng hoạt động."),
+    PROC_404_WAREHOUSE_NOT_FOUND(404, "PROC_404_WAREHOUSE_NOT_FOUND", "Không tìm thấy kho nhận."),
+    PROC_400_WAREHOUSE_INACTIVE(400, "PROC_400_WAREHOUSE_INACTIVE", "Kho nhận đang ngừng hoạt động."),
+    PROC_400_PO_INVALID_ORDER_DATE(400, "PROC_400_PO_INVALID_ORDER_DATE", "Ngày đặt hàng không hợp lệ."),
+    PROC_400_PO_INVALID_EXPECTED_DATE(400, "PROC_400_PO_INVALID_EXPECTED_DATE", "Ngày dự kiến nhận phải bằng hoặc sau ngày đặt hàng."),
+    PROC_400_PO_RECEIVED_EXCEED(400, "PROC_400_PO_RECEIVED_EXCEED", "Số lượng nhận vượt quá số lượng đặt còn lại của dòng hàng."),
+    PROC_400_PO_CANCEL_REASON_REQUIRED(400, "PROC_400_PO_CANCEL_REASON_REQUIRED", "Vui lòng nhập lý do hủy đơn."),
+    PROC_400_PO_REJECT_REASON_REQUIRED(400, "PROC_400_PO_REJECT_REASON_REQUIRED", "Vui lòng nhập lý do từ chối."),;
 
 
     private final int statusCode;

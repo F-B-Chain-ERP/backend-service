@@ -9,6 +9,8 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.RoleAssignmentMapper;
 import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.AccountRoleRepository;
+import com.erp.backend_service.repository.PermissionRepository;
+import com.erp.backend_service.repository.RolePermissionRepository;
 import com.erp.backend_service.repository.RoleRepository;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.AccountRevocationService;
@@ -17,7 +19,9 @@ import com.erp.backend_service.service.PermissionService;
 import com.erp.backend_service.service.RoleService;
 import com.erp.backend_service.service.ScopeService;
 import com.erp.core.domain.AccountRole;
+import com.erp.core.domain.Permission;
 import com.erp.core.domain.Role;
+import com.erp.core.domain.RolePermission;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.RoleAssignmentRequest;
 import com.erp.core.dto.auth.RoleAssignmentResponse;
@@ -52,6 +56,8 @@ public class RoleServiceImpl implements RoleService {
     private final AccountRepository accountRepository;
     private final RoleRepository roleRepository;
     private final AccountRoleRepository accountRoleRepository;
+    private final RolePermissionRepository rolePermissionRepository;
+    private final PermissionRepository permissionRepository;
     private final AuditService auditService;
     private final AccountRevocationService revocationService;
     private final PermissionService permissionService;
@@ -62,6 +68,8 @@ public class RoleServiceImpl implements RoleService {
     public RoleServiceImpl(AccountRepository accountRepository,
                            RoleRepository roleRepository,
                            AccountRoleRepository accountRoleRepository,
+                           RolePermissionRepository rolePermissionRepository,
+                           PermissionRepository permissionRepository,
                            AuditService auditService,
                            AccountRevocationService revocationService,
                            PermissionService permissionService,
@@ -71,6 +79,8 @@ public class RoleServiceImpl implements RoleService {
         this.accountRepository = accountRepository;
         this.roleRepository = roleRepository;
         this.accountRoleRepository = accountRoleRepository;
+        this.rolePermissionRepository = rolePermissionRepository;
+        this.permissionRepository = permissionRepository;
         this.auditService = auditService;
         this.revocationService = revocationService;
         this.permissionService = permissionService;
@@ -282,6 +292,45 @@ public class RoleServiceImpl implements RoleService {
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
         }
         roleRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UUID> getPermissionsByRole(UUID roleId) {
+        if (!roleRepository.existsById(roleId)) {
+            throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
+        }
+        return rolePermissionRepository.findByRoleId(roleId).stream()
+                .map(RolePermission::getPermissionId)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void setPermissionsForRole(UUID roleId, List<UUID> permissionIds) {
+        if (!roleRepository.existsById(roleId)) {
+            throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
+        }
+        List<UUID> distinctIds = permissionIds == null ? List.of() : permissionIds.stream().distinct().toList();
+        List<Permission> permissions = permissionRepository.findAllById(distinctIds);
+        if (permissions.size() != distinctIds.size()) {
+            throw new BaseException(ErrorCode.PERMISSION_NOT_FOUND);
+        }
+
+        // Thay thế toàn bộ ánh xạ cũ bằng tập mới
+        rolePermissionRepository.deleteByRoleId(roleId);
+        List<RolePermission> mappings = permissions.stream().map(permission -> {
+            RolePermission rolePermission = new RolePermission();
+            rolePermission.setRoleId(roleId);
+            rolePermission.setPermissionId(permission.getId());
+            return rolePermission;
+        }).toList();
+        rolePermissionRepository.saveAll(mappings);
+
+        // Làm mới snapshot quyền của các tài khoản đang giữ vai trò này
+        List<UUID> accountIds = accountRoleRepository.findAccountIdsByRoleIdIn(
+                List.of(roleId), EntityStatus.ACTIVE);
+        accountIds.forEach(permissionService::evictSnapshot);
     }
 
     private RoleResponse toResponse(Role role) {

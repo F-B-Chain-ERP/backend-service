@@ -19,6 +19,12 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
     /** Lấy toàn bộ ánh xạ của một vai trò. */
     List<RolePermission> findByRoleId(UUID roleId);
 
+    /** Xóa toàn bộ ánh xạ của một vai trò (dùng khi thay thế toàn bộ). */
+    void deleteByRoleId(UUID roleId);
+
+    /** Kiểm tra tồn tại ánh xạ (roleId, permissionId). */
+    boolean existsByRoleIdAndPermissionId(UUID roleId, UUID permissionId);
+
     /** Lấy toàn bộ ánh xạ trỏ tới một quyền (các vai trò đang sở hữu quyền này). */
     List<RolePermission> findByPermissionId(UUID permissionId);
 }

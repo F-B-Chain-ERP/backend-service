@@ -29,11 +29,11 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
      */
     @Query("""
             select p from Permission p
-            where (:search is null or :search = ''
-                   or lower(p.code) like lower(concat('%', :search, '%'))
-                   or lower(p.name) like lower(concat('%', :search, '%'))
-                   or lower(p.module) like lower(concat('%', :search, '%')))
-              and (:module is null or :module = '' or upper(p.module) = upper(:module))
+            where (coalesce(:search, '') = ''
+                   or lower(p.code) like lower(concat('%', coalesce(:search, ''), '%'))
+                   or lower(p.name) like lower(concat('%', coalesce(:search, ''), '%'))
+                   or lower(p.module) like lower(concat('%', coalesce(:search, ''), '%')))
+              and (coalesce(:module, '') = '' or upper(p.module) = upper(coalesce(:module, '')))
               and (:status is null or p.status = :status)
             """)
     Page<Permission> search(

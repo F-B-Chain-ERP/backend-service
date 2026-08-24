@@ -33,14 +33,14 @@ public class RoleAssignmentController {
 
     /** Gán vai trò cho tài khoản tại một phạm vi cụ thể. */
     @PostMapping
-    @PreAuthorize("hasAuthority('sys:assignment:manage')")
+    @PreAuthorize("hasAuthority('sys:role_assignment:create')")
     public ResponseEntity<ApiResponse<RoleAssignmentResponse>> assign(@Valid @RequestBody RoleAssignmentRequest request) {
         return ResponseEntity.ok(ApiResponse.success(roleService.assign(request)));
     }
 
     /** Thu hồi (vô hiệu hóa) bản ghi gán vai trò theo id. */
     @DeleteMapping("/{assignmentId}")
-    @PreAuthorize("hasAuthority('sys:assignment:manage')")
+    @PreAuthorize("hasAuthority('sys:role_assignment:delete')")
     public ResponseEntity<ApiResponse<Void>> revoke(
             @NotNull(message = "Assignment id must not be null")
             @PathVariable UUID assignmentId
@@ -51,7 +51,7 @@ public class RoleAssignmentController {
 
     /** Lấy danh sách vai trò đã gán cho một tài khoản. */
     @GetMapping("/account/{accountId}")
-    @PreAuthorize("hasAuthority('sys:assignment:manage')")
+    @PreAuthorize("hasAuthority('sys:role_assignment:view')")
     public ResponseEntity<ApiResponse<List<RoleAssignmentResponse>>> byAccount(
             @NotNull(message = "Account id must not be null")
             @PathVariable UUID accountId

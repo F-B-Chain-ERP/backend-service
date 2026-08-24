@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset erp:add-branch-table
+--changeset erp:add-branch
 -- ============================================================
 -- Tạo bảng branch (chi nhánh / đơn vị kinh doanh) và quan hệ
 -- cha-con (parent_id tự tham chiếu). Bảng này trước đây chỉ tồn

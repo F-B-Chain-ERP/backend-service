@@ -1,0 +1,12 @@
+services:
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: erp-redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://host.docker.internal:6379
+      - REDIS_PASSWORD=erp_redis_2026
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9121:9121"

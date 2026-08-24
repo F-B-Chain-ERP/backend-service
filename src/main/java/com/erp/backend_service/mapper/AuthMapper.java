@@ -38,6 +38,7 @@ public class AuthMapper {
         return new CustomerResponse(
                 customer.getId(),
                 customer.getCustomerCode(),
+                customer.getUsername(),
                 customer.getFullName(),
                 customer.getPhone(),
                 customer.getEmail(),

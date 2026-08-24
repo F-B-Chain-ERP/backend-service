@@ -32,8 +32,9 @@ public class SupplierController {
     public ResponseEntity<ApiResponse<PageResponse<SupplierResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(ApiResponse.success(supplierService.list(page, size, search)));
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(ApiResponse.success(supplierService.list(page, size, search, status)));
     }
 
     /** Chi tiết một nhà cung cấp. */

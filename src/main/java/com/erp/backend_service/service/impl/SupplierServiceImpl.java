@@ -41,13 +41,12 @@ public class SupplierServiceImpl implements SupplierService {
     /** {@inheritDoc} */
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<SupplierResponse> list(int page, int size, String search) {
+    public PageResponse<SupplierResponse> list(int page, int size, String search, String status) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
-        Page<Supplier> supplierPage = supplierRepository.findAllByNameContainingIgnoreCaseOrCodeContainingIgnoreCase(
-                StringUtils.hasText(search) ? search.trim() : "",
-                StringUtils.hasText(search) ? search.trim() : "",
-                pageable);
+        String safeSearch = StringUtils.hasText(search) ? search.trim() : "";
+        String safeStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
+        Page<Supplier> supplierPage = supplierRepository.search(safeSearch, safeStatus, pageable);
         return new PageResponse<>(
                 supplierPage.getNumber(),
                 supplierPage.getSize(),

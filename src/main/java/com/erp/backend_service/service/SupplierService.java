@@ -12,8 +12,8 @@ import java.util.UUID;
  */
 public interface SupplierService {
 
-    /** Danh sách nhà cung cấp phân trang (tìm kiếm theo mã/tên). */
-    PageResponse<SupplierResponse> list(int page, int size, String search);
+    /** Danh sách nhà cung cấp phân trang (tìm kiếm theo mã/tên, lọc theo trạng thái). */
+    PageResponse<SupplierResponse> list(int page, int size, String search, String status);
 
     /** Chi tiết một nhà cung cấp. */
     SupplierResponse get(UUID id);

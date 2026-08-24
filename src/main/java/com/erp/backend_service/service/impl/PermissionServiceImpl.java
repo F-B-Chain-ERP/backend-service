@@ -6,6 +6,7 @@ import com.erp.backend_service.util.audit.AuditModule;
 import com.erp.backend_service.util.audit.AuditTargetType;
 import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.mapper.PermissionMapper;
 import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.PermissionRepository;
@@ -24,11 +25,17 @@ import com.erp.core.domain.Role;
 import com.erp.core.domain.RolePermission;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.ScopeResponse;
+import com.erp.core.dto.response.PageResponse;
+import com.erp.core.dto.response.PermissionResponse;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
 import com.erp.core.enums.ScopeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +70,7 @@ public class PermissionServiceImpl implements PermissionService {
     private final PermissionRepository permissionRepository;
     private final ScopeService scopeService;
     private final AuditService auditService;
+    private final PermissionMapper permissionMapper;
     private final StringRedisTemplate redisTemplate;
 
     public PermissionServiceImpl(AccountRepository accountRepository,
@@ -72,6 +80,7 @@ public class PermissionServiceImpl implements PermissionService {
                                   PermissionRepository permissionRepository,
                                   ScopeService scopeService,
                                   AuditService auditService,
+                                  PermissionMapper permissionMapper,
                                   StringRedisTemplate redisTemplate) {
         this.accountRepository = accountRepository;
         this.accountRoleRepository = accountRoleRepository;
@@ -80,6 +89,7 @@ public class PermissionServiceImpl implements PermissionService {
         this.permissionRepository = permissionRepository;
         this.scopeService = scopeService;
         this.auditService = auditService;
+        this.permissionMapper = permissionMapper;
         this.redisTemplate = redisTemplate;
     }
 
@@ -152,6 +162,78 @@ public class PermissionServiceImpl implements PermissionService {
             return emptySnapshot();
         }
         return new PermissionSnapshot(details.getRoles(), details.getPermissions(), details.getScopes());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional(readOnly = true)
+    public PermissionResponse getById(UUID id) {
+        return permissionMapper.toResponse(getExisting(id));
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<PermissionResponse> getAll(int page, int size, String search, String module, EntityStatus status) {
+        Pageable pageable = PageRequest.of(Math.max(page, 0), normalizeSize(size),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Permission> result = permissionRepository.search(
+                normalizeSearch(search), normalizeModuleFilter(module), status, pageable);
+        return new PageResponse<>(
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getContent().stream().map(permissionMapper::toResponse).toList()
+        );
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> getModules() {
+        return permissionRepository.findDistinctModules(null);
+    }
+
+    // ==================== Hàm phụ cho quản trị danh mục quyền ====================
+
+    /** Lấy quyền theo id, ném PERMISSION_NOT_FOUND nếu không tồn tại. */
+    private Permission getExisting(UUID id) {
+        return permissionRepository.findById(id)
+                .orElseThrow(() -> new BaseException(ErrorCode.PERMISSION_NOT_FOUND));
+    }
+
+    /** Từ khoá tìm kiếm: trim, rỗng thì trả null (bỏ qua tiêu chí). */
+    private String normalizeSearch(String search) {
+        if (search == null || search.isBlank()) {
+            return null;
+        }
+        return search.trim();
+    }
+
+    /** Bộ lọc module: trim và về chữ hoa để khớp dữ liệu seed (SYS/POS/...), rỗng thì trả null. */
+    private String normalizeModuleFilter(String module) {
+        if (module == null || module.isBlank()) {
+            return null;
+        }
+        return module.trim().toUpperCase();
+    }
+
+    /** Giới hạn kích thước trang trong [1, 100], mặc định 10 khi không hợp lệ. */
+    private int normalizeSize(int size) {
+        if (size <= 0) {
+            return 10;
+        }
+        return Math.min(size, 100);
+    }
+
+    /** Trim chuỗi, chuỗi rỗng trả về null (cột description được phép null). */
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /**

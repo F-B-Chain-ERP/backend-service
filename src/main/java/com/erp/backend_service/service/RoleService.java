@@ -50,4 +50,20 @@ public interface RoleService {
     RoleResponse update(UUID id, UpdateRoleRequest request);
 
     void delete(UUID id);
+
+    /**
+     * Lấy danh sách id quyền đã gán cho một vai trò.
+     *
+     * @param roleId id vai trò
+     * @return danh sách permission id
+     */
+    List<UUID> getPermissionsByRole(UUID roleId);
+
+    /**
+     * Thay thế toàn bộ quyền của một vai trò bằng danh sách mới.
+     *
+     * @param roleId         id vai trò
+     * @param permissionIds  danh sách permission id (có thể rỗng để gỡ hết)
+     */
+    void setPermissionsForRole(UUID roleId, List<UUID> permissionIds);
 }

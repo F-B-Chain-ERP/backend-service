@@ -59,7 +59,10 @@ public enum ErrorCode {
     PROC_400_PO_INVALID_EXPECTED_DATE(400, "PROC_400_PO_INVALID_EXPECTED_DATE", "Ngày dự kiến nhận phải bằng hoặc sau ngày đặt hàng."),
     PROC_400_PO_RECEIVED_EXCEED(400, "PROC_400_PO_RECEIVED_EXCEED", "Số lượng nhận vượt quá số lượng đặt còn lại của dòng hàng."),
     PROC_400_PO_CANCEL_REASON_REQUIRED(400, "PROC_400_PO_CANCEL_REASON_REQUIRED", "Vui lòng nhập lý do hủy đơn."),
-    PROC_400_PO_REJECT_REASON_REQUIRED(400, "PROC_400_PO_REJECT_REASON_REQUIRED", "Vui lòng nhập lý do từ chối."),;
+    PROC_400_PO_REJECT_REASON_REQUIRED(400, "PROC_400_PO_REJECT_REASON_REQUIRED", "Vui lòng nhập lý do từ chối."),
+    PERMISSION_NOT_FOUND(404, "PERMISSION_NOT_FOUND", "Permission not found"),
+    PERMISSION_CODE_EXISTS(409, "PERMISSION_CODE_EXISTS", "Permission code already exists"),
+    PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),;
 
 
     private final int statusCode;

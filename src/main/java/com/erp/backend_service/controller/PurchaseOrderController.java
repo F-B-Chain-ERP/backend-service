@@ -2,20 +2,23 @@ package com.erp.backend_service.controller;
 
 import com.erp.backend_service.service.PurchaseOrderService;
 import com.erp.core.dto.request.proc.CreatePurchaseOrderRequest;
+import com.erp.core.dto.request.proc.ReceivePurchaseOrderRequest;
 import com.erp.core.dto.request.proc.UpdatePurchaseOrderRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.PurchaseOrderResponse;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
  * Quản lý đơn mua hàng: truy vấn phân trang, tạo (kèm dòng chi tiết), cập nhật, xóa
- * và các chuyển trạng thái (submit/approve/cancel).
+ * và các chuyển trạng thái (submit/approve/cancel), ghi nhận thực nhận từ Kho.
  */
 @RestController
 @RequestMapping("/api/v1/proc/purchase-orders")
@@ -27,15 +30,20 @@ public class PurchaseOrderController {
         this.purchaseOrderService = purchaseOrderService;
     }
 
-    /** Danh sách đơn mua hàng phân trang (lọc theo mã và trạng thái). */
+    /** Danh sách đơn mua hàng phân trang (lọc theo mã, trạng thái, NCC, kho, khoảng ngày). */
     @GetMapping
     @PreAuthorize("hasAuthority('proc:purchase_order:view')")
     public ResponseEntity<ApiResponse<PageResponse<PurchaseOrderResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.list(page, size, search, status)));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        return ResponseEntity.ok(ApiResponse.success(
+                purchaseOrderService.list(page, size, search, status, supplierId, warehouseId, fromDate, toDate)));
     }
 
     /** Chi tiết một đơn mua hàng (kèm dòng chi tiết). */
@@ -89,5 +97,13 @@ public class PurchaseOrderController {
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> cancel(
             @PathVariable UUID id, @RequestParam(required = false) String reason) {
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.cancel(id, reason)));
+    }
+
+    /** Ghi nhận số lượng thực nhận từ phân hệ Kho (INV), cập nhật trạng thái nhận hàng. */
+    @PostMapping("/{id}/receive")
+    @PreAuthorize("hasAuthority('proc:purchase_order:update')")
+    public ResponseEntity<ApiResponse<PurchaseOrderResponse>> receive(
+            @PathVariable UUID id, @Valid @RequestBody ReceivePurchaseOrderRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.receive(id, request)));
     }
 }

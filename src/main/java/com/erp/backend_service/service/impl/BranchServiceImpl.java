@@ -2,6 +2,7 @@ package com.erp.backend_service.service.impl;
 
 import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.mapper.BranchMapper;
 import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.SecurityUtils;
@@ -34,9 +35,11 @@ public class BranchServiceImpl implements BranchService {
     private static final String DEFAULT_STATUS = "ACTIVE";
 
     private final BranchRepository branchRepository;
+    private final BranchMapper branchMapper;
 
-    public BranchServiceImpl(BranchRepository branchRepository) {
+    public BranchServiceImpl(BranchRepository branchRepository, BranchMapper branchMapper) {
         this.branchRepository = branchRepository;
+        this.branchMapper = branchMapper;
     }
 
     /** {@inheritDoc} */
@@ -46,7 +49,7 @@ public class BranchServiceImpl implements BranchService {
         List<Branch> branches = branchRepository.findAll();
         Map<UUID, String> parentNames = resolveParentNames(branches);
         return branches.stream()
-                .map(branch -> toResponse(branch, parentNames))
+                .map(branch -> branchMapper.toResponse(branch, parentNames))
                 .toList();
     }
 
@@ -77,7 +80,7 @@ public class BranchServiceImpl implements BranchService {
         }
         Map<UUID, String> parentNames = resolveParentNames(branches);
         return branches.stream()
-                .map(branch -> toResponse(branch, parentNames))
+                .map(branch -> branchMapper.toResponse(branch, parentNames))
                 .toList();
     }
 
@@ -88,7 +91,7 @@ public class BranchServiceImpl implements BranchService {
         Branch branch = branchRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
         Map<UUID, String> parentNames = resolveParentNames(List.of(branch));
-        return toResponse(branch, parentNames);
+        return branchMapper.toResponse(branch, parentNames);
     }
 
     /** {@inheritDoc} */
@@ -103,7 +106,7 @@ public class BranchServiceImpl implements BranchService {
                 request.email(), request.latitude(), request.longitude(), request.timezone(),
                 request.supportsPickup(), request.supportsDelivery(),
                 request.averagePreparationMinutes(), request.status(), request.parentId());
-        return toResponse(branchRepository.save(branch), Map.of());
+        return branchMapper.toResponse(branchRepository.save(branch), Map.of());
     }
 
     /** {@inheritDoc} */
@@ -123,7 +126,7 @@ public class BranchServiceImpl implements BranchService {
                 request.email(), request.latitude(), request.longitude(), request.timezone(),
                 request.supportsPickup(), request.supportsDelivery(),
                 request.averagePreparationMinutes(), request.status(), request.parentId());
-        return toResponse(branchRepository.save(branch), Map.of());
+        return branchMapper.toResponse(branchRepository.save(branch), Map.of());
     }
 
     /** {@inheritDoc} */
@@ -182,27 +185,5 @@ public class BranchServiceImpl implements BranchService {
         }
         return branchRepository.findAllById(parentIds).stream()
                 .collect(Collectors.toMap(Branch::getId, Branch::getName));
-    }
-
-    /** Chuyển đổi thực thể sang response, điền sẵn tên chi nhánh cha (nếu có). */
-    private BranchResponse toResponse(Branch branch, Map<UUID, String> parentNames) {
-        String parentName = branch.getParentId() != null ? parentNames.get(branch.getParentId()) : null;
-        return new BranchResponse(
-                branch.getId().toString(),
-                branch.getCode(),
-                branch.getName(),
-                branch.getAddress(),
-                branch.getPhone(),
-                branch.getEmail(),
-                branch.getLatitude(),
-                branch.getLongitude(),
-                branch.getTimezone(),
-                branch.isSupportsPickup(),
-                branch.isSupportsDelivery(),
-                branch.getAveragePreparationMinutes(),
-                branch.getStatus(),
-                branch.getParentId() != null ? branch.getParentId().toString() : null,
-                parentName
-        );
     }
 }

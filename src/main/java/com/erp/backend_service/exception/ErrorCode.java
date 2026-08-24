@@ -62,8 +62,11 @@ public enum ErrorCode {
     PROC_400_PO_REJECT_REASON_REQUIRED(400, "PROC_400_PO_REJECT_REASON_REQUIRED", "Vui lòng nhập lý do từ chối."),
     PERMISSION_NOT_FOUND(404, "PERMISSION_NOT_FOUND", "Permission not found"),
     PERMISSION_CODE_EXISTS(409, "PERMISSION_CODE_EXISTS", "Permission code already exists"),
-    PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),;
-
+    PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),
+    SUPPLIER_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp"),
+    MATERIAL_NOT_FOUND(404,"PROC_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu"),
+    SUPPLIER_MATERIAL_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nguyên vật liệu của nhà cung cấp"),
+    SUPPLIER_MATERIAL_EXISTS(409, "PROC_409_SUPPLIER_MATERIAL_EXISTS", "Nhà cung cấp đã được liên kết với nguyên vật liệu này");
 
     private final int statusCode;
     private final String code;

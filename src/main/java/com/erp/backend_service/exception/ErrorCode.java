@@ -38,7 +38,10 @@ public enum ErrorCode {
     OTP_EXPIRED(400, "ERR_400_OTP_EXPIRED", "Mã xác thực đã hết hạn, vui lòng yêu cầu mã mới"),
     OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Quá số lần thử sai, vui lòng yêu cầu mã mới"),
     PHONE_EXISTED(400, "ERR_400_PHONE_EXISTED", "Số điện thoại đã tồn tại"),
-    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),;
+    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),
+    PERMISSION_NOT_FOUND(404, "PERMISSION_NOT_FOUND", "Permission not found"),
+    PERMISSION_CODE_EXISTS(409, "PERMISSION_CODE_EXISTS", "Permission code already exists"),
+    PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),;
 
 
     private final int statusCode;

@@ -27,6 +27,9 @@ public class AuditServiceImpl implements AuditService {
         AuditLog log = new AuditLog();
         log.setActorType(event.actorType());
         log.setActorId(event.actorId());
+        log.setStatus(com.erp.core.enums.EntityStatus.ACTIVE);
+        log.setActorType("ACCOUNT");
+        log.setActorId(event.actorAccountId());
         log.setAction(event.action().name());
         log.setModule(event.module().name());
         log.setTargetType(event.targetType() != null ? event.targetType().name() : null);

@@ -1,0 +1,55 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  # 1. Thu thập dữ liệu từ chính Prometheus
+  - job_name: 'prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. Thu thập dữ liệu từ Spring Boot Actuator (ERP Backend Service)
+  - job_name: 'erp-backend-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['backend-service:8080']
+        labels:
+          application: 'backend-service'
+          environment: 'production'
+
+  # 3. Thu thập dữ liệu Phần cứng Máy chủ (Node Exporter)
+  - job_name: 'erp-node-exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          tier: 'infrastructure'
+
+  # 4. Thu thập dữ liệu PostgreSQL Database (Postgres Exporter)
+  - job_name: 'erp-postgres-exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          tier: 'database'
+
+  # 5. Thu thập dữ liệu Redis Cache (Redis Exporter)
+  - job_name: 'erp-redis-exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          tier: 'cache'
+
+  # 6. Thu thập dữ liệu Container Runtime (cAdvisor)
+  - job_name: 'erp-cadvisor'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          tier: 'container'

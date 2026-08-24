@@ -1,8 +1,15 @@
 spring:
   application:
     name: backend-service
+    version: "@project.version@"
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  banner:
+    charset: UTF-8
+    location: classpath:banner.txt
+  output:
+    ansi:
+      enabled: always
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -51,7 +58,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: always
+      probes:
+        enabled: true
+    prometheus:
+      enabled: true

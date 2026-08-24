@@ -110,7 +110,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResponse login(LoginRequest request) {
-        PrincipalType type = request.type() != null ? request.type() : PrincipalType.ACCOUNT;
+        PrincipalType type = resolvePrincipalType(request.type(), request.usernameOrEmail());
         CustomUserDetails userDetails;
         try {
             userDetails = authenticate(type, request.usernameOrEmail(), request.password());
@@ -155,6 +155,10 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse registerCustomer(RegisterCustomerRequest request) {
         if (request.phone() != null && customerRepository.existsByPhone(request.phone())) {
+            throw new BadRequestException(ErrorCode.PHONE_EXISTED);
+        }
+
+        if (request.username() != null && customerRepository.existsByUsername(request.username())) {
             throw new BadRequestException(ErrorCode.USER_EXISTED);
         }
 
@@ -177,11 +181,12 @@ public class AuthServiceImpl implements AuthService {
                 sendWelcomeEmail(existing);
                 return issueTokens(userDetails, false, authMapper.toCustomerResponse(existing));
             }
-            throw new BadRequestException(ErrorCode.USER_EXISTED);
+            throw new BadRequestException(ErrorCode.EMAIL_EXISTED);
         }
 
         Customer customer = new Customer();
         customer.setCustomerCode(generateCustomerCode());
+        customer.setUsername(request.username());
         customer.setFullName(request.fullName());
         customer.setPhone(request.phone());
         customer.setEmail(request.email());
@@ -523,7 +528,7 @@ public class AuthServiceImpl implements AuthService {
                     new UsernamePasswordAuthenticationToken(identifier.trim(), password));
             return (CustomUserDetails) authentication.getPrincipal();
         }
-        Customer customer = customerRepository.findByPhoneOrEmail(identifier.trim())
+        Customer customer = customerRepository.findByUsernameOrPhoneOrEmail(identifier.trim())
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
         if (customer.getStatus() != EntityStatus.ACTIVE) {
             throw new BadCredentialsException("Customer disabled");
@@ -550,12 +555,38 @@ public class AuthServiceImpl implements AuthService {
         accountRevocationService.revokeAccount(accountId, accessTokenLifetime);
     }
 
+    /**
+     * Xác định loại thực thể (ACCOUNT / CUSTOMER) cho đăng nhập. Nếu client truyền
+     * {@code requested} khớp với thực thể tồn tại thì dùng nó; ngược lại tự phát hiện
+     * theo định danh để chống trường hợp client gửi sai {@code type} (vd: khách hàng
+     * gửi ACCOUNT). Ưu tiên ACCOUNT khi trùng định danh.
+     */
+    private PrincipalType resolvePrincipalType(PrincipalType requested, String identifier) {
+        boolean accountExists = accountRepository.findByUsernameOrEmail(identifier, identifier).isPresent();
+        boolean customerExists = customerRepository.findByUsernameOrPhoneOrEmail(identifier).isPresent();
+        if (requested != null) {
+            if (requested == PrincipalType.ACCOUNT && accountExists) {
+                return PrincipalType.ACCOUNT;
+            }
+            if (requested == PrincipalType.CUSTOMER && customerExists) {
+                return PrincipalType.CUSTOMER;
+            }
+        }
+        if (accountExists) {
+            return PrincipalType.ACCOUNT;
+        }
+        if (customerExists) {
+            return PrincipalType.CUSTOMER;
+        }
+        return requested != null ? requested : PrincipalType.ACCOUNT;
+    }
+
     /** Xác định id thực thể để ghi audit khi đăng nhập thất bại. */
     private UUID resolveActorId(PrincipalType type, String identifier) {
         if (type == PrincipalType.ACCOUNT) {
             return accountRepository.findByUsernameOrEmail(identifier, identifier).map(Account::getId).orElse(null);
         }
-        return customerRepository.findByPhoneOrEmail(identifier).map(Customer::getId).orElse(null);
+        return customerRepository.findByUsernameOrPhoneOrEmail(identifier).map(Customer::getId).orElse(null);
     }
 
     /** Sinh mã khách hàng duy nhất. */

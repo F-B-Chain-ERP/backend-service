@@ -1,11 +1,11 @@
 package com.erp.backend_service.controller;
 
 import com.erp.backend_service.service.SupplierMaterialService;
-import com.erp.core.dto.request.proc.CreateSupplierMaterialRequest;
-import com.erp.core.dto.request.proc.UpdateSupplierMaterialRequest;
+import com.erp.core.dto.request.proc.SupplierMaterial.CreateSupplierMaterialRequest;
+import com.erp.core.dto.request.proc.SupplierMaterial.UpdateSupplierMaterialRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.SupplierMaterialResponse;
+import com.erp.core.dto.response.SupplierMaterial.SupplierMaterialResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;

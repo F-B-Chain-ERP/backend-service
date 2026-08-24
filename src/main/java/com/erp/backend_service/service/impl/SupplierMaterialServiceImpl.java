@@ -10,10 +10,10 @@ import com.erp.backend_service.service.SupplierMaterialService;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.Supplier;
 import com.erp.core.domain.SupplierMaterial;
-import com.erp.core.dto.request.proc.CreateSupplierMaterialRequest;
-import com.erp.core.dto.request.proc.UpdateSupplierMaterialRequest;
+import com.erp.core.dto.request.proc.SupplierMaterial.CreateSupplierMaterialRequest;
+import com.erp.core.dto.request.proc.SupplierMaterial.UpdateSupplierMaterialRequest;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.SupplierMaterialResponse;
+import com.erp.core.dto.response.SupplierMaterial.SupplierMaterialResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,7 +26,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -59,18 +58,16 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
-        Page<SupplierMaterial> pageResult;
-        if (supplierId != null && materialId != null) {
-            pageResult = supplierMaterialRepository.findBySupplierIdAndMaterialId(supplierId, materialId, pageable);
-        } else if (supplierId != null) {
-            pageResult = supplierMaterialRepository.findBySupplierId(supplierId, pageable);
-        } else if (materialId != null) {
-            pageResult = supplierMaterialRepository.findByMaterialId(materialId, pageable);
-        } else if (StringUtils.hasText(search)) {
-            pageResult = supplierMaterialRepository.findBySupplierSkuContainingIgnoreCase(search.trim(), pageable);
-        } else {
-            pageResult = supplierMaterialRepository.findAll(pageable);
-        }
+        String normalizedSearch = StringUtils.hasText(search)
+                ? search.trim()
+                : null;
+        Page<SupplierMaterial> pageResult =
+                supplierMaterialRepository.search(
+                        supplierId,
+                        materialId,
+                        normalizedSearch,
+                        pageable
+                );
         return toPageResponse(pageResult);
     }
 
@@ -102,17 +99,30 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     @Transactional
     public SupplierMaterialResponse update(UUID id, UpdateSupplierMaterialRequest request) {
         SupplierMaterial entity = findById(id);
-        if (!supplierRepository.existsById(request.supplierId())) {
-            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+        if(!supplierRepository.existsById(request.supplierId())){
+            throw new BaseException(ErrorCode.SUPPLIER_NOT_FOUND);
         }
-        if (!materialRepository.existsById(request.materialId())) {
-            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+
+        if(!materialRepository.existsById(request.materialId())){
+            throw new BaseException(ErrorCode.MATERIAL_NOT_FOUND);
         }
-        if (supplierMaterialRepository.existsBySupplierIdAndMaterialIdAndIdNot(request.supplierId(), request.materialId(), id)) {
-            throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
+
+        if(supplierMaterialRepository.existsBySupplierIdAndMaterialId(
+                request.supplierId(),
+                request.materialId()
+        )){
+            throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_EXISTS);
         }
-        apply(entity, request.supplierId(), request.materialId(), request.supplierSku(),
-                request.purchasePrice(), request.leadTimeDays(), request.isPreferred(), request.status());
+
+        apply(entity,
+                request.supplierId(),
+                request.materialId(),
+                request.supplierSku(),
+                request.purchasePrice(),
+                request.leadTimeDays(),
+                request.isPreferred(),
+                request.status());
+
         return toResponseWithNames(supplierMaterialRepository.save(entity));
     }
 
@@ -120,14 +130,14 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     @Transactional
     public void delete(UUID id) {
         if (!supplierMaterialRepository.existsById(id)) {
-            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+            throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_NOT_FOUND);
         }
         supplierMaterialRepository.deleteById(id);
     }
 
     private SupplierMaterial findById(UUID id) {
         return supplierMaterialRepository.findById(id)
-                .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(ErrorCode.SUPPLIER_MATERIAL_NOT_FOUND));
     }
 
     private void apply(SupplierMaterial e, UUID supplierId, UUID materialId, String supplierSku,
@@ -143,9 +153,9 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
 
     private SupplierMaterialResponse toResponseWithNames(SupplierMaterial e) {
         Map<UUID, String> supplierNames = resolveNames(List.of(e.getSupplierId()),
-                supplierRepository::findById, Supplier::getId, Supplier::getName);
+                supplierRepository::findAllById, Supplier::getId, Supplier::getName);
         Map<UUID, String> materialNames = resolveNames(List.of(e.getMaterialId()),
-                materialRepository::findById, Material::getId, Material::getName);
+                materialRepository::findAllById, Material::getId, Material::getName);
         return supplierMaterialMapper.toResponse(e, supplierNames.get(e.getSupplierId()), materialNames.get(e.getMaterialId()));
     }
 
@@ -153,10 +163,10 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
         List<SupplierMaterial> items = pageResult.getContent();
         Map<UUID, String> supplierNames = resolveNames(
                 items.stream().map(SupplierMaterial::getSupplierId).filter(Objects::nonNull).distinct().toList(),
-                supplierRepository::findById, Supplier::getId, Supplier::getName);
+                supplierRepository::findAllById, Supplier::getId, Supplier::getName);
         Map<UUID, String> materialNames = resolveNames(
                 items.stream().map(SupplierMaterial::getMaterialId).filter(Objects::nonNull).distinct().toList(),
-                materialRepository::findById, Material::getId, Material::getName);
+                materialRepository::findAllById, Material::getId, Material::getName);
 
         List<SupplierMaterialResponse> content = items.stream()
                 .map(e -> supplierMaterialMapper.toResponse(
@@ -167,18 +177,17 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
                 pageResult.getTotalElements(), pageResult.getTotalPages(), content);
     }
 
-
-    private <T> Map<UUID, String> resolveNames(List<UUID> ids,
-                                               Function<UUID, Optional<T>> finder,
-                                               Function<T, UUID> idExtractor,
-                                               Function<T, String> nameExtractor) {
-        if (ids.isEmpty()) {
+    private <T> Map<UUID, String> resolveNames(
+            List<UUID> ids,
+            Function<Iterable<UUID>, List<T>> finder,
+            Function<T,UUID> idExtractor,
+            Function<T, String> nameExtractor
+    ) {
+        if(ids.isEmpty()){
             return Map.of();
         }
-        return ids.stream()
-                .map(finder)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+
+        return finder.apply(ids).stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(idExtractor, nameExtractor, (a, b) -> a));
     }

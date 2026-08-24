@@ -1,7 +1,7 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.SupplierMaterial;
-import com.erp.core.dto.response.SupplierMaterialResponse;
+import com.erp.core.dto.response.SupplierMaterial.SupplierMaterialResponse;
 import org.springframework.stereotype.Component;
 
 

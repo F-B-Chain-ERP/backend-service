@@ -1,9 +1,9 @@
 package com.erp.backend_service.service;
 
-import com.erp.core.dto.request.proc.CreateSupplierMaterialRequest;
-import com.erp.core.dto.request.proc.UpdateSupplierMaterialRequest;
+import com.erp.core.dto.request.proc.SupplierMaterial.CreateSupplierMaterialRequest;
+import com.erp.core.dto.request.proc.SupplierMaterial.UpdateSupplierMaterialRequest;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.SupplierMaterialResponse;
+import com.erp.core.dto.response.SupplierMaterial.SupplierMaterialResponse;
 
 import java.util.UUID;
 

@@ -38,8 +38,11 @@ public enum ErrorCode {
     OTP_EXPIRED(400, "ERR_400_OTP_EXPIRED", "Mã xác thực đã hết hạn, vui lòng yêu cầu mã mới"),
     OTP_ATTEMPTS_EXCEEDED(429, "ERR_429_OTP_ATTEMPTS", "Quá số lần thử sai, vui lòng yêu cầu mã mới"),
     PHONE_EXISTED(400, "ERR_400_PHONE_EXISTED", "Số điện thoại đã tồn tại"),
-    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),;
-
+    EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),
+    SUPPLIER_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp"),
+    MATERIAL_NOT_FOUND(404,"PROC_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu"),
+    SUPPLIER_MATERIAL_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nguyên vật liệu của nhà cung cấp"),
+    SUPPLIER_MATERIAL_EXISTS(409, "PROC_409_SUPPLIER_MATERIAL_EXISTS", "Nhà cung cấp đã được liên kết với nguyên vật liệu này");
 
     private final int statusCode;
     private final String code;

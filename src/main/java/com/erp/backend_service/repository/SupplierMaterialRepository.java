@@ -4,14 +4,27 @@ import com.erp.core.domain.SupplierMaterial;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.UUID;
 
 public interface SupplierMaterialRepository extends JpaRepository<SupplierMaterial, UUID> {
     boolean existsBySupplierIdAndMaterialId(UUID supplierID, UUID materialID);
     boolean existsBySupplierIdAndMaterialIdAndIdNot(UUID supplierID, UUID materialID, UUID id);
-    Page<SupplierMaterial> findBySupplierIdAndMaterialId(UUID supplierID, UUID materialID, Pageable pageable);
-    Page<SupplierMaterial> findBySupplierId(UUID supplierId, Pageable pageable);
-    Page<SupplierMaterial> findByMaterialId(UUID materialId, Pageable pageable);
-    Page<SupplierMaterial> findBySupplierSkuContainingIgnoreCase(String supplierSku, Pageable pageable);
+
+    @Query("""
+        SELECT sm 
+        FROM SupplierMaterial sm 
+        WHERE (:supplierId IS NULL OR sm.supplierId = :supplierId)
+        AND (
+                :search IS NULL 
+                OR LOWER(sm.supplierSku) LIKE LOWER(CONCAT('%', :search, '%'))
+        )
+""")
+    Page search(
+            UUID supplierId,
+            UUID materialId,
+            String search,
+            Pageable pageable
+    );
 }

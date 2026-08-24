@@ -3,7 +3,7 @@ package com.erp.backend_service.service;
 import com.erp.core.dto.auth.CreateCustomerRequest;
 import com.erp.core.dto.auth.ResetCustomerPasswordRequest;
 import com.erp.core.dto.auth.UpdateCustomerRequest;
-import com.erp.core.dto.response.CustomerDetailResponse;
+import com.erp.core.dto.response.customer.CustomerDetailResponse;
 import com.erp.core.dto.response.PageResponse;
 
 import java.util.UUID;

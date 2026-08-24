@@ -1,11 +1,11 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.PurchaseOrder;
-import com.erp.core.dto.response.ApprovedByResponse;
-import com.erp.core.dto.response.PurchaseOrderItemResponse;
-import com.erp.core.dto.response.PurchaseOrderResponse;
-import com.erp.core.dto.response.PurchaseOrderSupplierResponse;
-import com.erp.core.dto.response.PurchaseOrderWarehouseResponse;
+import com.erp.core.dto.response.proc.ApprovedByResponse;
+import com.erp.core.dto.response.proc.PurchaseOrderItemResponse;
+import com.erp.core.dto.response.proc.PurchaseOrderResponse;
+import com.erp.core.dto.response.proc.PurchaseOrderSupplierResponse;
+import com.erp.core.dto.response.proc.PurchaseOrderWarehouseResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

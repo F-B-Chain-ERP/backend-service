@@ -2,7 +2,7 @@ package com.erp.backend_service.service;
 
 import com.erp.core.dto.request.branch.CreateBranchRequest;
 import com.erp.core.dto.request.branch.UpdateBranchRequest;
-import com.erp.core.dto.response.BranchResponse;
+import com.erp.core.dto.response.branch.BranchResponse;
 
 import java.util.List;
 import java.util.UUID;

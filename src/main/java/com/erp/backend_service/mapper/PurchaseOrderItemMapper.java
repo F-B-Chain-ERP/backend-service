@@ -1,7 +1,7 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.PurchaseOrderItem;
-import com.erp.core.dto.response.PurchaseOrderItemResponse;
+import com.erp.core.dto.response.proc.PurchaseOrderItemResponse;
 import org.springframework.stereotype.Component;
 
 /** Chuyển đổi PurchaseOrderItem sang response (mã/tên nguyên liệu và tên đơn vị truyền từ service). */

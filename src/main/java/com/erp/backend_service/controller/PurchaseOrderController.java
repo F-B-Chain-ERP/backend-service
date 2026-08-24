@@ -6,7 +6,7 @@ import com.erp.core.dto.request.proc.ReceivePurchaseOrderRequest;
 import com.erp.core.dto.request.proc.UpdatePurchaseOrderRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.PurchaseOrderResponse;
+import com.erp.core.dto.response.proc.PurchaseOrderResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;

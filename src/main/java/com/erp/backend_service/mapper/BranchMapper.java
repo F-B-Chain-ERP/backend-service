@@ -1,7 +1,7 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.Branch;
-import com.erp.core.dto.response.BranchResponse;
+import com.erp.core.dto.response.branch.BranchResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;

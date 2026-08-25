@@ -374,29 +374,29 @@ public class PermissionServiceImpl implements PermissionService {
 
     /** Chuyển một phạm vi thành chuỗi (id|scopeType|branchId). */
     private String serializeScope(ScopeResponse scope) {
-        String branchIdValue;
-        if (scope.branchId() == null) {
-            branchIdValue = "";
-        } else {
-            branchIdValue = scope.branchId().toString();
+        if (scope == null) {
+            return "";
         }
-        return String.join(SCOPE_VALUE_SEPARATOR,
-                scope.id().toString(),
-                scope.scopeType().name(),
-                branchIdValue);
+        String idValue = scope.id() == null ? "" : scope.id().toString();
+        String scopeTypeValue = scope.scopeType() == null ? "" : scope.scopeType().name();
+        String branchIdValue = scope.branchId() == null ? "" : scope.branchId().toString();
+        return String.join(SCOPE_VALUE_SEPARATOR, idValue, scopeTypeValue, branchIdValue);
     }
 
     /** Khôi phục một phạm vi từ chuỗi, trả về {@code null} nếu chuỗi không hợp lệ. */
     private ScopeResponse deserializeScope(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
         try {
             String[] parts = value.split(SCOPE_FIELD_SEPARATOR, -1);
-            UUID branchId;
-            if (parts[2].isBlank()) {
-                branchId = null;
-            } else {
-                branchId = UUID.fromString(parts[2]);
+            if (parts.length < 3) {
+                return null;
             }
-            return new ScopeResponse(UUID.fromString(parts[0]), ScopeType.valueOf(parts[1]), branchId);
+            UUID id = parts[0].isBlank() ? null : UUID.fromString(parts[0]);
+            ScopeType scopeType = parts[1].isBlank() ? null : ScopeType.valueOf(parts[1]);
+            UUID branchId = parts[2].isBlank() ? null : UUID.fromString(parts[2]);
+            return new ScopeResponse(id, scopeType, branchId);
         } catch (RuntimeException exception) {
             return null;
         }

@@ -101,9 +101,13 @@ public class JwtProvider {
         }
         List<String> result = new ArrayList<>(scopes.size());
         for (ScopeResponse scope : scopes) {
+            if (scope == null) {
+                continue;
+            }
+            String idValue = scope.id() == null ? "" : scope.id().toString();
+            String scopeTypeValue = scope.scopeType() == null ? "" : scope.scopeType().name();
             String branchIdValue = scope.branchId() == null ? "" : scope.branchId().toString();
-            result.add(String.join(SCOPE_VALUE_SEPARATOR,
-                    scope.id().toString(), scope.scopeType().name(), branchIdValue));
+            result.add(String.join(SCOPE_VALUE_SEPARATOR, idValue, scopeTypeValue, branchIdValue));
         }
         return result;
     }

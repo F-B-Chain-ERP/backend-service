@@ -14,12 +14,12 @@ import com.erp.core.domain.RolePermission;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.ScopeResponse;
 import com.erp.core.enums.EntityStatus;
+import com.erp.core.enums.ScopeType;
 import org.jspecify.annotations.NonNull;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -58,7 +58,6 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     /** Tải người dùng theo id hoặc username/email và xây dựng CustomUserDetails. */
     @Override
-    @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(@NonNull String identifier) throws UsernameNotFoundException {
         Account account = findAccount(identifier);
 
@@ -70,7 +69,8 @@ public class CustomUserDetailsService implements UserDetailsService {
         List<ScopeResponse> scopes = new java.util.ArrayList<>();
 
         if (account.getPrimaryBranchId() != null) {
-            scopes.add(new ScopeResponse(null, com.erp.core.enums.ScopeType.STORE, account.getPrimaryBranchId()));
+            scopeRepository.findByScopeTypeAndBranchId(ScopeType.STORE, account.getPrimaryBranchId())
+                    .ifPresent(s -> scopes.add(new ScopeResponse(s.getId(), s.getScopeType(), s.getBranchId())));
         }
 
         if (!assignments.isEmpty()) {

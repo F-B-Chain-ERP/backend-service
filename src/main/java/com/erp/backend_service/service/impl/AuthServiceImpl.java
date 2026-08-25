@@ -108,7 +108,6 @@ public class AuthServiceImpl implements AuthService {
 
     /** {@inheritDoc} */
     @Override
-    @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResponse login(LoginRequest request) {
         PrincipalType type = resolvePrincipalType(request.type(), request.usernameOrEmail());
         CustomUserDetails userDetails;
@@ -434,7 +433,7 @@ public class AuthServiceImpl implements AuthService {
 
     /** {@inheritDoc} */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse refreshToken(RefreshTokenRequest request) {
         String currentToken = request.refreshToken();
         if (!jwtProvider.validateToken(currentToken) || !jwtProvider.isRefreshToken(currentToken)) {

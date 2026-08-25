@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.UUID;
 
 /** Truy vấn dữ liệu đơn mua hàng (purchase_order). */
@@ -43,7 +44,7 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
                                @Param("status") String status,
                                @Param("supplierId") UUID supplierId,
                                @Param("warehouseId") UUID warehouseId,
-                               @Param("allowedWarehouseIds") java.util.Collection<UUID> allowedWarehouseIds,
+                               @Param("allowedWarehouseIds") Collection<UUID> allowedWarehouseIds,
                                @Param("fromDate") LocalDate fromDate,
                                @Param("toDate") LocalDate toDate,
                                Pageable pageable);

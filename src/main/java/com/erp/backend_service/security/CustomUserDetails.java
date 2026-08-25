@@ -121,7 +121,13 @@ public class CustomUserDetails implements UserDetails {
     ) {
         Set<GrantedAuthority> authorities = new HashSet<>();
         List<String> normalizedRoles = normalize(roleCodes, authorities);
-        List<String> normalizedPermissions = normalize(permissionCodes, authorities);
+        List<String> normalizedPermissions = new ArrayList<>();
+        if (permissionCodes != null) {
+            for (String code : permissionCodes) {
+                authorities.add(new SimpleGrantedAuthority(code));
+                normalizedPermissions.add(code);
+            }
+        }
 
         boolean isActive = account.getStatus() == EntityStatus.ACTIVE;
         return new CustomUserDetails(

@@ -1,9 +1,13 @@
 package com.erp.backend_service.service;
 
 import com.erp.core.domain.Scope;
+import com.erp.core.dto.auth.ScopeAdminResponse;
 import com.erp.core.dto.auth.ScopeResponse;
+import com.erp.core.dto.request.scope.CreateScopeRequest;
+import com.erp.core.dto.request.scope.UpdateScopeRequest;
 import com.erp.core.enums.ScopeType;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -37,4 +41,43 @@ public interface ScopeService {
      * @return {@code true} nếu là phạm vi toàn hệ thống hoặc trùng chi nhánh
      */
     boolean covers(ScopeResponse scope, UUID branchId);
+
+    /**
+     * Danh sách toàn bộ phạm vi phục vụ màn quản trị, kèm tên chi nhánh liên quan.
+     *
+     * @return danh sách phạm vi
+     */
+    List<ScopeAdminResponse> findAll();
+
+    /**
+     * Chi tiết một phạm vi.
+     *
+     * @param id id phạm vi
+     * @return thông tin phạm vi
+     */
+    ScopeAdminResponse getById(UUID id);
+
+    /**
+     * Tạo mới phạm vi. ALL_SYSTEM không gắn chi nhánh; STORE/WAREHOUSE bắt buộc gắn.
+     *
+     * @param request dữ liệu phạm vi cần tạo
+     * @return phạm vi vừa tạo
+     */
+    ScopeAdminResponse create(CreateScopeRequest request);
+
+    /**
+     * Cập nhật một phần thông tin phạm vi. Truyền {@code null} để giữ nguyên trường tương ứng.
+     *
+     * @param id      id phạm vi
+     * @param request dữ liệu cần cập nhật
+     * @return phạm vi sau khi cập nhật
+     */
+    ScopeAdminResponse update(UUID id, UpdateScopeRequest request);
+
+    /**
+     * Xóa vĩnh viễn một phạm vi.
+     *
+     * @param id id phạm vi
+     */
+    void delete(UUID id);
 }

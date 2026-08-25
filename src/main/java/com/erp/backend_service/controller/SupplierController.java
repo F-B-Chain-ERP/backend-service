@@ -5,7 +5,7 @@ import com.erp.core.dto.request.proc.CreateSupplierRequest;
 import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
-import com.erp.core.dto.response.SupplierResponse;
+import com.erp.core.dto.response.proc.SupplierResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;

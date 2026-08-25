@@ -11,7 +11,7 @@ import com.erp.core.domain.Customer;
 import com.erp.core.dto.auth.CreateCustomerRequest;
 import com.erp.core.dto.auth.ResetCustomerPasswordRequest;
 import com.erp.core.dto.auth.UpdateCustomerRequest;
-import com.erp.core.dto.response.CustomerDetailResponse;
+import com.erp.core.dto.response.customer.CustomerDetailResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.enums.AuthProvider;
 import com.erp.core.enums.EntityStatus;

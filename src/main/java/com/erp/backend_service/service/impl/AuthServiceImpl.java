@@ -110,7 +110,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResponse login(LoginRequest request) {
-        PrincipalType type = request.type() != null ? request.type() : PrincipalType.ACCOUNT;
+        PrincipalType type = resolvePrincipalType(request.type(), request.usernameOrEmail());
         CustomUserDetails userDetails;
         try {
             userDetails = authenticate(type, request.usernameOrEmail(), request.password());
@@ -553,6 +553,32 @@ public class AuthServiceImpl implements AuthService {
     private void revokeAccountTokens(UUID accountId) {
         permissionService.evictSnapshot(accountId);
         accountRevocationService.revokeAccount(accountId, accessTokenLifetime);
+    }
+
+    /**
+     * Xác định loại thực thể (ACCOUNT / CUSTOMER) cho đăng nhập. Nếu client truyền
+     * {@code requested} khớp với thực thể tồn tại thì dùng nó; ngược lại tự phát hiện
+     * theo định danh để chống trường hợp client gửi sai {@code type} (vd: khách hàng
+     * gửi ACCOUNT). Ưu tiên ACCOUNT khi trùng định danh.
+     */
+    private PrincipalType resolvePrincipalType(PrincipalType requested, String identifier) {
+        boolean accountExists = accountRepository.findByUsernameOrEmail(identifier, identifier).isPresent();
+        boolean customerExists = customerRepository.findByUsernameOrPhoneOrEmail(identifier).isPresent();
+        if (requested != null) {
+            if (requested == PrincipalType.ACCOUNT && accountExists) {
+                return PrincipalType.ACCOUNT;
+            }
+            if (requested == PrincipalType.CUSTOMER && customerExists) {
+                return PrincipalType.CUSTOMER;
+            }
+        }
+        if (accountExists) {
+            return PrincipalType.ACCOUNT;
+        }
+        if (customerExists) {
+            return PrincipalType.CUSTOMER;
+        }
+        return requested != null ? requested : PrincipalType.ACCOUNT;
     }
 
     /** Xác định id thực thể để ghi audit khi đăng nhập thất bại. */

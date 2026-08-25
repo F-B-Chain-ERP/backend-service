@@ -1,0 +1,19 @@
+${AnsiColor.BRIGHT_MAGENTA}╔━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╗${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_CYAN}                                                                              ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_CYAN}   ███████╗██████╗ ██████╗${AnsiColor.BRIGHT_YELLOW}    ██████╗  █████╗  ██████╗██╗  ██╗███████╗███╗  ██╗██████╗  ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_CYAN}   ██╔════╝██╔══██╗██╔══██╗${AnsiColor.BRIGHT_YELLOW}   ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██╔════╝████╗ ██║██╔══██╗ ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_GREEN}   █████╗  ██████╔╝██████╔╝${AnsiColor.BRIGHT_YELLOW}   ██████╔╝███████║██║    █████╔╝ █████╗  ██╔██╗██║██║  ██║ ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_GREEN}   ██╔══╝  ██╔══██╗██╔═══╝${AnsiColor.BRIGHT_RED}    ██╔══██╗██╔══██║██║    ██╔═██╗ ██╔══╝  ██║╚████║██║  ██║ ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_BLUE}   ███████╗██║  ██║██║${AnsiColor.BRIGHT_RED}        ██████╔╝██║  ██║╚██████╗██║  ██╗███████╗██║ ╚███║██████╔╝ ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_BLUE}   ╚══════╝╚═╝  ╚═╝╚═╝${AnsiColor.BRIGHT_RED}        ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚══╝╚═════╝  ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}                                                                              ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_WHITE}            ✨  E n t e r p r i s e   R e s o u r c e   P l a n n i n g  ✨           ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_BLACK}              ☕  Coffee First  •  Code Later  •  Deploy Happily  🚀                ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃                                                                              ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}╠━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╣${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.BRIGHT_YELLOW}  ⚡ Powered by ${AnsiColor.BRIGHT_WHITE}Spring Boot ${spring-boot.version:4.1.0} ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.BRIGHT_CYAN} Java ${java.version:21} ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.BRIGHT_GREEN} v${application.version:0.0.1-SNAPSHOT}  ${AnsiColor.BRIGHT_MAGENTA}                       ┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.GREEN}  ◆ Profile  ${AnsiColor.BRIGHT_WHITE}${spring.profiles.active:dev}  ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.GREEN} ◆ Port ${AnsiColor.BRIGHT_WHITE}${server.port:8080}  ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.GREEN} ◆ PID ${AnsiColor.BRIGHT_WHITE}${PID:----}  ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.CYAN} ◆ Docs ${AnsiColor.BRIGHT_WHITE}/swagger-ui.html     ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.CYAN}  ◆ Health ${AnsiColor.BRIGHT_WHITE}/actuator/health  ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.CYAN} ◆ Metrics ${AnsiColor.BRIGHT_WHITE}/actuator/prometheus  ${AnsiColor.BRIGHT_BLACK}│${AnsiColor.YELLOW} ◆ Ready to serve! 🔥              ${AnsiColor.BRIGHT_MAGENTA}┃${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_MAGENTA}╚━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╝${AnsiColor.DEFAULT}
+${AnsiColor.BRIGHT_BLACK}     ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄    ${AnsiColor.DEFAULT}
+

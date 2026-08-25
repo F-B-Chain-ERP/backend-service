@@ -1,7 +1,7 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.Customer;
-import com.erp.core.dto.response.CustomerDetailResponse;
+import com.erp.core.dto.response.customer.CustomerDetailResponse;
 import org.springframework.stereotype.Component;
 
 /** Chuyển đổi entity Customer sang DTO phản hồi CustomerDetailResponse. */

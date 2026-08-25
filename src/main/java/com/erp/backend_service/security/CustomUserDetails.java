@@ -121,13 +121,7 @@ public class CustomUserDetails implements UserDetails {
     ) {
         Set<GrantedAuthority> authorities = new HashSet<>();
         List<String> normalizedRoles = normalize(roleCodes, authorities);
-        List<String> normalizedPermissions = new ArrayList<>();
-        if (permissionCodes != null) {
-            for (String code : permissionCodes) {
-                authorities.add(new SimpleGrantedAuthority(code));
-                normalizedPermissions.add(code);
-            }
-        }
+        List<String> normalizedPermissions = addAuthorities(permissionCodes, authorities);
 
         boolean isActive = account.getStatus() == EntityStatus.ACTIVE;
         return new CustomUserDetails(
@@ -200,7 +194,7 @@ public class CustomUserDetails implements UserDetails {
         }
         if (permissions != null) {
             for (String perm : permissions) {
-                authorities.add(new SimpleGrantedAuthority(perm));
+                authorities.add(new SimpleGrantedAuthority(stripRolePrefix(perm)));
             }
         }
         if (principalType == PrincipalType.CUSTOMER) {
@@ -286,8 +280,29 @@ public class CustomUserDetails implements UserDetails {
         return result;
     }
 
+    /** Thêm mã quyền (giữ nguyên, KHÔNG gắn tiền tố ROLE_) vào tập quyền và trả về danh sách. */
+    private static List<String> addAuthorities(List<String> codes, Set<GrantedAuthority> authorities) {
+        List<String> result = new ArrayList<>();
+        if (codes == null) {
+            return result;
+        }
+        for (String code : codes) {
+            if (code == null) {
+                continue;
+            }
+            authorities.add(new SimpleGrantedAuthority(code));
+            result.add(code);
+        }
+        return result;
+    }
+
     private static String withRolePrefix(String code) {
         return code.startsWith("ROLE_") ? code : "ROLE_" + code;
+    }
+
+    /** Loại bỏ tiền tố ROLE_ khỏi mã quyền (phòng snapshot cache lưu nhầm định dạng cũ). */
+    private static String stripRolePrefix(String code) {
+        return code.startsWith("ROLE_") ? code.substring("ROLE_".length()) : code;
     }
 
     /** {@inheritDoc} */

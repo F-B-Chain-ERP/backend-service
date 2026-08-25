@@ -1,7 +1,7 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.Supplier;
-import com.erp.core.dto.response.SupplierResponse;
+import com.erp.core.dto.response.proc.SupplierResponse;
 import org.springframework.stereotype.Component;
 
 /** Chuyển đổi entity Supplier sang SupplierResponse. */

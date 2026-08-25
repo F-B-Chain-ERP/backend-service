@@ -37,7 +37,7 @@ public class BranchController {
 
     /** Danh sách chi nhánh thuộc phạm vi (scope) của tài khoản đang đăng nhập. */
     @GetMapping("/mine")
-    @PreAuthorize("hasAuthority('sys:branch:view')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<BranchResponse>>> mine() {
         return ResponseEntity.ok(ApiResponse.success(branchService.findMine()));
     }

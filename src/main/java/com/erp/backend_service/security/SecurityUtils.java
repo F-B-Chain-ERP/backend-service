@@ -30,6 +30,11 @@ public final class SecurityUtils {
         return getCurrentUserDetails().map(CustomUserDetails::getPrincipalType);
     }
 
+    /** Lấy id chi nhánh đang làm việc hiện tại từ UserDetails trong SecurityContext. */
+    public static Optional<UUID> getCurrentBranchId() {
+        return getCurrentUserDetails().map(CustomUserDetails::getBranchId);
+    }
+
     /** Lấy đối tượng CustomUserDetails của người dùng hiện tại (nếu có). */
     public static Optional<CustomUserDetails> getCurrentUserDetails() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

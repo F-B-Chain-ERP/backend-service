@@ -251,12 +251,21 @@ public class CustomUserDetails implements UserDetails {
 
     /** Giải mã một chuỗi phạm vi (id|scopeType|branchId) thành ScopeResponse. */
     private static ScopeResponse parseScope(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
         String[] parts = value.split("\\|", -1);
         if (parts.length < 3) {
             return null;
         }
-        UUID branchId = parts[2].isBlank() ? null : UUID.fromString(parts[2]);
-        return new ScopeResponse(UUID.fromString(parts[0]), ScopeType.valueOf(parts[1]), branchId);
+        try {
+            UUID id = parts[0].isBlank() ? null : UUID.fromString(parts[0]);
+            ScopeType scopeType = parts[1].isBlank() ? null : ScopeType.valueOf(parts[1]);
+            UUID branchId = parts[2].isBlank() ? null : UUID.fromString(parts[2]);
+            return new ScopeResponse(id, scopeType, branchId);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static PrincipalType readPrincipalType(Claims claims) {

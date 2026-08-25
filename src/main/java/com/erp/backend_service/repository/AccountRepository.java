@@ -37,8 +37,8 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     boolean existsByPhoneAndIdNot(String phone, UUID id);
 
     /**
-     * Tìm kiếm phân trang theo username, họ tên hoặc email. Khi {@code search}
-     * rỗng/null thì trả về toàn bộ.
+     * Tìm kiếm phân trang theo username, họ tên hoặc email, hỗ trợ lọc theo chi nhánh.
+     * Khi {@code search} hoặc {@code branchId} rỗng/null thì không áp dụng điều kiện tương ứng.
      */
     @Query("""
             select a from Account a
@@ -46,8 +46,11 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
                    or lower(a.username) like lower(concat('%', :search, '%'))
                    or lower(a.fullName) like lower(concat('%', :search, '%'))
                    or lower(a.email) like lower(concat('%', :search, '%')))
+              and (:branchId is null or a.primaryBranchId = :branchId)
             """)
-    Page<Account> search(@Param("search") String search, Pageable pageable);
+    Page<Account> search(@Param("search") String search,
+                         @Param("branchId") UUID branchId,
+                         Pageable pageable);
 }
 
 

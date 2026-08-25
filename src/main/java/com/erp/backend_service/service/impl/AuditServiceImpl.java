@@ -6,6 +6,7 @@ import com.erp.backend_service.util.audit.AuditEvent;
 import com.erp.core.domain.AuditLog;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -22,7 +23,7 @@ public class AuditServiceImpl implements AuditService {
     public AuditServiceImpl(AuditLogRepository repository) { this.repository = repository; }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(AuditEvent event) {
         AuditLog log = new AuditLog();
         log.setStatus(com.erp.core.enums.EntityStatus.ACTIVE);

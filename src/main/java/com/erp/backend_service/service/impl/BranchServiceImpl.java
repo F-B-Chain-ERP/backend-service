@@ -7,6 +7,7 @@ import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.BranchService;
+import com.erp.core.domain.Account;
 import com.erp.core.domain.Branch;
 import com.erp.core.dto.request.branch.CreateBranchRequest;
 import com.erp.core.dto.request.branch.UpdateBranchRequest;
@@ -36,10 +37,13 @@ public class BranchServiceImpl implements BranchService {
 
     private final BranchRepository branchRepository;
     private final BranchMapper branchMapper;
+    private final com.erp.backend_service.repository.AccountRepository accountRepository;
 
-    public BranchServiceImpl(BranchRepository branchRepository, BranchMapper branchMapper) {
+    public BranchServiceImpl(BranchRepository branchRepository, BranchMapper branchMapper,
+                             com.erp.backend_service.repository.AccountRepository accountRepository) {
         this.branchRepository = branchRepository;
         this.branchMapper = branchMapper;
+        this.accountRepository = accountRepository;
     }
 
     /** {@inheritDoc} */
@@ -69,10 +73,16 @@ public class BranchServiceImpl implements BranchService {
         if (allSystem) {
             branches = branchRepository.findAll();
         } else {
-            List<UUID> allowedIds = scopes.stream()
+            java.util.Set<UUID> allowedIds = scopes.stream()
                     .map(ScopeResponse::branchId)
                     .filter(Objects::nonNull)
-                    .toList();
+                    .collect(Collectors.toSet());
+
+            accountRepository.findById(current.getPrincipalId())
+                    .map(Account::getPrimaryBranchId)
+                    .filter(Objects::nonNull)
+                    .ifPresent(allowedIds::add);
+
             if (allowedIds.isEmpty()) {
                 return List.of();
             }

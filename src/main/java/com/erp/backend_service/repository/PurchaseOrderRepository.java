@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.UUID;
 
 /** Truy vấn dữ liệu đơn mua hàng (purchase_order). */
@@ -24,7 +25,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
     org.springframework.data.domain.Page<PurchaseOrder> findFirstByPoCodeStartingWithOrderByPoCodeDesc(String prefix, Pageable pageable);
 
     /**
-     * Tìm kiếm phân trang theo mã đơn (poCode), trạng thái, nhà cung cấp, kho và khoảng ngày đặt.
+     * Tìm kiếm phân trang theo mã đơn (poCode), trạng thái, nhà cung cấp, kho và khoảng ngày đặt,
+     * đồng thời hỗ trợ lọc theo danh sách kho được phân quyền (allowedWarehouseIds).
      * Các tham số {@code null} tương ứng không lọc.
      */
     @Query("""
@@ -34,6 +36,7 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
               and (:status is null or po.status = :status)
               and (:supplierId is null or po.supplierId = :supplierId)
               and (:warehouseId is null or po.warehouseId = :warehouseId)
+              and (:allowedWarehouseIds is null or po.warehouseId in :allowedWarehouseIds)
               and (:fromDate is null or po.orderDate >= :fromDate)
               and (:toDate is null or po.orderDate <= :toDate)
             """)
@@ -41,6 +44,7 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
                                @Param("status") String status,
                                @Param("supplierId") UUID supplierId,
                                @Param("warehouseId") UUID warehouseId,
+                               @Param("allowedWarehouseIds") Collection<UUID> allowedWarehouseIds,
                                @Param("fromDate") LocalDate fromDate,
                                @Param("toDate") LocalDate toDate,
                                Pageable pageable);

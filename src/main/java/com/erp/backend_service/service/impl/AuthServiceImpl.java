@@ -108,7 +108,6 @@ public class AuthServiceImpl implements AuthService {
 
     /** {@inheritDoc} */
     @Override
-    @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResponse login(LoginRequest request) {
         PrincipalType type = resolvePrincipalType(request.type(), request.usernameOrEmail());
         CustomUserDetails userDetails;
@@ -434,7 +433,7 @@ public class AuthServiceImpl implements AuthService {
 
     /** {@inheritDoc} */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse refreshToken(RefreshTokenRequest request) {
         String currentToken = request.refreshToken();
         if (!jwtProvider.validateToken(currentToken) || !jwtProvider.isRefreshToken(currentToken)) {
@@ -499,14 +498,20 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException(ErrorCode.INVALID_TOKEN);
         }
         UUID branchId = request.branchId();
-        if (branchId == null || !current.getScopes().stream().anyMatch(scope ->
-                scope.scopeType() == ScopeType.ALL_SYSTEM
-                        || (scope.branchId() != null && scope.branchId().equals(branchId)))) {
+        Account account = accountRepository.findById(current.getPrincipalId())
+                .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
+
+        boolean allowed = branchId != null && (
+                current.getScopes().stream().anyMatch(scope ->
+                        scope.scopeType() == ScopeType.ALL_SYSTEM
+                                || (scope.branchId() != null && scope.branchId().equals(branchId)))
+                || (account.getPrimaryBranchId() != null && account.getPrimaryBranchId().equals(branchId))
+        );
+
+        if (!allowed) {
             throw new BadRequestException(ErrorCode.CROSS_SCOPE_DENIED);
         }
 
-        Account account = accountRepository.findById(current.getPrincipalId())
-                .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
         CustomUserDetails withBranch = CustomUserDetails.withBranch(current, branchId);
         auditLogin(PrincipalType.ACCOUNT, account.getId(), AuditAction.LOGIN_SUCCESS,
                 Map.of("action", "select_branch", "branchId", branchId.toString()));

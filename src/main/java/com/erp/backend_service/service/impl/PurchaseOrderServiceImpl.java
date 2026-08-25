@@ -11,6 +11,7 @@ import com.erp.backend_service.repository.PurchaseOrderRepository;
 import com.erp.backend_service.repository.SupplierRepository;
 import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
+import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.PurchaseOrderService;
 import com.erp.core.domain.Account;
@@ -78,6 +79,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final AccountRepository accountRepository;
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
+    private final DataScopeHelper dataScopeHelper;
 
     public PurchaseOrderServiceImpl(PurchaseOrderRepository purchaseOrderRepository,
                                     PurchaseOrderItemRepository purchaseOrderItemRepository,
@@ -87,7 +89,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                                     UnitRepository unitRepository,
                                     AccountRepository accountRepository,
                                     PurchaseOrderMapper purchaseOrderMapper,
-                                    PurchaseOrderItemMapper purchaseOrderItemMapper) {
+                                    PurchaseOrderItemMapper purchaseOrderItemMapper,
+                                    DataScopeHelper dataScopeHelper) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
         this.supplierRepository = supplierRepository;
@@ -97,6 +100,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         this.accountRepository = accountRepository;
         this.purchaseOrderMapper = purchaseOrderMapper;
         this.purchaseOrderItemMapper = purchaseOrderItemMapper;
+        this.dataScopeHelper = dataScopeHelper;
     }
 
     /** {@inheritDoc} */
@@ -109,9 +113,15 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_FILTER);
         }
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
+
+        java.util.Collection<UUID> allowedWarehouseIds = dataScopeHelper.getAllowedWarehouseIds(warehouseId);
+        if (allowedWarehouseIds != null && allowedWarehouseIds.isEmpty()) {
+            return new PageResponse<>(page, safeSize, 0L, 0, List.of());
+        }
+
         Page<PurchaseOrder> pageResult = purchaseOrderRepository.search(
                 StringUtils.hasText(search) ? search.trim() : null, status,
-                supplierId, warehouseId, fromDate, toDate, pageable);
+                supplierId, warehouseId, allowedWarehouseIds, fromDate, toDate, pageable);
 
         List<PurchaseOrder> pos = pageResult.getContent();
 
@@ -147,6 +157,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional(readOnly = true)
     public PurchaseOrderResponse get(UUID id) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         List<PurchaseOrderItem> items = purchaseOrderItemRepository.findByPurchaseOrderId(id);
         return toResponseWithNames(po, items);
     }
@@ -160,8 +171,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (!EntityStatus.ACTIVE.name().equals(supplier.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_SUPPLIER_INACTIVE);
         }
-        Warehouse warehouse = warehouseRepository.findById(request.warehouseId())
-                .orElseThrow(() -> new BaseException(ErrorCode.PROC_404_WAREHOUSE_NOT_FOUND));
+        Warehouse warehouse = dataScopeHelper.enforceWarehouseAccess(request.warehouseId());
         if (!EntityStatus.ACTIVE.name().equals(warehouse.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_WAREHOUSE_INACTIVE);
         }
@@ -204,6 +214,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse update(UUID id, UpdatePurchaseOrderRequest request) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_DRAFT.equals(po.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_EDIT);
         }
@@ -216,8 +227,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             po.setSupplierId(supplier.getId());
         }
         if (request.warehouseId() != null) {
-            Warehouse warehouse = warehouseRepository.findById(request.warehouseId())
-                    .orElseThrow(() -> new BaseException(ErrorCode.PROC_404_WAREHOUSE_NOT_FOUND));
+            Warehouse warehouse = dataScopeHelper.enforceWarehouseAccess(request.warehouseId());
             if (!EntityStatus.ACTIVE.name().equals(warehouse.getStatus())) {
                 throw new BaseException(ErrorCode.PROC_400_WAREHOUSE_INACTIVE);
             }
@@ -262,6 +272,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public void delete(UUID id) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_DRAFT.equals(po.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_EDIT);
         }
@@ -274,6 +285,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse submit(UUID id) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_DRAFT.equals(po.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_SUBMIT);
         }
@@ -292,6 +304,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse approve(UUID id) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_SUBMITTED.equals(po.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_APPROVE);
         }
@@ -308,6 +321,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse cancel(UUID id, String reason) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         boolean cancellable = STATUS_DRAFT.equals(po.getStatus())
                 || STATUS_SUBMITTED.equals(po.getStatus())
                 || STATUS_APPROVED.equals(po.getStatus());
@@ -329,6 +343,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse receive(UUID id, ReceivePurchaseOrderRequest request) {
         PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_APPROVED.equals(po.getStatus()) && !STATUS_PARTIALLY_RECEIVED.equals(po.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_RECEIVE);
         }

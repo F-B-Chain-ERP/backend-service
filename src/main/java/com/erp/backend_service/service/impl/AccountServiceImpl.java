@@ -4,10 +4,18 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.AccountMapper;
 import com.erp.backend_service.repository.AccountRepository;
+import com.erp.backend_service.repository.AccountRoleRepository;
+import com.erp.backend_service.repository.BranchRepository;
+import com.erp.backend_service.repository.RoleRepository;
+import com.erp.backend_service.repository.ScopeRepository;
+import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.AccountRevocationService;
 import com.erp.backend_service.service.AccountService;
+import com.erp.backend_service.service.PermissionService;
 import com.erp.core.domain.Account;
+import com.erp.core.domain.AccountRole;
+import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.AccountResponse;
 import com.erp.core.dto.auth.CreateAccountRequest;
 import com.erp.core.dto.auth.ResetPasswordRequest;
@@ -16,6 +24,7 @@ import com.erp.core.dto.response.PageResponse;
 import com.erp.core.enums.AuthProvider;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
+import com.erp.core.enums.ScopeType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -27,13 +36,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Triển khai {@link AccountService}: quản lý tài khoản nội bộ do admin thực hiện
- * (tạo, xem, tìm kiếm, cập nhật, vô hiệu hóa, đặt lại mật khẩu). Chỉ tài khoản
- * nội bộ (ACCOUNT) mới được phép gọi các nghiệp vụ này.
+ * (tạo, xem, tìm kiếm, cập nhật, vô hiệu hóa, đặt lại mật khẩu).
+ * Hỗ trợ gán chi nhánh bắt buộc, đồng bộ phạm vi (Scope) và lọc dữ liệu nhân sự theo chi nhánh.
  */
 @Service
 @Transactional
@@ -42,20 +54,38 @@ public class AccountServiceImpl implements AccountService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final AccountRepository accountRepository;
+    private final BranchRepository branchRepository;
+    private final ScopeRepository scopeRepository;
+    private final RoleRepository roleRepository;
+    private final AccountRoleRepository accountRoleRepository;
     private final AccountMapper accountMapper;
     private final PasswordEncoder passwordEncoder;
     private final AccountRevocationService revocationService;
+    private final PermissionService permissionService;
+    private final DataScopeHelper dataScopeHelper;
     private final Duration accessTokenLifetime;
 
     public AccountServiceImpl(AccountRepository accountRepository,
+                              BranchRepository branchRepository,
+                              ScopeRepository scopeRepository,
+                              RoleRepository roleRepository,
+                              AccountRoleRepository accountRoleRepository,
                               AccountMapper accountMapper,
                               PasswordEncoder passwordEncoder,
                               AccountRevocationService revocationService,
+                              PermissionService permissionService,
+                              DataScopeHelper dataScopeHelper,
                               @Value("${app.jwt.access-token-expiry}") long accessTokenExpiry) {
         this.accountRepository = accountRepository;
+        this.branchRepository = branchRepository;
+        this.scopeRepository = scopeRepository;
+        this.roleRepository = roleRepository;
+        this.accountRoleRepository = accountRoleRepository;
         this.accountMapper = accountMapper;
         this.passwordEncoder = passwordEncoder;
         this.revocationService = revocationService;
+        this.permissionService = permissionService;
+        this.dataScopeHelper = dataScopeHelper;
         this.accessTokenLifetime = Duration.ofSeconds(accessTokenExpiry);
     }
 
@@ -73,6 +103,11 @@ public class AccountServiceImpl implements AccountService {
             throw new BaseException(ErrorCode.USER_EXISTED);
         }
 
+        // Bắt buộc chọn chi nhánh và chi nhánh phải tồn tại
+        if (request.primaryBranchId() == null || !branchRepository.existsById(request.primaryBranchId())) {
+            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
         Account account = new Account();
         account.setUsername(request.username());
         account.setPassword(passwordEncoder.encode(request.password()));
@@ -85,6 +120,12 @@ public class AccountServiceImpl implements AccountService {
         account.setSystemProtected(false);
         account.setStatus(EntityStatus.ACTIVE);
         account = accountRepository.save(account);
+
+        // Nếu có truyền roleIds, tự động đồng bộ Scope và gán quyền
+        if (request.roleIds() != null && !request.roleIds().isEmpty()) {
+            syncRolesForBranch(account, request.primaryBranchId(), request.roleIds());
+        }
+
         return accountMapper.toResponse(account);
     }
 
@@ -93,7 +134,11 @@ public class AccountServiceImpl implements AccountService {
     @Transactional(readOnly = true)
     public AccountResponse getAccount(UUID id) {
         assertInternalAdmin();
-        return accountMapper.toResponse(findById(id));
+        Account account = findById(id);
+        if (!dataScopeHelper.isAllSystem() && account.getPrimaryBranchId() != null) {
+            dataScopeHelper.enforceBranchAccess(account.getPrimaryBranchId());
+        }
+        return accountMapper.toResponse(account);
     }
 
     /** {@inheritDoc} */
@@ -103,8 +148,14 @@ public class AccountServiceImpl implements AccountService {
         assertInternalAdmin();
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
+
+        // Nếu không phải ALL_SYSTEM, tự động lọc chỉ hiển thị nhân sự thuộc chi nhánh hiện tại
+        UUID effectiveBranchId = dataScopeHelper.isAllSystem()
+                ? null
+                : dataScopeHelper.getCurrentBranchId().orElse(null);
+
         Page<Account> accountPage = accountRepository.search(
-                StringUtils.hasText(search) ? search.trim() : null, pageable);
+                StringUtils.hasText(search) ? search.trim() : null, effectiveBranchId, pageable);
         return new PageResponse<>(
                 accountPage.getNumber(),
                 accountPage.getSize(),
@@ -139,13 +190,40 @@ public class AccountServiceImpl implements AccountService {
         if (request.avatarUrl() != null) {
             account.setAvatarUrl(request.avatarUrl());
         }
-        if (request.primaryBranchId() != null) {
+
+        boolean branchChanged = false;
+        if (request.primaryBranchId() != null && !Objects.equals(account.getPrimaryBranchId(), request.primaryBranchId())) {
+            if (!branchRepository.existsById(request.primaryBranchId())) {
+                throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+            }
             account.setPrimaryBranchId(request.primaryBranchId());
+            branchChanged = true;
         }
+
         if (request.status() != null) {
             account.setStatus(request.status());
         }
-        return accountMapper.toResponse(accountRepository.save(account));
+
+        Account saved = accountRepository.save(account);
+
+        // Đồng bộ vai trò nếu có truyền roleIds hoặc khi đổi chi nhánh
+        if (request.roleIds() != null || (branchChanged && saved.getPrimaryBranchId() != null)) {
+            UUID targetBranchId = saved.getPrimaryBranchId();
+            if (targetBranchId != null) {
+                List<UUID> targetRoles = request.roleIds() != null
+                        ? request.roleIds()
+                        : accountRoleRepository.findByAccountId(id).stream()
+                            .filter(ar -> ar.getStatus() == EntityStatus.ACTIVE)
+                            .map(AccountRole::getRoleId)
+                            .distinct()
+                            .toList();
+                syncRolesForBranch(saved, targetBranchId, targetRoles);
+            }
+            revocationService.revokeAccount(id, accessTokenLifetime);
+            permissionService.evictSnapshot(id);
+        }
+
+        return accountMapper.toResponse(saved);
     }
 
     /** {@inheritDoc} */
@@ -156,6 +234,7 @@ public class AccountServiceImpl implements AccountService {
         verifyCanModify(account);
         account.setStatus(EntityStatus.INACTIVE);
         accountRepository.save(account);
+        permissionService.evictSnapshot(id);
         revocationService.revokeAccount(id, accessTokenLifetime);
     }
 
@@ -168,8 +247,50 @@ public class AccountServiceImpl implements AccountService {
         account.setPassword(passwordEncoder.encode(request.password()));
         account.setHasLocalPassword(true);
         Account saved = accountRepository.save(account);
+        permissionService.evictSnapshot(id);
         revocationService.revokeAccount(id, accessTokenLifetime);
         return accountMapper.toResponse(saved);
+    }
+
+    /**
+     * Đồng bộ gán vai trò gắn với Scope của chi nhánh tương ứng.
+     */
+    private void syncRolesForBranch(Account account, UUID branchId, List<UUID> roleIds) {
+        Scope scope = scopeRepository.findByScopeTypeAndBranchId(ScopeType.STORE, branchId)
+                .orElseGet(() -> {
+                    Scope newScope = new Scope();
+                    newScope.setScopeType(ScopeType.STORE);
+                    newScope.setBranchId(branchId);
+                    newScope.setStatus(EntityStatus.ACTIVE);
+                    return scopeRepository.save(newScope);
+                });
+
+        List<AccountRole> existingAssignments = accountRoleRepository.findByAccountId(account.getId());
+
+        for (UUID roleId : roleIds) {
+            if (!roleRepository.existsById(roleId)) {
+                throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
+            }
+            Optional<AccountRole> match = existingAssignments.stream()
+                    .filter(ar -> ar.getRoleId().equals(roleId) && ar.getScopeId().equals(scope.getId()))
+                    .findFirst();
+            if (match.isPresent()) {
+                AccountRole ar = match.get();
+                if (ar.getStatus() != EntityStatus.ACTIVE) {
+                    ar.setStatus(EntityStatus.ACTIVE);
+                    accountRoleRepository.save(ar);
+                }
+            } else {
+                AccountRole ar = new AccountRole();
+                ar.setAccountId(account.getId());
+                ar.setRoleId(roleId);
+                ar.setScopeId(scope.getId());
+                ar.setStatus(EntityStatus.ACTIVE);
+                ar.setAssignedAt(Instant.now());
+                ar.setAssignedBy(SecurityUtils.getCurrentPrincipalId().map(UUID::toString).orElse("SYSTEM"));
+                accountRoleRepository.save(ar);
+            }
+        }
     }
 
     /** Lấy tài khoản theo id, ném lỗi nếu không tồn tại. */

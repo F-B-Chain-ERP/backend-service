@@ -2,6 +2,7 @@ package com.erp.backend_service.controller;
 
 import com.erp.backend_service.service.RoleService;
 import com.erp.core.dto.auth.RoleResponse;
+import com.erp.core.dto.auth.RoleMemberResponse;
 import com.erp.core.dto.request.role.CreateRoleRequest;
 import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.ApiResponse;
@@ -80,6 +81,15 @@ public class RoleController {
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(roleService.getPermissionsByRole(id)));
+    }
+
+    /** Lấy danh sách tài khoản là thành viên của một vai trò. */
+    @GetMapping("/{id}/users")
+    @PreAuthorize("hasAuthority('sys:role:view')")
+    public ResponseEntity<ApiResponse<List<RoleMemberResponse>>> getMembers(
+            @NotNull(message = "Role id must not be null")
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(roleService.getMembers(id)));
     }
 
     /** Thay thế toàn bộ quyền của một vai trò. */

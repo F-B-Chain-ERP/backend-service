@@ -38,6 +38,9 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, UUID> 
     /** Lấy tất cả bản ghi gán vai trò của một tài khoản. */
     List<AccountRole> findByAccountId(UUID accountId);
 
+    /** Kiểm tra phạm vi còn được gán cho bất kỳ tài khoản nào không (dùng chặn xóa). */
+    boolean existsByScopeId(UUID scopeId);
+
     /**
      * Lấy danh sách tài khoản (không trùng) đang được gán effective một trong các
      * vai trò chỉ định, dùng để làm mới snapshot quyền khi quyền/vai trò thay đổi.
@@ -50,5 +53,21 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, UUID> 
     List<UUID> findAccountIdsByRoleIdIn(
             @Param("roleIds") Collection<UUID> roleIds,
             @Param("status") EntityStatus status
+    );
+
+    /**
+     * Lấy các bản ghi gán vai trò đang effective (active và chưa hết hạn) của một
+     * vai trò, dùng để liệt kê thành viên của vai trò.
+     */
+    @Query("""
+            select a from AccountRole a
+            where a.roleId = :roleId
+              and a.status = :status
+              and (a.expiresAt is null or a.expiresAt > :now)
+            """)
+    List<AccountRole> findEffectiveByRoleId(
+            @Param("roleId") UUID roleId,
+            @Param("status") EntityStatus status,
+            @Param("now") Instant now
     );
 }

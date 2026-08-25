@@ -2,6 +2,7 @@ package com.erp.backend_service.service.impl;
 
 import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.repository.ScopeRepository;
 import com.erp.backend_service.service.ScopeService;
@@ -32,10 +33,13 @@ import java.util.stream.Collectors;
 public class ScopeServiceImpl implements ScopeService {
     private final ScopeRepository scopeRepository;
     private final BranchRepository branchRepository;
+    private final AccountRoleRepository accountRoleRepository;
 
-    public ScopeServiceImpl(ScopeRepository scopeRepository, BranchRepository branchRepository) {
+    public ScopeServiceImpl(ScopeRepository scopeRepository, BranchRepository branchRepository,
+            AccountRoleRepository accountRoleRepository) {
         this.scopeRepository = scopeRepository;
         this.branchRepository = branchRepository;
+        this.accountRoleRepository = accountRoleRepository;
     }
 
     /** {@inheritDoc} */
@@ -126,6 +130,9 @@ public class ScopeServiceImpl implements ScopeService {
     public void delete(UUID id) {
         if (!scopeRepository.existsById(id)) {
             throw new BaseException(ErrorCode.SCOPE_NOT_FOUND);
+        }
+        if (accountRoleRepository.existsByScopeId(id)) {
+            throw new BaseException(ErrorCode.SCOPE_IN_USE);
         }
         scopeRepository.deleteById(id);
     }

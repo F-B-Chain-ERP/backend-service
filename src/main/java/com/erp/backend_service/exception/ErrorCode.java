@@ -64,7 +64,8 @@ public enum ErrorCode {
     PROC_400_PO_REJECT_REASON_REQUIRED(400, "PROC_400_PO_REJECT_REASON_REQUIRED", "Vui lòng nhập lý do từ chối."),
     PERMISSION_NOT_FOUND(404, "PERMISSION_NOT_FOUND", "Permission not found"),
     PERMISSION_CODE_EXISTS(409, "PERMISSION_CODE_EXISTS", "Permission code already exists"),
-    PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),;
+    PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),
+    SCOPE_IN_USE(409, "SCOPE_IN_USE", "Phạm vi vẫn đang được gán cho một hoặc nhiều tài khoản"),;
 
 
     private final int statusCode;

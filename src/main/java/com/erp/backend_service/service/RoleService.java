@@ -6,6 +6,7 @@ import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.auth.RoleAssignmentRequest;
 import com.erp.core.dto.auth.RoleAssignmentResponse;
+import com.erp.core.dto.auth.RoleMemberResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -58,6 +59,14 @@ public interface RoleService {
      * @return danh sách permission id
      */
     List<UUID> getPermissionsByRole(UUID roleId);
+
+    /**
+     * Lấy danh sách tài khoản là thành viên của một vai trò (đã gán effective).
+     *
+     * @param roleId id vai trò
+     * @return danh sách thành viên (RoleMemberResponse)
+     */
+    List<RoleMemberResponse> getMembers(UUID roleId);
 
     /**
      * Thay thế toàn bộ quyền của một vai trò bằng danh sách mới.

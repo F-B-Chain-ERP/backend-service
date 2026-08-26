@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +20,9 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
 
     /** Tìm quyền theo mã (code). */
     Optional<Permission> findByCode(String code);
+
+    /** Tìm danh sách quyền theo nhiều mã (code). */
+    List<Permission> findByCodeIn(Collection<String> codes);
 
     /** Kiểm tra mã quyền đã tồn tại hay chưa (so khớp chính xác). */
     boolean existsByCode(String code);

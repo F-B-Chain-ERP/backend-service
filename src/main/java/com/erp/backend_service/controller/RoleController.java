@@ -74,10 +74,10 @@ public class RoleController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    /** Lấy danh sách id quyền đã gán cho một vai trò. */
+    /** Lấy danh sách mã quyền (code) đã gán cho một vai trò. */
     @GetMapping("/{id}/permissions")
     @PreAuthorize("hasAuthority('sys:role:view')")
-    public ResponseEntity<ApiResponse<List<UUID>>> getPermissions(
+    public ResponseEntity<ApiResponse<List<String>>> getPermissions(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(roleService.getPermissionsByRole(id)));
@@ -92,14 +92,14 @@ public class RoleController {
         return ResponseEntity.ok(ApiResponse.success(roleService.getMembers(id)));
     }
 
-    /** Thay thế toàn bộ quyền của một vai trò. */
+    /** Thay thế toàn bộ quyền của một vai trò bằng danh sách mã quyền (code). */
     @PutMapping("/{id}/permissions")
     @PreAuthorize("hasAuthority('sys:role_permission:create')")
     public ResponseEntity<ApiResponse<Void>> setPermissions(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id,
-            @RequestBody List<UUID> permissionIds) {
-        roleService.setPermissionsForRole(id, permissionIds);
+            @RequestBody List<String> permissionCodes) {
+        roleService.setPermissionsForRole(id, permissionCodes);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

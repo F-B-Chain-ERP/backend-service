@@ -303,12 +303,18 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<UUID> getPermissionsByRole(UUID roleId) {
+    public List<String> getPermissionsByRole(UUID roleId) {
         if (!roleRepository.existsById(roleId)) {
             throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
         }
-        return rolePermissionRepository.findByRoleId(roleId).stream()
+        List<UUID> permissionIds = rolePermissionRepository.findByRoleId(roleId).stream()
                 .map(RolePermission::getPermissionId)
+                .toList();
+        if (permissionIds.isEmpty()) {
+            return List.of();
+        }
+        return permissionRepository.findAllById(permissionIds).stream()
+                .map(Permission::getCode)
                 .toList();
     }
 
@@ -357,15 +363,15 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional
-    public void setPermissionsForRole(UUID roleId, List<UUID> permissionIds) {
+    public void setPermissionsForRole(UUID roleId, List<String> permissionCodes) {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new BaseException(ErrorCode.ROLE_NOT_FOUND));
         if ("ADMIN".equals(role.getCode())) {
             throw new BaseException(ErrorCode.CANNOT_MODIFY_ADMIN);
         }
-        List<UUID> distinctIds = permissionIds == null ? List.of() : permissionIds.stream().distinct().toList();
-        List<Permission> permissions = permissionRepository.findAllById(distinctIds);
-        if (permissions.size() != distinctIds.size()) {
+        List<String> distinctCodes = permissionCodes == null ? List.of() : permissionCodes.stream().distinct().toList();
+        List<Permission> permissions = permissionRepository.findByCodeIn(distinctCodes);
+        if (permissions.size() != distinctCodes.size()) {
             throw new BaseException(ErrorCode.PERMISSION_NOT_FOUND);
         }
 
@@ -380,9 +386,10 @@ public class RoleServiceImpl implements RoleService {
         rolePermissionRepository.saveAll(mappings);
 
         // Làm mới snapshot quyền của các tài khoản đang giữ vai trò này
+        // (xoá cache Redis 1 lần cho toàn bộ, thay vì N lượt gọi từng tài khoản)
         List<UUID> accountIds = accountRoleRepository.findAccountIdsByRoleIdIn(
                 List.of(roleId), EntityStatus.ACTIVE);
-        accountIds.forEach(permissionService::evictSnapshot);
+        permissionService.evictSnapshots(accountIds);
     }
 
     private RoleResponse toResponse(Role role) {

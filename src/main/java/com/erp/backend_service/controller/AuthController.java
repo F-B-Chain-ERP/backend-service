@@ -12,12 +12,21 @@ import com.erp.core.dto.auth.ResendOtpRequest;
 import com.erp.core.dto.auth.ResetPasswordOtpRequest;
 import com.erp.core.dto.auth.SelectBranchRequest;
 import com.erp.core.dto.auth.VerifyOtpRequest;
+import com.erp.backend_service.security.CustomUserDetails;
+import com.erp.backend_service.security.PermissionSnapshot;
+import com.erp.backend_service.security.SecurityUtils;
+import com.erp.backend_service.service.PermissionService;
 import com.erp.core.dto.response.ApiResponse;
+import com.erp.core.enums.PrincipalType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
 
 /**
  * Controller xử lý các API xác thực: đăng ký khách hàng, đăng nhập,
@@ -29,9 +38,11 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final PermissionService permissionService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, PermissionService permissionService) {
         this.authService = authService;
+        this.permissionService = permissionService;
     }
 
     /** Đăng ký tài khoản khách hàng (chỉ dành cho customer). */
@@ -103,5 +114,21 @@ public class AuthController {
         String accessToken = authorization != null ? authorization : "";
         authService.logout(accessToken, refreshTokenRequest.refreshToken());
         return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully"));
+    }
+
+    /**
+     * Lấy quyền, vai trò và phạm vi của tài khoản đang đăng nhập.
+     * Dùng cho frontend ẩn/hiện UI và đồng bộ với phân quyền backend.
+     * Dữ liệu lấy từ {@link PermissionSnapshot} (đã cache Redis, làm mới khi sửa phân quyền).
+     */
+    @GetMapping("/my-permission")
+    public ResponseEntity<ApiResponse<PermissionSnapshot>> myPermission() {
+        CustomUserDetails details = SecurityUtils.getCurrentUserDetails()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        if (details.getPrincipalType() == PrincipalType.CUSTOMER) {
+            return ResponseEntity.ok(ApiResponse.success(new PermissionSnapshot(List.of(), List.of(), List.of())));
+        }
+        PermissionSnapshot snapshot = permissionService.getSnapshot(details.getPrincipalId());
+        return ResponseEntity.ok(ApiResponse.success(snapshot));
     }
 }

@@ -2,6 +2,7 @@ package com.erp.backend_service.controller;
 
 import com.erp.backend_service.service.RoleService;
 import com.erp.core.dto.auth.RoleResponse;
+import com.erp.core.dto.auth.RoleMemberResponse;
 import com.erp.core.dto.request.role.CreateRoleRequest;
 import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.ApiResponse;
@@ -73,23 +74,32 @@ public class RoleController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    /** Lấy danh sách id quyền đã gán cho một vai trò. */
+    /** Lấy danh sách mã quyền (code) đã gán cho một vai trò. */
     @GetMapping("/{id}/permissions")
     @PreAuthorize("hasAuthority('sys:role:view')")
-    public ResponseEntity<ApiResponse<List<UUID>>> getPermissions(
+    public ResponseEntity<ApiResponse<List<String>>> getPermissions(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(roleService.getPermissionsByRole(id)));
     }
 
-    /** Thay thế toàn bộ quyền của một vai trò. */
+    /** Lấy danh sách tài khoản là thành viên của một vai trò. */
+    @GetMapping("/{id}/users")
+    @PreAuthorize("hasAuthority('sys:role:view')")
+    public ResponseEntity<ApiResponse<List<RoleMemberResponse>>> getMembers(
+            @NotNull(message = "Role id must not be null")
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(roleService.getMembers(id)));
+    }
+
+    /** Thay thế toàn bộ quyền của một vai trò bằng danh sách mã quyền (code). */
     @PutMapping("/{id}/permissions")
     @PreAuthorize("hasAuthority('sys:role_permission:create')")
     public ResponseEntity<ApiResponse<Void>> setPermissions(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id,
-            @RequestBody List<UUID> permissionIds) {
-        roleService.setPermissionsForRole(id, permissionIds);
+            @RequestBody List<String> permissionCodes) {
+        roleService.setPermissionsForRole(id, permissionCodes);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

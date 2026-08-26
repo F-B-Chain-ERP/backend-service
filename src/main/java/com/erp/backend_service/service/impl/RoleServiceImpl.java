@@ -18,6 +18,7 @@ import com.erp.backend_service.service.AuditService;
 import com.erp.backend_service.service.PermissionService;
 import com.erp.backend_service.service.RoleService;
 import com.erp.backend_service.service.ScopeService;
+import com.erp.core.domain.Account;
 import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Permission;
 import com.erp.core.domain.Role;
@@ -25,6 +26,7 @@ import com.erp.core.domain.RolePermission;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.RoleAssignmentRequest;
 import com.erp.core.dto.auth.RoleAssignmentResponse;
+import com.erp.core.dto.auth.RoleMemberResponse;
 import com.erp.core.dto.auth.RoleResponse;
 import com.erp.core.dto.request.role.CreateRoleRequest;
 import com.erp.core.dto.request.role.UpdateRoleRequest;
@@ -42,6 +44,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -299,24 +303,75 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<UUID> getPermissionsByRole(UUID roleId) {
+    public List<String> getPermissionsByRole(UUID roleId) {
         if (!roleRepository.existsById(roleId)) {
             throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
         }
-        return rolePermissionRepository.findByRoleId(roleId).stream()
+        List<UUID> permissionIds = rolePermissionRepository.findByRoleId(roleId).stream()
                 .map(RolePermission::getPermissionId)
+                .toList();
+        if (permissionIds.isEmpty()) {
+            return List.of();
+        }
+        return permissionRepository.findAllById(permissionIds).stream()
+                .map(Permission::getCode)
                 .toList();
     }
 
     @Override
-    @Transactional
-    public void setPermissionsForRole(UUID roleId, List<UUID> permissionIds) {
+    @Transactional(readOnly = true)
+    public List<RoleMemberResponse> getMembers(UUID roleId) {
         if (!roleRepository.existsById(roleId)) {
             throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
         }
-        List<UUID> distinctIds = permissionIds == null ? List.of() : permissionIds.stream().distinct().toList();
-        List<Permission> permissions = permissionRepository.findAllById(distinctIds);
-        if (permissions.size() != distinctIds.size()) {
+
+        List<AccountRole> assignments = accountRoleRepository.findEffectiveByRoleId(
+                roleId, EntityStatus.ACTIVE, Instant.now());
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+
+        // Một tài khoản có thể được gán vai trò ở nhiều phạm vi, gộp theo accountId
+        // và lấy thời điểm gán sớm nhất.
+        Map<UUID, Instant> assignedAtByAccount = new HashMap<>();
+        for (AccountRole assignment : assignments) {
+            assignedAtByAccount.merge(assignment.getAccountId(), assignment.getAssignedAt(),
+                    (existing, next) -> existing.isBefore(next) ? existing : next);
+        }
+
+        Map<UUID, Account> accounts = new HashMap<>();
+        accountRepository.findAllById(assignedAtByAccount.keySet())
+                .forEach(account -> accounts.put(account.getId(), account));
+
+        List<RoleMemberResponse> members = new ArrayList<>();
+        for (Map.Entry<UUID, Instant> entry : assignedAtByAccount.entrySet()) {
+            Account account = accounts.get(entry.getKey());
+            if (account == null) {
+                continue;
+            }
+            members.add(new RoleMemberResponse(
+                    account.getId(),
+                    account.getUsername(),
+                    account.getFullName(),
+                    account.getEmail(),
+                    null,
+                    entry.getValue()
+            ));
+        }
+        return members;
+    }
+
+    @Override
+    @Transactional
+    public void setPermissionsForRole(UUID roleId, List<String> permissionCodes) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new BaseException(ErrorCode.ROLE_NOT_FOUND));
+        if ("ADMIN".equals(role.getCode())) {
+            throw new BaseException(ErrorCode.CANNOT_MODIFY_ADMIN);
+        }
+        List<String> distinctCodes = permissionCodes == null ? List.of() : permissionCodes.stream().distinct().toList();
+        List<Permission> permissions = permissionRepository.findByCodeIn(distinctCodes);
+        if (permissions.size() != distinctCodes.size()) {
             throw new BaseException(ErrorCode.PERMISSION_NOT_FOUND);
         }
 
@@ -331,9 +386,10 @@ public class RoleServiceImpl implements RoleService {
         rolePermissionRepository.saveAll(mappings);
 
         // Làm mới snapshot quyền của các tài khoản đang giữ vai trò này
+        // (xoá cache Redis 1 lần cho toàn bộ, thay vì N lượt gọi từng tài khoản)
         List<UUID> accountIds = accountRoleRepository.findAccountIdsByRoleIdIn(
                 List.of(roleId), EntityStatus.ACTIVE);
-        accountIds.forEach(permissionService::evictSnapshot);
+        permissionService.evictSnapshots(accountIds);
     }
 
     private RoleResponse toResponse(Role role) {

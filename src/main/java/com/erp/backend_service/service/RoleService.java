@@ -6,6 +6,7 @@ import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.auth.RoleAssignmentRequest;
 import com.erp.core.dto.auth.RoleAssignmentResponse;
+import com.erp.core.dto.auth.RoleMemberResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -52,18 +53,26 @@ public interface RoleService {
     void delete(UUID id);
 
     /**
-     * Lấy danh sách id quyền đã gán cho một vai trò.
+     * Lấy danh sách mã quyền (code) đã gán cho một vai trò.
      *
      * @param roleId id vai trò
-     * @return danh sách permission id
+     * @return danh sách permission code (ví dụ: sys:role:view)
      */
-    List<UUID> getPermissionsByRole(UUID roleId);
+    List<String> getPermissionsByRole(UUID roleId);
+
+    /**
+     * Lấy danh sách tài khoản là thành viên của một vai trò (đã gán effective).
+     *
+     * @param roleId id vai trò
+     * @return danh sách thành viên (RoleMemberResponse)
+     */
+    List<RoleMemberResponse> getMembers(UUID roleId);
 
     /**
      * Thay thế toàn bộ quyền của một vai trò bằng danh sách mới.
      *
-     * @param roleId         id vai trò
-     * @param permissionIds  danh sách permission id (có thể rỗng để gỡ hết)
+     * @param roleId           id vai trò
+     * @param permissionCodes  danh sách permission code (ví dụ: sys:role:view), có thể rỗng để gỡ hết
      */
-    void setPermissionsForRole(UUID roleId, List<UUID> permissionIds);
+    void setPermissionsForRole(UUID roleId, List<String> permissionCodes);
 }

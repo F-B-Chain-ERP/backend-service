@@ -75,6 +75,13 @@ public interface PermissionService {
     void evictSnapshot(UUID accountId);
 
     /**
+     * Xoá ảnh chụp quyền hạn của nhiều tài khoản cùng lúc (1 lần gọi Redis).
+     *
+     * @param accountIds danh sách id tài khoản
+     */
+    void evictSnapshots(java.util.Collection<UUID> accountIds);
+
+    /**
      * Xây dựng ảnh chụp quyền hạn trực tiếp từ {@link CustomUserDetails} (không qua DB).
      *
      * @param details thông tin người dùng đã xác thực

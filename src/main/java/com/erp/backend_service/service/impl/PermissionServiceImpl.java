@@ -43,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -152,6 +153,24 @@ public class PermissionServiceImpl implements PermissionService {
             redisTemplate.delete(RedisKeys.permissionSnapshot(accountId));
         } catch (RuntimeException exception) {
             log.warn("Redis unavailable while evicting permission snapshot: {}", exception.getMessage());
+        }
+    }
+
+    @Override
+    public void evictSnapshots(Collection<UUID> accountIds) {
+        if (accountIds == null || accountIds.isEmpty()) {
+            return;
+        }
+        try {
+            List<String> keys = accountIds.stream()
+                    .filter(Objects::nonNull)
+                    .map(RedisKeys::permissionSnapshot)
+                    .toList();
+            if (!keys.isEmpty()) {
+                redisTemplate.delete(keys);
+            }
+        } catch (RuntimeException exception) {
+            log.warn("Redis unavailable while evicting permission snapshots: {}", exception.getMessage());
         }
     }
 

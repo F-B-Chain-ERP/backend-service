@@ -60,7 +60,7 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
 
         String normalizedSearch = StringUtils.hasText(search)
                 ? search.trim()
-                : null;
+                : "";
         Page<SupplierMaterial> pageResult =
                 supplierMaterialRepository.search(
                         supplierId,
@@ -99,31 +99,37 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     @Transactional
     public SupplierMaterialResponse update(UUID id, UpdateSupplierMaterialRequest request) {
         SupplierMaterial entity = findById(id);
-        if(!supplierRepository.existsById(request.supplierId())){
+
+        if (!supplierRepository.existsById(request.supplierId())) {
             throw new BaseException(ErrorCode.SUPPLIER_NOT_FOUND);
         }
 
-        if(!materialRepository.existsById(request.materialId())){
+        if (!materialRepository.existsById(request.materialId())) {
             throw new BaseException(ErrorCode.MATERIAL_NOT_FOUND);
         }
 
-        if(supplierMaterialRepository.existsBySupplierIdAndMaterialId(
+        if (supplierMaterialRepository.existsBySupplierIdAndMaterialIdAndIdNot(
                 request.supplierId(),
-                request.materialId()
-        )){
+                request.materialId(),
+                id
+        )) {
             throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_EXISTS);
         }
 
-        apply(entity,
+        apply(
+                entity,
                 request.supplierId(),
                 request.materialId(),
                 request.supplierSku(),
                 request.purchasePrice(),
                 request.leadTimeDays(),
                 request.isPreferred(),
-                request.status());
+                request.status()
+        );
 
-        return toResponseWithNames(supplierMaterialRepository.save(entity));
+        return toResponseWithNames(
+                supplierMaterialRepository.save(entity)
+        );
     }
 
     @Override

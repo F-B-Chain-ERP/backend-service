@@ -28,7 +28,7 @@ public class SupplierMaterialController {
     public ResponseEntity<ApiResponse<PageResponse<SupplierMaterialResponse>>> listBySupplier(
             @PathVariable UUID supplierId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search) {
         return ResponseEntity.ok(ApiResponse.success(
                 supplierMaterialService.list(page, size, supplierId, null, search)));

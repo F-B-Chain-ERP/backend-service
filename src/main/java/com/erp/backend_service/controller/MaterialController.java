@@ -28,7 +28,7 @@ public class MaterialController {
     @PreAuthorize("hasAuthority('inv:material:view')")
     public ResponseEntity<ApiResponse<PageResponse<MaterialResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search) {
         return ResponseEntity.ok(ApiResponse.success(materialService.list(page, size, search)));
     }

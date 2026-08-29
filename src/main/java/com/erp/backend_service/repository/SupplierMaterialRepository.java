@@ -16,10 +16,11 @@ public interface SupplierMaterialRepository extends JpaRepository<SupplierMateri
         SELECT sm 
         FROM SupplierMaterial sm 
         WHERE (:supplierId IS NULL OR sm.supplierId = :supplierId)
-        AND (:materialId IS NULL OR sm.materialId = :supplierId)
+        AND (:materialId IS NULL OR sm.materialId = :materialId)
         AND (
                 :search IS NULL 
-                OR LOWER(sm.supplierSku) LIKE CONCAT('%', :search, '%')
+                OR :search = '' 
+                OR LOWER(COALESCE(sm.supplierSku, '')) LIKE CONCAT('%', LOWER(:search), '%')
         )
 """)
     Page search(

@@ -60,7 +60,7 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
 
         String normalizedSearch = StringUtils.hasText(search)
                 ? search.trim()
-                : "";
+                : null;
         Page<SupplierMaterial> pageResult =
                 supplierMaterialRepository.search(
                         supplierId,

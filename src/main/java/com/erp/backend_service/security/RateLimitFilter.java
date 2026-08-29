@@ -1,6 +1,7 @@
 package com.erp.backend_service.security;
 
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.util.RedisKeys;
 import com.erp.core.dto.response.ApiResponse;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
@@ -77,7 +78,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         String clientKey = resolveClientKey(request);
-        boolean isAuthenticated = clientKey.startsWith("rl:user:");
+        boolean isAuthenticated = clientKey.startsWith("ratelimit:authenticated:");
 
         long capacity;
         long windowSeconds;
@@ -119,6 +120,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             }
             if (currentCount == 1L) {
                 stringRedisTemplate.expire(key, Duration.ofSeconds(windowSeconds));
+            } else if (currentCount != null && stringRedisTemplate.getExpire(key) < 0) {
+                // Key tồn tại nhưng không có TTL (zombie) -> gắn lại để tránh khóa vĩnh viễn.
+                stringRedisTemplate.expire(key, Duration.ofSeconds(windowSeconds));
             }
             return currentCount <= capacity;
         } catch (Exception e) {
@@ -146,7 +150,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             if (jwtProvider.validateToken(token) && jwtProvider.isAccessToken(token)) {
                 try {
                     UUID accountId = jwtProvider.extractPrincipalId(token);
-                    return "rl:user:" + accountId;
+                    // Giới hạn theo phiên đăng nhập (jti) thay vì theo account,
+                    // để nhiều người cùng dùng 1 tài khoản không cộng dồn vào chung 1 quota.
+                    String jti = jwtProvider.extractAllClaims(token).getId();
+                    return RedisKeys.rateLimitAuthenticated(accountId, jti != null ? jti : "session");
                 } catch (Exception ignored) {
                 }
             }
@@ -166,6 +173,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
         } else {
             ipValue = "unknown";
         }
-        return "rl:ip:" + ipValue;
+        return RedisKeys.rateLimitAnonymous(ipValue);
     }
 }

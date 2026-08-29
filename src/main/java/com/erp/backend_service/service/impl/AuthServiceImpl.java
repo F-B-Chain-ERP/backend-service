@@ -355,8 +355,10 @@ public class AuthServiceImpl implements AuthService {
         } else {
             Customer customer = customerRepository.findById(principalId)
                     .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
-            if (!customer.isHasLocalPassword()
-                    || !passwordEncoder.matches(request.oldPassword(), customer.getPassword())) {
+            // Khách hàng chưa có mật khẩu cục bộ (đăng nhập Google) được đặt mật khẩu mới
+            // mà không cần mật khẩu cũ; ngược lại vẫn yêu cầu xác thực mật khẩu hiện tại.
+            if (customer.isHasLocalPassword()
+                    && !passwordEncoder.matches(request.oldPassword(), customer.getPassword())) {
                 throw new BadRequestException(ErrorCode.BAD_CREDENTIALS);
             }
             customer.setPassword(passwordEncoder.encode(request.newPassword()));

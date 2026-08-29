@@ -16,6 +16,9 @@ public final class RedisKeys {
     private static final String PWD_RESET_ATTEMPTS_PREFIX = "auth:pwd-reset:attempts:";
     private static final String PWD_RESET_COOLDOWN_PREFIX = "auth:pwd-reset:cooldown:";
 
+    private static final String RATE_LIMIT_AUTH_PREFIX = "ratelimit:authenticated:account:";
+    private static final String RATE_LIMIT_ANON_PREFIX = "ratelimit:anonymous:ip:";
+
     private RedisKeys() {
     }
 
@@ -42,5 +45,29 @@ public final class RedisKeys {
 
     /** Khóa giới hạn thời gian gửi lại OTP đặt lại mật khẩu (cooldown). */
     public static String passwordResetCooldown(UUID principalId) { return PWD_RESET_COOLDOWN_PREFIX + principalId; }
+
+    /**
+     * Khóa giới hạn tốc độ (rate limit) cho user ĐÃ ĐĂNG NHẬP, phân biệt theo TỪNG PHIÊN.
+     * Format: {@code ratelimit:authenticated:account:{accountId}:session:{jti}}
+     * - {@code accountId}: id tài khoản.
+     * - {@code jti}: JWT ID (duy nhất mỗi lần login) → mỗi phiên có quota riêng,
+     *   nhiều người cùng 1 tài khoản không cộng dồn vào nhau.
+     * TTL: {@code app.rate-limit.authenticated.refill-seconds} (mặc định 60s).
+     * Value: số nguyên đếm số request trong cửa sổ (fixed-window counter).
+     */
+    public static String rateLimitAuthenticated(UUID accountId, String jti) {
+        return RATE_LIMIT_AUTH_PREFIX + accountId + ":session:" + jti;
+    }
+
+    /**
+     * Khóa giới hạn tốc độ (rate limit) cho user ẨN DANH, phân biệt theo IP.
+     * Format: {@code ratelimit:anonymous:ip:{ip}}
+     * - {@code ip}: địa chỉ IP thực của client (từ X-Forwarded-For hoặc remoteAddr).
+     * TTL: {@code app.rate-limit.anonymous.refill-seconds} (mặc định 60s).
+     * Value: số nguyên đếm số request trong cửa sổ (fixed-window counter).
+     */
+    public static String rateLimitAnonymous(String ip) {
+        return RATE_LIMIT_ANON_PREFIX + ip;
+    }
 
 }

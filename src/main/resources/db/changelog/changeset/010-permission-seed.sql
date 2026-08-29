@@ -131,10 +131,10 @@ VALUES
 -- =========================================================
 -- CUSTOMER
 -- =========================================================
-(gen_random_uuid(), 'customer:create', 'Create Customer', 'CUSTOMER', 'Create customer', 'ACTIVE', NOW(), NOW()),
-(gen_random_uuid(), 'customer:view', 'View Customer', 'CUSTOMER', 'View customer', 'ACTIVE', NOW(), NOW()),
-(gen_random_uuid(), 'customer:update', 'Update Customer', 'CUSTOMER', 'Update customer', 'ACTIVE', NOW(), NOW()),
-(gen_random_uuid(), 'customer:delete', 'Delete Customer', 'CUSTOMER', 'Delete customer', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'customer:customer:create', 'Create Customer', 'CUSTOMER', 'Create customer', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'customer:customer:view', 'View Customer', 'CUSTOMER', 'View customer', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'customer:customer:update', 'Update Customer', 'CUSTOMER', 'Update customer', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'customer:customer:delete', 'Delete Customer', 'CUSTOMER', 'Delete customer', 'ACTIVE', NOW(), NOW()),
 
 (gen_random_uuid(), 'customer:address:create', 'Create Customer Address', 'CUSTOMER', 'Create customer address', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'customer:address:view', 'View Customer Address', 'CUSTOMER', 'View customer address', 'ACTIVE', NOW(), NOW()),
@@ -206,6 +206,7 @@ VALUES
 (gen_random_uuid(), 'menu:voucher:update', 'Update Voucher', 'MENU', 'Update voucher', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'menu:voucher:delete', 'Delete Voucher', 'MENU', 'Delete voucher', 'ACTIVE', NOW(), NOW()),
 
+(gen_random_uuid(), 'menu:voucher_branch:view', 'View Voucher Branch', 'MENU', 'View voucher branch assignments', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'menu:voucher_branch:create', 'Create Voucher Branch', 'MENU', 'Assign voucher to branch', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'menu:voucher_branch:delete', 'Delete Voucher Branch', 'MENU', 'Remove voucher from branch', 'ACTIVE', NOW(), NOW()),
 

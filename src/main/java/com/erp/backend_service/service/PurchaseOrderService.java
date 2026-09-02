@@ -41,6 +41,9 @@ public interface PurchaseOrderService {
     /** Hủy đơn mua hàng, ghi nhận lý do. */
     PurchaseOrderResponse cancel(UUID id, String reason);
 
+    /** Từ chối đơn SUBMITTED → chuyển về DRAFT để chỉnh sửa và trình duyệt lại. */
+    PurchaseOrderResponse reject(UUID id, String reason);
+
     /** Ghi nhận số lượng thực nhận từ Kho, cập nhật received_quantity và trạng thái nhận hàng. */
     PurchaseOrderResponse receive(UUID id, ReceivePurchaseOrderRequest request);
 }

@@ -13,6 +13,7 @@ import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
+import com.erp.backend_service.service.NotificationService;
 import com.erp.backend_service.service.PurchaseOrderService;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.Material;
@@ -80,6 +81,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final DataScopeHelper dataScopeHelper;
+    private final NotificationService notificationService;
 
     public PurchaseOrderServiceImpl(PurchaseOrderRepository purchaseOrderRepository,
                                     PurchaseOrderItemRepository purchaseOrderItemRepository,
@@ -90,7 +92,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                                     AccountRepository accountRepository,
                                     PurchaseOrderMapper purchaseOrderMapper,
                                     PurchaseOrderItemMapper purchaseOrderItemMapper,
-                                    DataScopeHelper dataScopeHelper) {
+                                    DataScopeHelper dataScopeHelper,
+                                    NotificationService notificationService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
         this.supplierRepository = supplierRepository;
@@ -101,6 +104,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         this.purchaseOrderMapper = purchaseOrderMapper;
         this.purchaseOrderItemMapper = purchaseOrderItemMapper;
         this.dataScopeHelper = dataScopeHelper;
+        this.notificationService = notificationService;
     }
 
     /** {@inheritDoc} */
@@ -313,6 +317,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setApprovedBy(approver);
         po.setApprovedAt(java.time.Instant.now());
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        notifyPoApproved(saved);
         return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));
     }
 
@@ -333,6 +338,59 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
         po.setStatus(STATUS_CANCELLED);
         po.setCancelledAt(java.time.Instant.now());
+        po.setCancelReason(reason);
+        PurchaseOrder saved = purchaseOrderRepository.save(po);
+        notifyPoCancelled(saved, reason);
+        return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));
+    }
+
+    /** Gửi thông báo in-app cho người tạo đơn khi đơn được duyệt (SCRUM-49). */
+    private void notifyPoApproved(PurchaseOrder po) {
+        UUID recipientId = resolvePoCreatorAccountId(po);
+        if (recipientId == null) {
+            return;
+        }
+        notificationService.notifyAccount(recipientId,
+                "Đơn mua hàng đã được duyệt",
+                "Đơn mua hàng " + po.getPoCode() + " đã được duyệt.");
+    }
+
+    /** Gửi thông báo in-app cho người tạo đơn khi đơn bị huỷ (SCRUM-52). */
+    private void notifyPoCancelled(PurchaseOrder po, String reason) {
+        UUID recipientId = resolvePoCreatorAccountId(po);
+        if (recipientId == null) {
+            return;
+        }
+        String reasonText = (reason == null || reason.isBlank()) ? "không rõ lý do" : reason;
+        notificationService.notifyAccount(recipientId,
+                "Đơn mua hàng đã bị huỷ",
+                "Đơn mua hàng " + po.getPoCode() + " đã bị huỷ. Lý do: " + reasonText);
+    }
+
+    /** Xác định account ID của người tạo đơn (tra theo username trong created_by). */
+    private UUID resolvePoCreatorAccountId(PurchaseOrder po) {
+        String createdBy = po.getCreatedBy();
+        if (!StringUtils.hasText(createdBy)) {
+            return null;
+        }
+        return accountRepository.findByUsername(createdBy)
+                .map(Account::getId)
+                .orElse(null);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional
+    public PurchaseOrderResponse reject(UUID id, String reason) {
+        PurchaseOrder po = findById(id);
+        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
+        if (!STATUS_SUBMITTED.equals(po.getStatus())) {
+            throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_REJECT);
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BaseException(ErrorCode.PROC_400_PO_REJECT_REASON_REQUIRED);
+        }
+        po.setStatus(STATUS_DRAFT);
         po.setCancelReason(reason);
         PurchaseOrder saved = purchaseOrderRepository.save(po);
         return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));

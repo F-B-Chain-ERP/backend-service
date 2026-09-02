@@ -69,7 +69,12 @@ public class SupplierServiceImpl implements SupplierService {
     @Transactional
     public SupplierResponse create(CreateSupplierRequest request) {
         if (supplierRepository.existsByCode(request.code())) {
-            throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
+            throw new BaseException(ErrorCode.SUPPLIER_CODE_EXISTED);
+        }
+        if (request.taxCode() != null
+        && !request.taxCode().isBlank()
+        && supplierRepository.existsByTaxCode(request.taxCode())){
+            throw new BaseException(ErrorCode.SUPPLIER_TAX_CODE_EXISTED);
         }
         Supplier supplier = new Supplier();
         apply(supplier, request.code(), request.name(), request.taxCode(), request.contactName(),

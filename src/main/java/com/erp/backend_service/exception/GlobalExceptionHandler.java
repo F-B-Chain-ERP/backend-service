@@ -17,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
@@ -168,6 +169,17 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 "ERR_VALIDATION",
                 "Request body is missing or malformed"
+        );
+        return ResponseEntity.badRequest().body(apiResponse);
+    }
+
+    /** Xử lý validate query/path parameter của controller (400). */
+    @ExceptionHandler(value = HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handlingMethodValidation(HandlerMethodValidationException exception) {
+        ApiResponse<Void> apiResponse = ApiResponse.error(
+                HttpStatus.BAD_REQUEST.value(),
+                "ERR_VALIDATION",
+                "Validation error"
         );
         return ResponseEntity.badRequest().body(apiResponse);
     }

@@ -4,6 +4,7 @@ import com.erp.core.dto.request.proc.CreateSupplierRequest;
 import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.SupplierResponse;
+import com.erp.core.enums.EntityStatus;
 
 import java.util.UUID;
 
@@ -13,7 +14,7 @@ import java.util.UUID;
 public interface SupplierService {
 
     /** Danh sách nhà cung cấp phân trang (tìm kiếm theo mã/tên). */
-    PageResponse<SupplierResponse> list(int page, int size, String search);
+    PageResponse<SupplierResponse> list(int page, int size, String search, EntityStatus status);
 
     /** Chi tiết một nhà cung cấp. */
     SupplierResponse get(UUID id);
@@ -23,6 +24,8 @@ public interface SupplierService {
 
     /** Cập nhật nhà cung cấp. */
     SupplierResponse update(UUID id, UpdateSupplierRequest request);
+
+    SupplierResponse updateStatus(UUID id, String status);
 
     /** Xóa nhà cung cấp. */
     void delete(UUID id);

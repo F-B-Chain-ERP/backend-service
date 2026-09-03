@@ -6,11 +6,16 @@ import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.SupplierResponse;
+import com.erp.core.enums.EntityStatus;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -30,10 +35,11 @@ public class SupplierController {
     @GetMapping
     @PreAuthorize("hasAuthority('proc:supplier:view')")
     public ResponseEntity<ApiResponse<PageResponse<SupplierResponse>>> list(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(ApiResponse.success(supplierService.list(page, size, search)));
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) EntityStatus status) {
+        return ResponseEntity.ok(ApiResponse.success(supplierService.list(page, size, search, status)));
     }
 
     /** Chi tiết một nhà cung cấp. */
@@ -47,7 +53,7 @@ public class SupplierController {
     @PostMapping
     @PreAuthorize("hasAuthority('proc:supplier:create')")
     public ResponseEntity<ApiResponse<SupplierResponse>> create(@Valid @RequestBody CreateSupplierRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(supplierService.create(request)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(supplierService.create(request)));
     }
 
     /** Cập nhật nhà cung cấp. */
@@ -56,6 +62,14 @@ public class SupplierController {
     public ResponseEntity<ApiResponse<SupplierResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateSupplierRequest request) {
         return ResponseEntity.ok(ApiResponse.success(supplierService.update(id, request)));
+    }
+
+    /** Khóa / mở khóa nhà cung cấp. */
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('proc:supplier:update')")
+    public ResponseEntity<ApiResponse<SupplierResponse>> updateStatus(
+            @PathVariable UUID id, @RequestBody Map<String, String> request) {
+        return ResponseEntity.ok(ApiResponse.success(supplierService.updateStatus(id, request.get("status"))));
     }
 
     /** Xóa nhà cung cấp. */

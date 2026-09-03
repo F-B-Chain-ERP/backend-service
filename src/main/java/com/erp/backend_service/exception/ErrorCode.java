@@ -40,6 +40,8 @@ public enum ErrorCode {
     PHONE_EXISTED(400, "ERR_400_PHONE_EXISTED", "Số điện thoại đã tồn tại"),
     EMAIL_EXISTED(400, "ERR_400_EMAIL_EXISTED", "Email đã tồn tại"),
     SUPPLIER_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp"),
+    SUPPLIER_CODE_EXISTED(400, "PROC_400_SUPPLIER_CODE_EXISTED", "Mã nhà cung cấp đã được sử dụng"),
+    SUPPLIER_TAX_CODE_EXISTED(400, "PROC_400_SUPPLIER_TAX_CODE_EXISTED", "Mã số thuế đã được sử dụng bởi nhà cung cấp khác"),
     MATERIAL_NOT_FOUND(404,"PROC_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu"),
     SUPPLIER_MATERIAL_NOT_FOUND(404, "PROC_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nguyên vật liệu của nhà cung cấp"),
     SUPPLIER_MATERIAL_EXISTS(409, "PROC_409_SUPPLIER_MATERIAL_EXISTS", "Nhà cung cấp đã được liên kết với nguyên vật liệu này"),

@@ -24,7 +24,7 @@ public interface SupplierRepository extends JpaRepository<Supplier, UUID> {
     boolean existsByTaxCodeAndIdNot(String taxCode, UUID id);
 
     /** Tìm kiếm phân trang theo mã hoặc tên (không phân biệt hoa thường). */
-    org.springframework.data.domain.Page<Supplier> findAllByNameContainingIgnoreCaseOrCodeContainingIgnoreCase(
+    Page<Supplier> findAllByNameContainingIgnoreCaseOrCodeContainingIgnoreCase(
             String name, String code, org.springframework.data.domain.Pageable pageable);
 
     /** Tìm kiếm phân trang theo mã, tên, điện thoại, người liên hệ, email, địa chỉ, mã số thuế (không phân biệt hoa thường). */

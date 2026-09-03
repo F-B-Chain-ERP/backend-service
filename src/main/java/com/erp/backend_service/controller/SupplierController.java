@@ -8,8 +8,6 @@ import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.SupplierResponse;
 import com.erp.core.enums.EntityStatus;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -35,8 +33,8 @@ public class SupplierController {
     @GetMapping
     @PreAuthorize("hasAuthority('proc:supplier:view')")
     public ResponseEntity<ApiResponse<PageResponse<SupplierResponse>>> list(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) EntityStatus status) {
         return ResponseEntity.ok(ApiResponse.success(supplierService.list(page, size, search, status)));

@@ -19,6 +19,9 @@ public interface BranchService {
     /** Danh sách chi nhánh thuộc phạm vi quyền của tài khoản hiện tại. */
     List<BranchResponse> findMine();
 
+    /** Danh sách chi nhánh được gán cho một tài khoản theo accountId. */
+    List<BranchResponse> findByAccountId(UUID accountId);
+
     /** Chi tiết một chi nhánh theo id. */
     BranchResponse findById(UUID id);
 

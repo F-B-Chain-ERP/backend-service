@@ -15,7 +15,9 @@ import com.erp.backend_service.service.AccountService;
 import com.erp.backend_service.service.PermissionService;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.AccountRole;
+import com.erp.core.domain.Branch;
 import com.erp.core.domain.Scope;
+import com.erp.core.dto.auth.AccountBranchResponse;
 import com.erp.core.dto.auth.AccountResponse;
 import com.erp.core.dto.auth.CreateAccountRequest;
 import com.erp.core.dto.auth.ResetPasswordRequest;
@@ -38,9 +40,13 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Triển khai {@link AccountService}: quản lý tài khoản nội bộ do admin thực hiện
@@ -126,7 +132,7 @@ public class AccountServiceImpl implements AccountService {
             syncRolesForBranch(account, request.primaryBranchId(), request.roleIds());
         }
 
-        return accountMapper.toResponse(account);
+        return toResponse(account);
     }
 
     /** {@inheritDoc} */
@@ -138,7 +144,7 @@ public class AccountServiceImpl implements AccountService {
         if (!dataScopeHelper.isAllSystem() && account.getPrimaryBranchId() != null) {
             dataScopeHelper.enforceBranchAccess(account.getPrimaryBranchId());
         }
-        return accountMapper.toResponse(account);
+        return toResponse(account);
     }
 
     /** {@inheritDoc} */
@@ -161,7 +167,7 @@ public class AccountServiceImpl implements AccountService {
                 accountPage.getSize(),
                 accountPage.getTotalElements(),
                 accountPage.getTotalPages(),
-                accountPage.getContent().stream().map(accountMapper::toResponse).toList()
+                accountPage.getContent().stream().map(this::toResponse).toList()
         );
     }
 
@@ -223,7 +229,7 @@ public class AccountServiceImpl implements AccountService {
             permissionService.evictSnapshot(id);
         }
 
-        return accountMapper.toResponse(saved);
+        return toResponse(saved);
     }
 
     /** {@inheritDoc} */
@@ -249,7 +255,54 @@ public class AccountServiceImpl implements AccountService {
         Account saved = accountRepository.save(account);
         permissionService.evictSnapshot(id);
         revocationService.revokeAccount(id, accessTokenLifetime);
-        return accountMapper.toResponse(saved);
+        return toResponse(saved);
+    }
+
+    /** Trả về account kèm toàn bộ chi nhánh từ các scope được gán hiệu lực. */
+    private AccountResponse toResponse(Account account) {
+        List<AccountRole> assignments = accountRoleRepository.findEffectiveByAccountId(
+                account.getId(), EntityStatus.ACTIVE, Instant.now());
+
+        List<UUID> scopeIds = assignments.stream()
+                .map(AccountRole::getScopeId)
+                .distinct()
+                .toList();
+        Map<UUID, Scope> scopes = scopeRepository.findAllById(scopeIds).stream()
+                .filter(scope -> scope.getStatus() == EntityStatus.ACTIVE)
+                .collect(Collectors.toMap(Scope::getId, Function.identity()));
+
+        boolean allSystem = scopes.values().stream()
+                .anyMatch(scope -> scope.getScopeType() == ScopeType.ALL_SYSTEM);
+
+        Set<UUID> branchIds = scopes.values().stream()
+                .map(Scope::getBranchId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        // Luôn giữ chi nhánh chính trong response, kể cả dữ liệu cũ chưa có assignment.
+        if (account.getPrimaryBranchId() != null) {
+            branchIds.add(account.getPrimaryBranchId());
+        }
+
+        List<Branch> branchEntities = allSystem
+                ? branchRepository.findAll()
+                : branchRepository.findAllById(branchIds);
+
+        List<AccountBranchResponse> branches = branchEntities.stream()
+                .sorted((left, right) -> {
+                    boolean leftPrimary = Objects.equals(left.getId(), account.getPrimaryBranchId());
+                    boolean rightPrimary = Objects.equals(right.getId(), account.getPrimaryBranchId());
+                    if (leftPrimary != rightPrimary) return leftPrimary ? -1 : 1;
+                    return left.getName().compareToIgnoreCase(right.getName());
+                })
+                .map(branch -> new AccountBranchResponse(
+                        branch.getId(),
+                        branch.getCode(),
+                        branch.getName(),
+                        Objects.equals(branch.getId(), account.getPrimaryBranchId())
+                ))
+                .toList();
+
+        return accountMapper.toResponse(account, branches);
     }
 
     /**

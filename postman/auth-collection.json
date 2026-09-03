@@ -29,6 +29,11 @@
       "key": "reset_token",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -281,6 +286,27 @@
               "raw": "{\n  \"password\": \"NewPassword@123\"\n}"
             },
             "description": "Auth required (admin). Reset an internal account's password by account id."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Branches",
+      "item": [
+        {
+          "name": "Get Branches by Account",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/branches/account/{{account_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "branches", "account", "{{account_id}}"]
+            },
+            "description": "Auth required. Get all branches assigned to an account by accountId."
           },
           "response": []
         }

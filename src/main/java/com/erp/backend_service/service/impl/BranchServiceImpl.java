@@ -3,16 +3,21 @@ package com.erp.backend_service.service.impl;
 import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.BranchMapper;
+import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.BranchService;
+import com.erp.backend_service.service.ScopeService;
 import com.erp.core.domain.Account;
+import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Branch;
+import com.erp.core.domain.Scope;
 import com.erp.core.dto.request.branch.CreateBranchRequest;
 import com.erp.core.dto.request.branch.UpdateBranchRequest;
 import com.erp.core.dto.response.branch.BranchResponse;
 import com.erp.core.dto.auth.ScopeResponse;
+import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,12 +43,18 @@ public class BranchServiceImpl implements BranchService {
     private final BranchRepository branchRepository;
     private final BranchMapper branchMapper;
     private final com.erp.backend_service.repository.AccountRepository accountRepository;
+    private final AccountRoleRepository accountRoleRepository;
+    private final ScopeService scopeService;
 
     public BranchServiceImpl(BranchRepository branchRepository, BranchMapper branchMapper,
-                             com.erp.backend_service.repository.AccountRepository accountRepository) {
+                             com.erp.backend_service.repository.AccountRepository accountRepository,
+                             AccountRoleRepository accountRoleRepository,
+                             ScopeService scopeService) {
         this.branchRepository = branchRepository;
         this.branchMapper = branchMapper;
         this.accountRepository = accountRepository;
+        this.accountRoleRepository = accountRoleRepository;
+        this.scopeService = scopeService;
     }
 
     /** {@inheritDoc} */
@@ -88,6 +99,38 @@ public class BranchServiceImpl implements BranchService {
             }
             branches = branchRepository.findAllById(allowedIds);
         }
+        Map<UUID, String> parentNames = resolveParentNames(branches);
+        return branches.stream()
+                .map(branch -> branchMapper.toResponse(branch, parentNames))
+                .toList();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional(readOnly = true)
+    public List<BranchResponse> findByAccountId(UUID accountId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new BaseException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        List<AccountRole> accountRoles = accountRoleRepository.findByAccountId(accountId);
+        Map<UUID, Scope> scopes = scopeService.findAllById(
+                accountRoles.stream().map(AccountRole::getScopeId).distinct().toList());
+
+        java.util.Set<UUID> allowedIds = accountRoles.stream()
+                .map(ar -> scopes.get(ar.getScopeId()))
+                .filter(Objects::nonNull)
+                .map(Scope::getBranchId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        if (account.getPrimaryBranchId() != null) {
+            allowedIds.add(account.getPrimaryBranchId());
+        }
+
+        if (allowedIds.isEmpty()) {
+            return List.of();
+        }
+        List<Branch> branches = branchRepository.findAllById(allowedIds);
         Map<UUID, String> parentNames = resolveParentNames(branches);
         return branches.stream()
                 .map(branch -> branchMapper.toResponse(branch, parentNames))

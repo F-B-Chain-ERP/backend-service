@@ -42,6 +42,13 @@ public class BranchController {
         return ResponseEntity.ok(ApiResponse.success(branchService.findMine()));
     }
 
+    /** Danh sách chi nhánh được gán cho một tài khoản theo accountId. */
+    @GetMapping("/account/{accountId}")
+    @PreAuthorize("hasAuthority('sys:branch:view')")
+    public ResponseEntity<ApiResponse<List<BranchResponse>>> byAccount(@PathVariable UUID accountId) {
+        return ResponseEntity.ok(ApiResponse.success(branchService.findByAccountId(accountId)));
+    }
+
     /** Chi tiết một chi nhánh. */
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sys:branch:view')")

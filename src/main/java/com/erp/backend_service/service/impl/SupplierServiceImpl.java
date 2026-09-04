@@ -10,6 +10,7 @@ import com.erp.core.dto.request.proc.CreateSupplierRequest;
 import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.SupplierResponse;
+import com.erp.core.enums.EntityStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -41,12 +42,15 @@ public class SupplierServiceImpl implements SupplierService {
     /** {@inheritDoc} */
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<SupplierResponse> list(int page, int size, String search) {
+    public PageResponse<SupplierResponse> list(int page, int size, String search, EntityStatus status) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
-        Page<Supplier> supplierPage = supplierRepository.findAllByNameContainingIgnoreCaseOrCodeContainingIgnoreCase(
+        if (page < 0 || size <1 || size > MAX_PAGE_SIZE){
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
+        }
+        Pageable pageable = PageRequest.of(page, size,Sort.by("createdAt").descending());
+        Page<Supplier> supplierPage = supplierRepository.search(
                 StringUtils.hasText(search) ? search.trim() : "",
-                StringUtils.hasText(search) ? search.trim() : "",
+                status != null ? status.name() : null,
                 pageable);
         return new PageResponse<>(
                 supplierPage.getNumber(),
@@ -90,8 +94,34 @@ public class SupplierServiceImpl implements SupplierService {
         if (!supplier.getCode().equals(request.code()) && supplierRepository.existsByCode(request.code())) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
         }
+        if(StringUtils.hasText(request.taxCode())
+        && supplierRepository.existsByTaxCodeAndIdNot(request.taxCode(), id)){
+            throw new BaseException(ErrorCode.SUPPLIER_TAX_CODE_EXISTED);
+        }
         apply(supplier, request.code(), request.name(), request.taxCode(), request.contactName(),
                 request.phone(), request.email(), request.address(), request.paymentTermDays(), request.status());
+        return toResponse(supplierRepository.save(supplier));
+    }
+
+    /** PATCH */
+    @Override
+    @Transactional
+    public SupplierResponse updateStatus(UUID id, String status) {
+        Supplier supplier = findById(id);
+
+        if (!StringUtils.hasText(status)) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
+        }
+
+        String normalizedStatus = status.trim().toUpperCase();
+
+        if (!"ACTIVE".equals(normalizedStatus)
+                && !"INACTIVE".equals(normalizedStatus)) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
+        }
+
+        supplier.setStatus(normalizedStatus);
+
         return toResponse(supplierRepository.save(supplier));
     }
 

@@ -67,7 +67,24 @@ public enum ErrorCode {
     PERMISSION_NOT_FOUND(404, "PERMISSION_NOT_FOUND", "Permission not found"),
     PERMISSION_CODE_EXISTS(409, "PERMISSION_CODE_EXISTS", "Permission code already exists"),
     PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),
-    SCOPE_IN_USE(409, "SCOPE_IN_USE", "Phạm vi vẫn đang được gán cho một hoặc nhiều tài khoản"),;
+    SCOPE_IN_USE(409, "SCOPE_IN_USE", "Phạm vi vẫn đang được gán cho một hoặc nhiều tài khoản"),
+    INV_404_STOCK_IN_NOT_FOUND(404, "INV_404_STOCK_IN_NOT_FOUND", "Phiếu nhập kho không tồn tại."),
+    INV_404_STOCK_OUT_NOT_FOUND(404, "INV_404_STOCK_OUT_NOT_FOUND", "Phiếu xuất kho không tồn tại."),
+    INV_404_WAREHOUSE_NOT_FOUND(404, "INV_404_WAREHOUSE_NOT_FOUND", "Không tìm thấy kho."),
+    INV_404_MATERIAL_NOT_FOUND(404, "INV_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu."),
+    INV_400_STOCK_IN_ITEMS_EMPTY(400, "INV_400_STOCK_IN_ITEMS_EMPTY", "Phiếu nhập kho phải có ít nhất một dòng chi tiết."),
+    INV_400_STOCK_OUT_ITEMS_EMPTY(400, "INV_400_STOCK_OUT_ITEMS_EMPTY", "Phiếu xuất kho phải có ít nhất một dòng chi tiết."),
+    INV_400_INVALID_SOURCE_TYPE(400, "INV_400_INVALID_SOURCE_TYPE", "Loại nguồn nhập không hợp lệ."),
+    INV_400_INVALID_DESTINATION_TYPE(400, "INV_400_INVALID_DESTINATION_TYPE", "Loại đích xuất không hợp lệ."),
+    INV_400_STOCK_IN_INVALID_STATUS_FOR_EDIT(400, "INV_400_STOCK_IN_INVALID_STATUS_FOR_EDIT", "Chỉ có thể chỉnh sửa phiếu nhập kho ở trạng thái DRAFT."),
+    INV_400_STOCK_OUT_INVALID_STATUS_FOR_EDIT(400, "INV_400_STOCK_OUT_INVALID_STATUS_FOR_EDIT", "Chỉ có thể chỉnh sửa phiếu xuất kho ở trạng thái DRAFT."),
+    INV_400_STOCK_IN_INVALID_STATUS(400, "INV_400_STOCK_IN_INVALID_STATUS", "Không thể ghi sổ/hủy phiếu nhập kho ở trạng thái hiện tại."),
+    INV_400_STOCK_OUT_INVALID_STATUS(400, "INV_400_STOCK_OUT_INVALID_STATUS", "Không thể ghi sổ/hủy phiếu xuất kho ở trạng thái hiện tại."),
+    INV_400_INSUFFICIENT_STOCK(400, "INV_400_INSUFFICIENT_STOCK", "Số lượng tồn kho không đủ để xuất."),
+    INV_400_OVER_RECEIPT(400, "INV_400_OVER_RECEIPT", "Số lượng nhập vượt quá số lượng đặt còn lại của dòng hàng."),
+    INV_400_PO_INVALID_STATUS_FOR_RECEIVE(400, "INV_400_PO_INVALID_STATUS_FOR_RECEIVE", "Đơn mua hàng không ở trạng thái cho phép ghi nhận nhập kho."),
+    INV_400_STOCK_IN_INVALID_FILTER(400, "INV_400_STOCK_IN_INVALID_FILTER", "Khoảng ngày hoặc giá trị lọc phiếu nhập không hợp lệ."),
+    INV_400_STOCK_OUT_INVALID_FILTER(400, "INV_400_STOCK_OUT_INVALID_FILTER", "Khoảng ngày hoặc giá trị lọc phiếu xuất không hợp lệ."),;
 
 
     private final int statusCode;

@@ -67,6 +67,8 @@ public enum ErrorCode {
     INV_400_MATERIAL_CODE_EXISTED(400, "INV_400_MATERIAL_CODE_EXISTED", "Mã nguyên vật liệu đã tồn tại."),
     INV_404_CATEGORY_NOT_FOUND(404, "INV_404_CATEGORY_NOT_FOUND", "Không tìm thấy danh mục."),
     INV_404_UNIT_NOT_FOUND(404, "INV_404_UNIT_NOT_FOUND", "Không tìm thấy đơn vị tính."),
+    INV_400_UNIT_CODE_EXISTED(400, "INV_400_UNIT_CODE_EXISTED", "Mã đơn vị tính đã tồn tại."),
+    INV_400_UNIT_IN_USE(400, "INV_400_UNIT_IN_USE", "Đơn vị tính đã phát sinh dữ liệu và không thể xóa. Vui lòng chuyển sang INACTIVE."),
     INV_400_INVALID_MATERIAL_CATEGORY(400, "INV_400_INVALID_MATERIAL_CATEGORY", "Danh mục phải thuộc nhóm MATERIAL."),
     INV_400_INVALID_MATERIAL_DATA(400, "INV_400_INVALID_MATERIAL_DATA", "Dữ liệu nguyên vật liệu không hợp lệ."),
     INV_400_MATERIAL_INVALID_STATUS(400, "INV_400_MATERIAL_INVALID_STATUS", "Trạng thái nguyên vật liệu không hợp lệ."),

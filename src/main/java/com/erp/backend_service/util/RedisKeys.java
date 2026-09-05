@@ -19,6 +19,10 @@ public final class RedisKeys {
     private static final String RATE_LIMIT_AUTH_PREFIX = "ratelimit:authenticated:account:";
     private static final String RATE_LIMIT_ANON_PREFIX = "ratelimit:anonymous:ip:";
 
+    public static final String SSE_TICKET_PREFIX = "sse:ticket:";
+    public static final long SSE_TICKET_TTL_SECONDS = 30L;
+    public static final String NOTIFICATION_CHANNEL_PREFIX = "notification:";
+
     private RedisKeys() {
     }
 
@@ -68,6 +72,16 @@ public final class RedisKeys {
      */
     public static String rateLimitAnonymous(String ip) {
         return RATE_LIMIT_ANON_PREFIX + ip;
+    }
+
+    /** Khóa lưu vé một lần (single-use ticket) để kết nối SSE. */
+    public static String sseTicket(String ticket) {
+        return SSE_TICKET_PREFIX + ticket;
+    }
+
+    /** Kênh Redis Pub/Sub thông báo realtime cho tài khoản. */
+    public static String notificationChannel(UUID accountId) {
+        return NOTIFICATION_CHANNEL_PREFIX + accountId;
     }
 
 }

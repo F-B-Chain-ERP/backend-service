@@ -16,4 +16,6 @@ public interface PurchaseOrderItemRepository extends JpaRepository<PurchaseOrder
 
     /** Xóa tất cả dòng chi tiết theo đơn mua hàng. */
     void deleteByPurchaseOrderId(UUID purchaseOrderId);
+
+    boolean existsByMaterialId(UUID materialId);
 }

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,6 +18,7 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
 
     /** Tìm vai trò theo mã (code). */
     Optional<Role> findByCode(String code);
+    List<Role> findByCodeIn(Collection<String> codes);
     List<Role> findAllByStatus(EntityStatus status);
     Page<Role> findAll(Pageable pageable);
     Page<Role> findByNameContainingIgnoreCaseOrCodeContainingIgnoreCase(String name, String code, Pageable pageable);

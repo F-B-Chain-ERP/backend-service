@@ -4,6 +4,7 @@ import com.erp.core.domain.PurchaseOrder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -48,4 +49,11 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
                                @Param("fromDate") LocalDate fromDate,
                                @Param("toDate") LocalDate toDate,
                                Pageable pageable);
+    /**
+     * Ghi đè created_by chỉ khi giá trị hiện tại là NULL (bỏ qua ràng buộc updatable=false của JPA).
+     * Dùng khi submit đơn mà đơn được tạo từ seed-data hoặc không có security-context.
+     */
+    @Modifying
+    @Query("update PurchaseOrder po set po.createdBy = :username where po.id = :id and po.createdBy is null")
+    void fixCreatedByIfNull(@Param("id") UUID id, @Param("username") String username);
 }

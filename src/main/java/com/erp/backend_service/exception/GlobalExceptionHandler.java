@@ -17,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
@@ -31,6 +32,16 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * Xử lý client SSE ngắt kết nối đột ngột — không cần log ERROR vì đây là hành vi bình thường.
+     * Trả về response rỗng thay vì JSON để tránh lỗi "No converter for ApiResponse with content-type 'text/event-stream'".
+     */
+    @ExceptionHandler(value = AsyncRequestNotUsableException.class)
+    public ResponseEntity<Void> handlingAsyncRequestNotUsable(AsyncRequestNotUsableException exception) {
+        log.debug("SSE client disconnected (AsyncRequestNotUsableException): {}", exception.getMessage());
+        return ResponseEntity.ok().build();
+    }
 
     /** Xử lý các ngoại lệ không được phân loại (500). */
     @ExceptionHandler(value = Exception.class)

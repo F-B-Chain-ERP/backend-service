@@ -19,6 +19,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -41,6 +42,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Void> handlingAsyncRequestNotUsable(AsyncRequestNotUsableException exception) {
         log.debug("SSE client disconnected (AsyncRequestNotUsableException): {}", exception.getMessage());
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Xử lý endpoint hoặc static resource không tồn tại (404) thay vì bị log thành lỗi không phân loại (500).
+     */
+    @ExceptionHandler(value = NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handlingNoResourceFound(NoResourceFoundException exception) {
+        log.warn("Tài nguyên không tồn tại (404): {}", exception.getMessage());
+        ApiResponse<Void> apiResponse = ApiResponse.error(
+                HttpStatus.NOT_FOUND.value(),
+                ErrorCode.RESOURCE_NOT_FOUND.getCode(),
+                "Không tìm thấy tài nguyên hoặc endpoint: " + exception.getResourcePath()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(apiResponse);
     }
 
     /** Xử lý các ngoại lệ không được phân loại (500). */

@@ -44,10 +44,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Transactional(readOnly = true)
     public PageResponse<SupplierResponse> list(int page, int size, String search, EntityStatus status) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        if (page < 0 || size <1 || size > MAX_PAGE_SIZE){
-            throw new BaseException(ErrorCode.INVALID_REQUEST);
-        }
-        Pageable pageable = PageRequest.of(page, size,Sort.by("createdAt").descending());
+        Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Supplier> supplierPage = supplierRepository.search(
                 StringUtils.hasText(search) ? search.trim() : "",
                 status != null ? status.name() : null,

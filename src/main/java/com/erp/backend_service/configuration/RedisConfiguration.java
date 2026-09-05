@@ -1,5 +1,7 @@
 package com.erp.backend_service.configuration;
 
+import com.erp.backend_service.service.NotificationRedisListener;
+import com.erp.backend_service.util.RedisKeys;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -7,6 +9,8 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.PatternTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.RedisSerializer;
 
 /**
@@ -39,5 +43,20 @@ public class RedisConfiguration {
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
         return new StringRedisTemplate(connectionFactory);
+    }
+
+    /** Container lắng nghe các kênh Redis Pub/Sub thông báo realtime (pattern "notification:*"). */
+    @Bean
+    public RedisMessageListenerContainer notificationListenerContainer(
+            RedisConnectionFactory connectionFactory,
+            NotificationRedisListener notificationRedisListener
+    ) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(
+                notificationRedisListener,
+                new PatternTopic(RedisKeys.NOTIFICATION_CHANNEL_PREFIX + "*")
+        );
+        return container;
     }
 }

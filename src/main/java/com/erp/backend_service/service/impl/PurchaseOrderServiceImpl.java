@@ -11,10 +11,14 @@ import com.erp.backend_service.repository.PurchaseOrderRepository;
 import com.erp.backend_service.repository.SupplierRepository;
 import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
+import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
+import com.erp.backend_service.service.NotificationResolverService;
 import com.erp.backend_service.service.NotificationService;
 import com.erp.backend_service.service.PurchaseOrderService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.PurchaseOrder;
@@ -47,9 +51,12 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -82,6 +89,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final DataScopeHelper dataScopeHelper;
     private final NotificationService notificationService;
+    private final NotificationResolverService notificationResolverService;
 
     public PurchaseOrderServiceImpl(PurchaseOrderRepository purchaseOrderRepository,
                                     PurchaseOrderItemRepository purchaseOrderItemRepository,
@@ -93,7 +101,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                                     PurchaseOrderMapper purchaseOrderMapper,
                                     PurchaseOrderItemMapper purchaseOrderItemMapper,
                                     DataScopeHelper dataScopeHelper,
-                                    NotificationService notificationService) {
+                                    NotificationService notificationService,
+                                    NotificationResolverService notificationResolverService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
         this.supplierRepository = supplierRepository;
@@ -105,6 +114,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         this.purchaseOrderItemMapper = purchaseOrderItemMapper;
         this.dataScopeHelper = dataScopeHelper;
         this.notificationService = notificationService;
+        this.notificationResolverService = notificationResolverService;
     }
 
     /** {@inheritDoc} */
@@ -204,6 +214,12 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setExpectedDate(request.expectedDate());
         po.setNote(request.note());
         po.setStatus(STATUS_DRAFT);
+        String currentUsername = SecurityUtils.getCurrentUserDetails()
+                .map(CustomUserDetails::getUsername)
+                .orElse(null);
+        if (currentUsername != null) {
+            po.setCreatedBy(currentUsername);
+        }
 
         po = purchaseOrderRepository.save(po);
         List<PurchaseOrderItem> items = buildItems(po.getId(), request.items());
@@ -297,9 +313,23 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (items.isEmpty()) {
             throw new BaseException(ErrorCode.PROC_400_PO_ITEMS_EMPTY);
         }
+        if (!StringUtils.hasText(po.getCreatedBy())) {
+            PurchaseOrder finalPo = po;
+            SecurityUtils.getCurrentUserDetails()
+                    .map(CustomUserDetails::getUsername)
+                    .ifPresent(username -> {
+                        // Sử dụng JPQL @Modifying để ghi thẳng vào DB,
+                        // vì @Column(updatable = false) ngăn JPA tự động UPDATE trường này.
+                        purchaseOrderRepository.fixCreatedByIfNull(id, username);
+                        log.info("[submit] Đã ghi created_by='{}' cho PO {} (seed-data fix).", username, finalPo.getPoCode());
+                    });
+            // Tải lại entity để các bước kế tiếp (notify, response) thấy created_by đã được cập nhật.
+            po = findById(id);
+        }
         po.setStatus(STATUS_SUBMITTED);
         po.setSubmittedAt(java.time.Instant.now());
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        notifyPoSubmitted(saved);
         return toResponseWithNames(saved, items);
     }
 
@@ -347,35 +377,64 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     /** Gửi thông báo in-app cho người tạo đơn khi đơn được duyệt (SCRUM-49). */
     private void notifyPoApproved(PurchaseOrder po) {
         UUID recipientId = resolvePoCreatorAccountId(po);
-        if (recipientId == null) {
-            return;
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
+        if (recipientId != null && !recipientId.equals(currentUserId)) {
+            notificationService.notifyAccount(recipientId,
+                    "Đơn mua hàng đã được duyệt",
+                    "Đơn mua hàng " + po.getPoCode() + " đã được phê duyệt.");
         }
-        notificationService.notifyAccount(recipientId,
-                "Đơn mua hàng đã được duyệt",
-                "Đơn mua hàng " + po.getPoCode() + " đã được duyệt.");
     }
 
-    /** Gửi thông báo in-app cho người tạo đơn khi đơn bị huỷ (SCRUM-52). */
+    /** Gửi thông báo in-app cho người tạo đơn và các quản lý khi đơn bị huỷ (SCRUM-52). */
     private void notifyPoCancelled(PurchaseOrder po, String reason) {
-        UUID recipientId = resolvePoCreatorAccountId(po);
-        if (recipientId == null) {
-            return;
-        }
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
         String reasonText = (reason == null || reason.isBlank()) ? "không rõ lý do" : reason;
-        notificationService.notifyAccount(recipientId,
-                "Đơn mua hàng đã bị huỷ",
-                "Đơn mua hàng " + po.getPoCode() + " đã bị huỷ. Lý do: " + reasonText);
+        UUID creatorId = resolvePoCreatorAccountId(po);
+        if (creatorId != null && !creatorId.equals(currentUserId)) {
+            notificationService.notifyAccount(creatorId,
+                    "Đơn mua hàng đã bị huỷ",
+                    "Đơn mua hàng " + po.getPoCode() + " đã bị huỷ. Lý do: " + reasonText);
+        }
+
+        UUID branchId = resolveBranchId(po.getWarehouseId());
+        Set<UUID> managers = notificationResolverService.resolveManagersAndAdmins(branchId, currentUserId);
+        for (UUID managerId : managers) {
+            if (!managerId.equals(creatorId)) {
+                notificationService.notifyAccount(
+                        managerId,
+                        "Đơn mua hàng đã bị huỷ",
+                        "Đơn mua hàng " + po.getPoCode() + " đã bị huỷ. Lý do: " + reasonText
+                );
+            }
+        }
     }
 
-    /** Xác định account ID của người tạo đơn (tra theo username trong created_by). */
+    /** Xác định account ID của người tạo đơn (tra theo username hoặc UUID trong created_by). */
     private UUID resolvePoCreatorAccountId(PurchaseOrder po) {
         String createdBy = po.getCreatedBy();
         if (!StringUtils.hasText(createdBy)) {
+            log.warn("[resolvePoCreatorAccountId] PO {} không có trường created_by — không thể gửi thông báo cho người tạo.",
+                    po.getPoCode());
             return null;
         }
-        return accountRepository.findByUsername(createdBy)
-                .map(Account::getId)
-                .orElse(null);
+        // Thử parse UUID trực tiếp
+        try {
+            UUID uuid = UUID.fromString(createdBy);
+            if (accountRepository.existsById(uuid)) {
+                return uuid;
+            }
+            log.warn("[resolvePoCreatorAccountId] created_by='{}' trông như UUID nhưng không tồn tại trong DB.", createdBy);
+        } catch (IllegalArgumentException ignored) {
+            // Không phải UUID — thử tra theo username
+        }
+        // Tra theo username
+        Optional<UUID> byUsername = accountRepository.findByUsername(createdBy).map(Account::getId);
+        if (byUsername.isPresent()) {
+            return byUsername.get();
+        }
+        log.warn("[resolvePoCreatorAccountId] Không tìm thấy account với username='{}' từ created_by của PO {}.",
+                createdBy, po.getPoCode());
+        return null;
     }
 
     /** {@inheritDoc} */
@@ -393,6 +452,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setStatus(STATUS_DRAFT);
         po.setCancelReason(reason);
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        notifyPoRejected(saved, reason);
         return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));
     }
 
@@ -430,7 +490,71 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             po.setStatus(STATUS_PARTIALLY_RECEIVED);
         }
         po = purchaseOrderRepository.save(po);
+        notifyPoReceived(po, allReceived);
         return toResponseWithNames(po, items);
+    }
+
+    /** Gửi thông báo in-app cho các quản lý chi nhánh và admin khi đơn được trình duyệt. */
+    private void notifyPoSubmitted(PurchaseOrder po) {
+        UUID branchId = resolveBranchId(po.getWarehouseId());
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
+        Set<UUID> recipients = notificationResolverService.resolveManagersAndAdmins(branchId, currentUserId);
+        for (UUID recipientId : recipients) {
+            notificationService.notifyAccount(
+                    recipientId,
+                    "Đơn mua hàng mới chờ duyệt",
+                    "Đơn mua hàng " + po.getPoCode() + " đã được trình duyệt và đang chờ phê duyệt."
+            );
+        }
+    }
+
+    /** Gửi thông báo in-app cho người tạo đơn khi đơn bị từ chối duyệt. */
+    private void notifyPoRejected(PurchaseOrder po, String reason) {
+        UUID recipientId = resolvePoCreatorAccountId(po);
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
+        if (recipientId == null) {
+            log.warn("[notifyPoRejected] Không tìm được người tạo đơn cho PO {} (createdBy='{}') — bỏ qua thông báo.",
+                    po.getPoCode(), po.getCreatedBy());
+            return;
+        }
+        if (recipientId.equals(currentUserId)) {
+            log.debug("[notifyPoRejected] Người từ chối cũng là người tạo đơn {} — bỏ qua thông báo.", po.getPoCode());
+            return;
+        }
+        String reasonText = (reason == null || reason.isBlank()) ? "không rõ lý do" : reason;
+        notificationService.notifyAccount(
+                recipientId,
+                "Đơn mua hàng bị từ chối",
+                "Đơn mua hàng " + po.getPoCode() + " bị từ chối duyệt. Lý do: " + reasonText
+        );
+    }
+
+    /** Gửi thông báo in-app khi đơn mua hàng được nhập kho (hoàn tất hoặc một phần). */
+    private void notifyPoReceived(PurchaseOrder po, boolean allReceived) {
+        UUID branchId = resolveBranchId(po.getWarehouseId());
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
+        Set<UUID> recipients = new HashSet<>(notificationResolverService.resolveManagersAndAdmins(branchId, currentUserId));
+        UUID creatorId = resolvePoCreatorAccountId(po);
+        if (creatorId != null && !Objects.equals(creatorId, currentUserId)) {
+            recipients.add(creatorId);
+        }
+        String statusText = allReceived ? "hoàn tất nhập kho" : "nhập kho một phần";
+        for (UUID recipientId : recipients) {
+            notificationService.notifyAccount(
+                    recipientId,
+                    "Đơn mua hàng đã nhập kho",
+                    "Đơn mua hàng " + po.getPoCode() + " đã được cập nhật: " + statusText + "."
+            );
+        }
+    }
+
+    private UUID resolveBranchId(UUID warehouseId) {
+        if (warehouseId == null) {
+            return null;
+        }
+        return warehouseRepository.findById(warehouseId)
+                .map(Warehouse::getBranchId)
+                .orElse(null);
     }
 
     private PurchaseOrder findById(UUID id) {

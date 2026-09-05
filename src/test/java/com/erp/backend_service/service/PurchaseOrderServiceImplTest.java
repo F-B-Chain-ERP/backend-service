@@ -54,6 +54,7 @@ class PurchaseOrderServiceImplTest {
     @Mock private PurchaseOrderItemMapper purchaseOrderItemMapper;
     @Mock private DataScopeHelper dataScopeHelper;
     @Mock private NotificationService notificationService;
+    @Mock private NotificationResolverService notificationResolverService;
 
     private PurchaseOrderServiceImpl purchaseOrderService;
 
@@ -76,7 +77,8 @@ class PurchaseOrderServiceImplTest {
                 purchaseOrderMapper,
                 purchaseOrderItemMapper,
                 dataScopeHelper,
-                notificationService
+                notificationService,
+                notificationResolverService
         );
     }
 

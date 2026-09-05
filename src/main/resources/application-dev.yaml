@@ -8,7 +8,7 @@ spring:
     password: ${DB_PASSWORD:erp123456@}
     driver-class-name: org.postgresql.Driver
   jpa:
-    show-sql: true
+    show-sql: false
     hibernate:
       ddl-auto: validate
     properties:

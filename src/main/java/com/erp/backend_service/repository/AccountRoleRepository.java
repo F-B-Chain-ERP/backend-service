@@ -70,4 +70,56 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, UUID> 
             @Param("status") EntityStatus status,
             @Param("now") Instant now
     );
+
+    /**
+     * Lấy danh sách accountId được gán một trong các vai trò chỉ định tại một phạm vi cụ thể (ví dụ chi nhánh).
+     */
+    @Query("""
+            select distinct a.accountId from AccountRole a
+            where a.roleId in :roleIds
+              and a.scopeId = :scopeId
+              and a.status = :status
+              and (a.expiresAt is null or a.expiresAt > :now)
+            """)
+    List<UUID> findAccountIdsByRoleIdInAndScopeId(
+            @Param("roleIds") Collection<UUID> roleIds,
+            @Param("scopeId") UUID scopeId,
+            @Param("status") EntityStatus status,
+            @Param("now") Instant now
+    );
+
+    /**
+     * Lấy danh sách accountId được gán vai trò có phạm vi ALL_SYSTEM (quản trị toàn hệ thống).
+     */
+    @Query("""
+            select distinct a.accountId from AccountRole a, Scope s
+            where a.scopeId = s.id
+              and s.scopeType = com.erp.core.enums.ScopeType.ALL_SYSTEM
+              and s.status = :status
+              and a.status = :status
+              and (a.expiresAt is null or a.expiresAt > :now)
+            """)
+    List<UUID> findAccountIdsByAllSystemScope(
+            @Param("status") EntityStatus status,
+            @Param("now") Instant now
+    );
+
+    /**
+     * Lấy danh sách accountId được gán một trong các vai trò chỉ định tại các scope thuộc về chi nhánh.
+     */
+    @Query("""
+            select distinct a.accountId from AccountRole a, Scope s
+            where a.scopeId = s.id
+              and a.roleId in :roleIds
+              and s.branchId = :branchId
+              and s.status = :status
+              and a.status = :status
+              and (a.expiresAt is null or a.expiresAt > :now)
+            """)
+    List<UUID> findAccountIdsByRoleIdInAndBranchId(
+            @Param("roleIds") Collection<UUID> roleIds,
+            @Param("branchId") UUID branchId,
+            @Param("status") EntityStatus status,
+            @Param("now") Instant now
+    );
 }

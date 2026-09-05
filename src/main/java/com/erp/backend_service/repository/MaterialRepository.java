@@ -16,6 +16,8 @@ public interface MaterialRepository extends JpaRepository<Material, UUID> {
 
     boolean existsByCodeAndIdNot(String code, UUID id);
 
+    boolean existsByBaseUnitId(UUID baseUnitId);
+
     @Query("""
         SELECT m
         FROM Material m

@@ -81,13 +81,13 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     @Transactional
     public SupplierMaterialResponse create(CreateSupplierMaterialRequest request) {
         if (!supplierRepository.existsById(request.supplierId())) {
-            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+            throw new BaseException(ErrorCode.SUPPLIER_NOT_FOUND);
         }
         if (!materialRepository.existsById(request.materialId())) {
-            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+            throw new BaseException(ErrorCode.MATERIAL_NOT_FOUND);
         }
         if (supplierMaterialRepository.existsBySupplierIdAndMaterialId(request.supplierId(), request.materialId())) {
-            throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
+            throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_EXISTS);
         }
         SupplierMaterial entity = new SupplierMaterial();
         apply(entity, request.supplierId(), request.materialId(), request.supplierSku(),

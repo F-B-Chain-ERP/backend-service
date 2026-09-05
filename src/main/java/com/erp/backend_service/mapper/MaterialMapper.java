@@ -1,8 +1,12 @@
 package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.Material;
+import com.erp.core.dto.request.inv.CreateMaterialRequest;
+import com.erp.core.dto.request.inv.UpdateMaterialRequest;
 import com.erp.core.dto.response.Material.MaterialResponse;
 import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
 
 @Component
 public class MaterialMapper {
@@ -45,5 +49,30 @@ public class MaterialMapper {
                 e.getCreatedAt(),
                 e.getUpdatedBy(),
                 e.getUpdatedAt());
+    }
+
+    /** Tạo Material mới từ CreateMaterialRequest. */
+    public Material toEntity(CreateMaterialRequest request) {
+        Material m = new Material();
+        m.setCode(request.code());
+        m.setName(request.name());
+        m.setCategoryId(request.categoryId());
+        m.setBaseUnitId(request.baseUnitId());
+        m.setMinStockAlert(request.minStockAlert() != null ? request.minStockAlert() : BigDecimal.ZERO);
+        m.setShelfLifeDays(request.shelfLifeDays());
+        m.setPerishable(request.isPerishable() != null && request.isPerishable());
+        m.setStatus("ACTIVE");
+        return m;
+    }
+
+    /** Cập nhật Material từ UpdateMaterialRequest (không đổi status). */
+    public void updateEntity(Material m, UpdateMaterialRequest request) {
+        m.setCode(request.code());
+        m.setName(request.name());
+        m.setCategoryId(request.categoryId());
+        m.setBaseUnitId(request.baseUnitId());
+        m.setMinStockAlert(request.minStockAlert() != null ? request.minStockAlert() : BigDecimal.ZERO);
+        m.setShelfLifeDays(request.shelfLifeDays());
+        m.setPerishable(request.isPerishable() != null && request.isPerishable());
     }
 }

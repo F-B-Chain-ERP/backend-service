@@ -29,7 +29,6 @@ import java.util.UUID;
 public class MaterialServiceImpl implements MaterialService {
 
     private static final int MAX_PAGE_SIZE = 100;
-    private static final String DEFAULT_STATUS = "ACTIVE";
 
     private final MaterialRepository materialRepository;
     private final CategoryRepository categoryRepository;
@@ -53,16 +52,15 @@ public class MaterialServiceImpl implements MaterialService {
     @Transactional(readOnly = true)
     public PageResponse<MaterialResponse> list(int page, int size, String search, UUID categoryId, String status) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        if (page < 0 || size <1 || size > MAX_PAGE_SIZE){
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
-        String normalizedSearch = StringUtils.hasText(search) ? search.trim() : "";
-        String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
-        if (normalizedStatus != null && !"ACTIVE".equals(normalizedStatus) && !"INACTIVE".equals(normalizedStatus)) {
-            throw new BaseException(ErrorCode.INV_400_MATERIAL_INVALID_STATUS);
-        }
-        Page<Material> pageResult = materialRepository.search(normalizedSearch, categoryId, normalizedStatus, pageable);
+        Page<Material> pageResult = materialRepository.search(
+                StringUtils.hasText(search) ? search.trim() : null,
+                categoryId,
+                StringUtils.hasText(status) ? status.trim().toUpperCase() : null,
+                pageable);
         return new PageResponse<>(
                 pageResult.getNumber(),
                 pageResult.getSize(),
@@ -95,9 +93,7 @@ public class MaterialServiceImpl implements MaterialService {
             throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
         }
 
-        Material material = new Material();
-        apply(material, request.code(), request.name(), request.categoryId(), request.baseUnitId(),
-                request.minStockAlert(), request.shelfLifeDays(), request.isPerishable(), null);
+        Material material = materialMapper.toEntity(request);
         return materialMapper.toResponse(materialRepository.save(material));
     }
 
@@ -117,8 +113,7 @@ public class MaterialServiceImpl implements MaterialService {
             throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
         }
 
-        apply(material, request.code(), request.name(), request.categoryId(), request.baseUnitId(),
-                request.minStockAlert(), request.shelfLifeDays(), request.isPerishable(), null);
+        materialMapper.updateEntity(material, request);
         return materialMapper.toResponse(materialRepository.save(material));
     }
 
@@ -156,18 +151,6 @@ public class MaterialServiceImpl implements MaterialService {
     private Material findById(UUID id) {
         return materialRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
-    }
-
-    private void apply(Material m, String code, String name, UUID categoryId, UUID baseUnitId,
-                       java.math.BigDecimal minStockAlert, Integer shelfLifeDays, Boolean isPerishable, String status) {
-        m.setCode(code);
-        m.setName(name);
-        m.setCategoryId(categoryId);
-        m.setBaseUnitId(baseUnitId);
-        m.setMinStockAlert(minStockAlert != null ? minStockAlert : java.math.BigDecimal.ZERO);
-        m.setShelfLifeDays(shelfLifeDays);
-        m.setPerishable(isPerishable != null && isPerishable);
-        m.setStatus(status != null && !status.isBlank() ? status : DEFAULT_STATUS);
     }
 
     private String resolveCategoryName(UUID categoryId) {

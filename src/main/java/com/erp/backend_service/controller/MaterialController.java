@@ -7,7 +7,6 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.Material.MaterialResponse;
 import com.erp.core.dto.response.PageResponse;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -45,7 +44,7 @@ public class MaterialController {
     @PostMapping
     @PreAuthorize("hasAuthority('inv:material:create')")
     public ResponseEntity<ApiResponse<MaterialResponse>> create(@Valid @RequestBody CreateMaterialRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(materialService.create(request)));
+        return ResponseEntity.created(null).body(ApiResponse.created(materialService.create(request)));
     }
 
     @PutMapping("/{id}")

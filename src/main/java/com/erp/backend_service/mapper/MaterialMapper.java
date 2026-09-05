@@ -13,14 +13,19 @@ public class MaterialMapper {
 
     /** Ánh xạ cho danh sách (list) - không join tên category/unit. */
     public MaterialResponse toResponse(Material e) {
+        return toResponse(e, null, null);
+    }
+
+    /** Ánh xạ cho danh sách (list) - có tên category/unit. */
+    public MaterialResponse toResponse(Material e, String categoryName, String unitName) {
         return new MaterialResponse(
                 e.getId() != null ? e.getId().toString() : null,
                 e.getCode(),
                 e.getName(),
                 e.getCategoryId() != null ? e.getCategoryId().toString() : null,
-                null,
+                categoryName,
                 e.getBaseUnitId() != null ? e.getBaseUnitId().toString() : null,
-                null,
+                unitName,
                 e.getMinStockAlert(),
                 e.getShelfLifeDays(),
                 e.isPerishable(),

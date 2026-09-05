@@ -89,6 +89,10 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
         if (supplierMaterialRepository.existsBySupplierIdAndMaterialId(request.supplierId(), request.materialId())) {
             throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_EXISTS);
         }
+        // Mỗi NVL chỉ có 1 NCC ưu tiên: bật ông mới thì gỡ các ông cũ cùng NVL.
+        if (Boolean.TRUE.equals(request.isPreferred())) {
+            supplierMaterialRepository.clearPreferredByMaterialId(request.materialId());
+        }
         SupplierMaterial entity = new SupplierMaterial();
         apply(entity, request.supplierId(), request.materialId(), request.supplierSku(),
                 request.purchasePrice(), request.leadTimeDays(), request.isPreferred(), request.status());
@@ -114,6 +118,11 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
                 id
         )) {
             throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_EXISTS);
+        }
+
+        // Mỗi NVL chỉ có 1 NCC ưu tiên: bật ông này thì gỡ các ông khác cùng NVL.
+        if (Boolean.TRUE.equals(request.isPreferred())) {
+            supplierMaterialRepository.clearPreferredByMaterialIdAndIdNot(request.materialId(), id);
         }
 
         apply(

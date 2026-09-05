@@ -68,7 +68,7 @@ import java.util.stream.Collectors;
  */
 @Service
 public class PurchaseOrderServiceImpl implements PurchaseOrderService {
-
+    private static final Logger log = LoggerFactory.getLogger(PurchaseOrderServiceImpl.class);
     private static final int FIXED_PAGE_SIZE = 10;
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_SUBMITTED = "SUBMITTED";

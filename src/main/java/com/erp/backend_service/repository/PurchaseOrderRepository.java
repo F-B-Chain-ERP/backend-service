@@ -19,6 +19,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
     /** Kiểm tra mã đơn mua hàng đã tồn tại hay chưa (dùng cho tạo). */
     boolean existsByPoCode(String poCode);
 
+    boolean existsByWarehouseId(UUID warehouseId);
+
     /**
      * Lấy đơn có mã poCode lớn nhất với tiền tố cho trước (dùng sinh mã PO-YYYYMM-XXXX).
      */

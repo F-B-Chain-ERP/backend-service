@@ -84,7 +84,6 @@ public enum ErrorCode {
     SCOPE_IN_USE(409, "SCOPE_IN_USE", "Phạm vi vẫn đang được gán cho một hoặc nhiều tài khoản"),
     INV_404_STOCK_IN_NOT_FOUND(404, "INV_404_STOCK_IN_NOT_FOUND", "Phiếu nhập kho không tồn tại."),
     INV_404_STOCK_OUT_NOT_FOUND(404, "INV_404_STOCK_OUT_NOT_FOUND", "Phiếu xuất kho không tồn tại."),
-    INV_404_WAREHOUSE_NOT_FOUND(404, "INV_404_WAREHOUSE_NOT_FOUND", "Không tìm thấy kho."),
     INV_404_MATERIAL_NOT_FOUND(404, "INV_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu."),
     INV_400_STOCK_IN_ITEMS_EMPTY(400, "INV_400_STOCK_IN_ITEMS_EMPTY", "Phiếu nhập kho phải có ít nhất một dòng chi tiết."),
     INV_400_STOCK_OUT_ITEMS_EMPTY(400, "INV_400_STOCK_OUT_ITEMS_EMPTY", "Phiếu xuất kho phải có ít nhất một dòng chi tiết."),

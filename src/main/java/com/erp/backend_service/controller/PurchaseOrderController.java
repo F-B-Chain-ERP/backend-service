@@ -8,6 +8,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.PurchaseOrderResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,8 +36,8 @@ public class PurchaseOrderController {
     @GetMapping
     @PreAuthorize("hasAuthority('proc:purchase_order:view')")
     public ResponseEntity<ApiResponse<PageResponse<PurchaseOrderResponse>>> list(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(10) int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID supplierId,

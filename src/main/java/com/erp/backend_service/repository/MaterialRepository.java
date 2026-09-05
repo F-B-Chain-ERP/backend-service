@@ -12,12 +12,20 @@ import java.util.UUID;
 @Repository
 public interface MaterialRepository extends JpaRepository<Material, UUID> {
 
+    boolean existsByCode(String code);
+
+    boolean existsByCodeAndIdNot(String code, UUID id);
+
+    boolean existsByBaseUnitId(UUID baseUnitId);
+
     @Query("""
         SELECT m
         FROM Material m
-        WHERE (:search IS NULL
-            OR LOWER(m.code) LIKE CONCAT('%', :search, '%')
-            OR LOWER(m.name) LIKE CONCAT('%', :search, '%'))
+        WHERE (:search IS NULL OR :search = ''
+            OR LOWER(m.code) LIKE CONCAT('%', LOWER(:search), '%')
+            OR LOWER(m.name) LIKE CONCAT('%', LOWER(:search), '%'))
+        AND (:categoryId IS NULL OR m.categoryId = :categoryId)
+        AND (:status IS NULL OR m.status = :status)
     """)
-    Page<Material> search(String search, Pageable pageable);
+    Page<Material> search(String search, UUID categoryId, String status, Pageable pageable);
 }

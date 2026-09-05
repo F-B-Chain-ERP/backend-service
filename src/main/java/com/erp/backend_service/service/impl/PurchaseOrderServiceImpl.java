@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
 @Service
 public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
-    private static final int MAX_PAGE_SIZE = 100;
+    private static final int FIXED_PAGE_SIZE = 10;
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_SUBMITTED = "SUBMITTED";
     private static final String STATUS_APPROVED = "APPROVED";
@@ -112,7 +112,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional(readOnly = true)
     public PageResponse<PurchaseOrderResponse> list(int page, int size, String search, String status,
                                                     UUID supplierId, UUID warehouseId, LocalDate fromDate, LocalDate toDate) {
-        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int safeSize = FIXED_PAGE_SIZE;
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_FILTER);
         }

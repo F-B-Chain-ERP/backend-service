@@ -28,7 +28,7 @@ import java.util.UUID;
 @Service
 public class SupplierServiceImpl implements SupplierService {
 
-    private static final int MAX_PAGE_SIZE = 100;
+    private static final int FIXED_PAGE_SIZE = 10;
     private static final String DEFAULT_STATUS = "ACTIVE";
 
     private final SupplierRepository supplierRepository;
@@ -43,8 +43,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<SupplierResponse> list(int page, int size, String search, EntityStatus status) {
-        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
+        Pageable pageable = PageRequest.of(Math.max(page, 0), FIXED_PAGE_SIZE, Sort.by("createdAt").descending());
         Page<Supplier> supplierPage = supplierRepository.search(
                 StringUtils.hasText(search) ? search.trim() : "",
                 status != null ? status.name() : null,

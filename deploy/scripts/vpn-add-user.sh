@@ -34,6 +34,12 @@ if [ -z "$PASSWORD" ]; then
     PASSWORD=$(openssl rand -base64 9 | tr -dc 'a-zA-Z0-9@#%^&*')
 fi
 
+if [ ! -f "$OPENVPN_DIR/ca.crt" ] || [ ! -d "$EASYRSA_DIR" ]; then
+    echo "❌ LỖI: Chưa tìm thấy OpenVPN Server! Bạn cần chạy script cài đặt trước:"
+    echo "   sudo bash deploy/scripts/06-setup-openvpn.sh"
+    exit 1
+fi
+
 CLIENT_OUT_DIR="$CLIENTS_DIR/$USERNAME"
 mkdir -p "$CLIENT_OUT_DIR"
 
@@ -59,8 +65,8 @@ echo "========================================================"
 USER_2FA_DIR="/etc/openvpn/2fa/$USERNAME"
 mkdir -p "$USER_2FA_DIR"
 
-# Tạo file secret Google Authenticator (TOTP, rate limit, thời gian 30s)
-google-authenticator -t -d -f -r 3 -R 30 -W -s "$USER_2FA_DIR/.google_authenticator" >/dev/null 2>&1
+# Tạo file secret Google Authenticator không tương tác (cờ -q và pipe y)
+yes y | google-authenticator -q -t -d -f -r 3 -R 30 -W -s "$USER_2FA_DIR/.google_authenticator" >/dev/null 2>&1 || true
 
 chown -R "$USERNAME:$USERNAME" "$USER_2FA_DIR"
 chmod 700 "$USER_2FA_DIR"
@@ -82,12 +88,12 @@ cd "$EASYRSA_DIR"
 # Xóa chứng chỉ cũ nếu có để sinh mới
 if [ -f "pki/issued/$USERNAME.crt" ]; then
     echo "Thu hồi chứng chỉ cũ của $USERNAME trước khi cấp lại..."
-    ./easyrsa revoke "$USERNAME" || true
+    ./easyrsa --batch revoke "$USERNAME" || true
     ./easyrsa gen-crl
     cp pki/crl.pem "$OPENVPN_DIR/crl.pem"
 fi
 
-./easyrsa build-client-full "$USERNAME" nopass
+./easyrsa --batch build-client-full "$USERNAME" nopass
 
 echo ""
 echo "========================================================"

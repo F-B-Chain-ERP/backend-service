@@ -7,6 +7,7 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_IP="163.61.72.183"
 SERVER_PORT="1194"
 OPENVPN_DIR="/etc/openvpn/server"
@@ -175,7 +176,6 @@ echo " - Ảnh QR Code: $CLIENT_OUT_DIR/qrcode.png"
 echo "================================================================================"
 
 # Tự động tạo link bàn giao Web bảo mật cho Developer (Tự hủy sau 5 phút)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/vpn-share.sh" ]; then
     bash "$SCRIPT_DIR/vpn-share.sh" "$USERNAME" "$PASSWORD" "5"
 fi

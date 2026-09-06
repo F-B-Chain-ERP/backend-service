@@ -11,15 +11,20 @@ Thư mục trên Server: `/opt/ERP-UTT/backend-service`
 /opt/ERP-UTT/backend-service/
 ├── deploy/
 │   ├── DEPLOYMENT_GUIDE.md
+│   ├── OPENVPN_MANAGEMENT_GUIDE.md   # Hướng dẫn OpenVPN 2FA OTP cho Admin & Dev
 │   ├── server-setup.sh               # Cài đặt server & khởi động infra
 │   └── scripts/
 │       ├── 01-server-infra.sh        # Chạy trên server: Khởi động DB & Redis
 │       ├── 02-build-push.sh / .ps1   # Chạy trên local: Build & chuyển image lên server
-│       └── 03-deploy-app.sh          # Chạy trên server: Khởi chạy backend container
+│       ├── 03-deploy-app.sh          # Chạy trên server: Khởi chạy backend container
+│       ├── 05-harden-firewall.sh     # Thiết lập tường lửa UFW & chặn port internet
+│       ├── 06-setup-openvpn.sh       # Dựng OpenVPN Server 2FA OTP + CRL
+│       ├── vpn-add-user.sh           # Cấp tài khoản VPN + mã QR OTP cho Dev mới
+│       └── vpn-revoke-user.sh        # Thu hồi quyền tức thì khi Dev nghỉ việc
 └── src/
     └── main/docker/
         ├── infra.yml                 # Compose chỉ chạy PostgreSQL + Redis
-        ├── app.yml                   # Compose chạy Backend (kết nối DB/Redis)
+        ├── app.yml                   # Compose chạy Backend (127.0.0.1:8080 nội bộ)
         ├── postgresql.yml            # Service PostgreSQL 16
         └── redis.yml                 # Service Redis 7
 ```
@@ -73,12 +78,16 @@ chmod +x deploy/scripts/*.sh
 sudo bash deploy/scripts/01-server-infra.sh
 ```
 
-### Bước 2: Kiểm tra kết nối từ Local
+### Bước 2: Kiểm tra kết nối từ Local (Qua OpenVPN)
+> 🔒 **Bảo mật Production:** Các port 5432 và 6379 được khóa chặt bởi UFW Firewall và chỉ cho phép truy cập qua đường hầm **OpenVPN**.
+> Trước khi kết nối, Dev cần bật **OpenVPN GUI**, nhập Username + Password + Mã OTP 6 số để nhận IP VPN (`10.8.0.x`).
+> Chi tiết xem tại: [OPENVPN_MANAGEMENT_GUIDE.md](file:///c:/ERP-UTT/backend-service/deploy/OPENVPN_MANAGEMENT_GUIDE.md)
+
 Từ máy local dev, mở DBeaver / DataGrip hoặc terminal:
 - **PostgreSQL:**
-  - Host: `163.61.72.183` | Port: `5432` | DB: `erp_dev` | User: `erp_user` | Pass: `erp123456@`
+  - Host: `10.8.0.1` (hoặc `163.61.72.183` nếu chưa kích hoạt firewall) | Port: `5432` | DB: `erp_dev` | User: `erp_user` | Pass: `erp123456@`
 - **Redis:**
-  - Host: `163.61.72.183` | Port: `6379` | Pass: `erp_redis_2026`
+  - Host: `10.8.0.1` (hoặc `163.61.72.183` nếu chưa kích hoạt firewall) | Port: `6379` | Pass: `erp_redis_2026`
 
 ### Bước 3: Chạy SQL Migration thủ công (Liquibase changesets)
 Dev mở các file SQL trong `src/main/resources/db/changelog/changeset/` và chạy lần lượt vào DB trên Server:
@@ -90,7 +99,7 @@ Dev mở các file SQL trong `src/main/resources/db/changelog/changeset/` và ch
 > Nếu DB cũ đã chạy migration, hãy `TRUNCATE TABLE databasechangelog;` trước khi chạy lại để tránh trùng lịch sử.
 
 ### Bước 4: Chạy Backend Local kết nối Server DB
-Trong `application-dev.yaml`, cấu hình đã mặc định trỏ về IP server `163.61.72.183`. Chạy backend:
+Trong `application-dev.yaml`, cấu hình trỏ về IP VPN `10.8.0.1` (hoặc IP server nếu đang mở port). Chạy backend:
 ```bash
 cd backend-service
 ./mvnw spring-boot:run
@@ -133,12 +142,40 @@ cd /opt/ERP-UTT/backend-service
 sudo bash deploy/scripts/03-deploy-app.sh latest
 ```
 
-Kiểm tra API trên server:
-- **URL:** `http://163.61.72.183:8080/api/v1/auth/login`
+Kiểm tra API trên server (qua Reverse Proxy HTTPS):
+- **URL HTTPS:** `https://erp-utt.duckdns.org/api/v1/auth/login`
+- **Nội bộ VPS:** `http://127.0.0.1:8080/actuator/health`
 
 ---
 
-## 3. Các lệnh Quản trị thường dùng trên Server
+## 3. Thiết lập Bảo mật Production (Firewall & OpenVPN 2FA)
+
+### A. Kích hoạt tường lửa UFW (Khóa port DB/Redis khỏi Internet):
+```bash
+cd /opt/ERP-UTT/backend-service
+sudo bash deploy/scripts/05-harden-firewall.sh
+```
+
+### B. Khởi tạo OpenVPN Server (Hỗ trợ OTP Google Authenticator):
+```bash
+sudo bash deploy/scripts/06-setup-openvpn.sh
+```
+
+### C. Cấp tài khoản VPN cho một Developer:
+```bash
+sudo bash deploy/scripts/vpn-add-user.sh dev_nam "MatKhau123@#"
+# Quét mã QR vào Google Authenticator trên điện thoại
+# Tải file dev_nam.ovpn về máy cá nhân
+```
+
+### D. Thu hồi quyền khi Developer nghỉ việc:
+```bash
+sudo bash deploy/scripts/vpn-revoke-user.sh dev_nam
+```
+
+---
+
+## 4. Các lệnh Quản trị thường dùng trên Server
 
 ```bash
 cd /opt/ERP-UTT/backend-service

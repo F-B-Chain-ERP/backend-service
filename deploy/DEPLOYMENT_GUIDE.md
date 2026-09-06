@@ -17,10 +17,14 @@ Thư mục trên Server: `/opt/ERP-UTT/backend-service`
 │       ├── 01-server-infra.sh        # Chạy trên server: Khởi động DB & Redis
 │       ├── 02-build-push.sh / .ps1   # Chạy trên local: Build & chuyển image lên server
 │       ├── 03-deploy-app.sh          # Chạy trên server: Khởi chạy backend container
-│       ├── 05-harden-firewall.sh     # Thiết lập tường lửa UFW & chặn port internet
-│       ├── 06-setup-openvpn.sh       # Dựng OpenVPN Server 2FA OTP + CRL
-│       ├── vpn-add-user.sh           # Cấp tài khoản VPN + mã QR OTP cho Dev mới
-│       └── vpn-revoke-user.sh        # Thu hồi quyền tức thì khi Dev nghỉ việc
+│       ├── 05-harden-firewall.sh     # Thiết lập tường lửa UFW (SSH, HTTP, HTTPS, DB, Redis)
+│       ├── cleanup-vpn-server.sh     # Dọn dẹp OpenVPN trên VPS -> chuyển Nginx trực tiếp cổng 443
+│       └── [Tùy chọn tương lai]
+│           ├── 06-setup-openvpn.sh   # (Dự phòng) Dựng OpenVPN Server 2FA OTP + CRL
+│           ├── vpn-add-user.sh       # (Dự phòng) Cấp tài khoản VPN + OTP cho Dev
+│           ├── vpn-share.sh          # (Dự phòng) Tạo link tải cấu hình VPN tự hủy
+│           ├── vpn-revoke-user.sh    # (Dự phòng) Thu hồi quyền khi Dev nghỉ việc
+│           └── vpn-status.sh         # (Dự phòng) Kiểm tra trạng thái OpenVPN
 └── src/
     └── main/docker/
         ├── infra.yml                 # Compose chỉ chạy PostgreSQL + Redis
@@ -78,16 +82,14 @@ chmod +x deploy/scripts/*.sh
 sudo bash deploy/scripts/01-server-infra.sh
 ```
 
-### Bước 2: Kiểm tra kết nối từ Local (Qua OpenVPN)
-> 🔒 **Bảo mật Production:** Các port 5432 và 6379 được khóa chặt bởi UFW Firewall và chỉ cho phép truy cập qua đường hầm **OpenVPN**.
-> Trước khi kết nối, Dev cần bật **OpenVPN GUI**, nhập Username + Password + Mã OTP 6 số để nhận IP VPN (`10.8.0.x`).
-> Chi tiết xem tại: [OPENVPN_MANAGEMENT_GUIDE.md](file:///c:/ERP-UTT/backend-service/deploy/OPENVPN_MANAGEMENT_GUIDE.md)
+### Bước 2: Kiểm tra kết nối từ Local vào Database & Redis
+> 💡 **Kết nối trực tiếp nhanh gọn:** Các port 5432 (PostgreSQL) và 6379 (Redis) được mở trực tiếp trên Firewall Server (hoặc có thể kết nối bảo mật qua SSH Tunnel: `ssh -N -L 5432:localhost:5432 root@163.61.72.183`).
 
-Từ máy local dev, mở DBeaver / DataGrip hoặc terminal:
+Từ máy local dev, mở DBeaver / DataGrip / pgAdmin hoặc Redis GUI:
 - **PostgreSQL:**
-  - Host: `10.8.0.1` (hoặc `163.61.72.183` nếu chưa kích hoạt firewall) | Port: `5432` | DB: `erp_dev` | User: `erp_user` | Pass: `erp123456@`
+  - Host: `163.61.72.183` | Port: `5432` | DB: `erp_dev` | User: `erp_user` | Pass: `erp123456@`
 - **Redis:**
-  - Host: `10.8.0.1` (hoặc `163.61.72.183` nếu chưa kích hoạt firewall) | Port: `6379` | Pass: `erp_redis_2026`
+  - Host: `163.61.72.183` | Port: `6379` | Pass: `erp_redis_2026`
 
 ### Bước 3: Chạy SQL Migration thủ công (Liquibase changesets)
 Dev mở các file SQL trong `src/main/resources/db/changelog/changeset/` và chạy lần lượt vào DB trên Server:
@@ -99,7 +101,7 @@ Dev mở các file SQL trong `src/main/resources/db/changelog/changeset/` và ch
 > Nếu DB cũ đã chạy migration, hãy `TRUNCATE TABLE databasechangelog;` trước khi chạy lại để tránh trùng lịch sử.
 
 ### Bước 4: Chạy Backend Local kết nối Server DB
-Trong `application-dev.yaml`, cấu hình trỏ về IP VPN `10.8.0.1` (hoặc IP server nếu đang mở port). Chạy backend:
+Trong `application-dev.yaml`, cấu hình mặc định đã trỏ thẳng tới IP Server `163.61.72.183`. Chạy backend:
 ```bash
 cd backend-service
 ./mvnw spring-boot:run
@@ -148,30 +150,23 @@ Kiểm tra API trên server (qua Reverse Proxy HTTPS):
 
 ---
 
-## 3. Thiết lập Bảo mật Production (Firewall & OpenVPN 2FA)
+## 3. Quản trị Tường lửa & Dọn dẹp OpenVPN trên Server
 
-### A. Kích hoạt tường lửa UFW (Khóa port DB/Redis khỏi Internet):
+### A. Thiết lập tường lửa UFW tiêu chuẩn (SSH, HTTP, HTTPS, DB, Redis):
 ```bash
 cd /opt/ERP-UTT/backend-service
 sudo bash deploy/scripts/05-harden-firewall.sh
 ```
 
-### B. Khởi tạo OpenVPN Server (Hỗ trợ OTP Google Authenticator):
+### B. Dọn dẹp OpenVPN trên Server & Chuyển Nginx sang cổng 443 trực tiếp:
 ```bash
-sudo bash deploy/scripts/06-setup-openvpn.sh
+cd /opt/ERP-UTT/backend-service
+sudo bash deploy/scripts/cleanup-vpn-server.sh
 ```
 
-### C. Cấp tài khoản VPN cho một Developer:
-```bash
-sudo bash deploy/scripts/vpn-add-user.sh dev_nam "MatKhau123@#"
-# Quét mã QR vào Google Authenticator trên điện thoại
-# Tải file dev_nam.ovpn về máy cá nhân
-```
-
-### D. Thu hồi quyền khi Developer nghỉ việc:
-```bash
-sudo bash deploy/scripts/vpn-revoke-user.sh dev_nam
-```
+> 📌 **Ghi chú về OpenVPN:**
+> Hệ thống hiện tại vận hành trực tiếp qua HTTPS (Nginx 443) và Direct Port DB/Redis để quy trình CI/CD và triển khai đơn giản, nhanh nhất.
+> Nếu trong tương lai doanh nghiệp muốn siết chặt bảo mật thêm kênh OpenVPN 2FA OTP, toàn bộ script (`06-setup-openvpn.sh`, `vpn-add-user.sh`,...) và tài liệu hướng dẫn [OPENVPN_MANAGEMENT_GUIDE.md](file:///c:/ERP-UTT/backend-service/deploy/OPENVPN_MANAGEMENT_GUIDE.md) vẫn được lưu trữ đầy đủ trong repo để kích hoạt lại bất kỳ lúc nào.
 
 ---
 

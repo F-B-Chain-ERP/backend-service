@@ -66,6 +66,9 @@ sudo bash deploy/scripts/vpn-revoke-user.sh dev_nam
 
 ### D. Giám sát & Quản lý
 ```bash
+# Xem bảng tổng quan toàn bộ User, trạng thái chứng chỉ và ai đang kết nối Online:
+sudo bash deploy/scripts/vpn-status.sh
+
 # Xem danh sách các Dev đang kết nối realtime
 cat /var/log/openvpn/openvpn-status.log
 

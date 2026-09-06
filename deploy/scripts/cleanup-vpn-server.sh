@@ -73,13 +73,17 @@ FRONTEND_CONF="/opt/ERP-UTT/frontend/deploy/nginx/erp-utt.conf"
 # Kiểm tra nếu file cấu hình frontend mới có sẵn trên server
 if [ -f "$FRONTEND_CONF" ]; then
   cp -f "$FRONTEND_CONF" "$NGINX_CONF_DEST"
-  echo "  ✅ Đã copy cấu hình mới từ $FRONTEND_CONF."
-else
-  # Tự động thay thế cổng 8443 thành 443 trong cấu hình hiện tại nếu chưa có file mới
-  if [ -f "$NGINX_CONF_DEST" ]; then
-    sed -i 's/listen 127.0.0.1:8443 ssl http2;/listen 443 ssl http2;\n    listen [::]:443 ssl http2;/g' "$NGINX_CONF_DEST"
-    echo "  ✅ Đã cập nhật $NGINX_CONF_DEST sang listen cổng 443 trực tiếp."
-  fi
+fi
+
+# Bắt buộc chuyển đổi cổng 8443 sang 443 trực tiếp và gỡ bỏ route /vpn-setup/
+if [ -f "$NGINX_CONF_DEST" ]; then
+  sed -i 's/listen 127.0.0.1:8443 ssl http2;/listen 443 ssl http2;\n    listen [::]:443 ssl http2;/g' "$NGINX_CONF_DEST"
+  sed -i '/location \^\~ \/vpn-setup\/ {/,/}/d' "$NGINX_CONF_DEST" 2>/dev/null || true
+  echo "  ✅ Đã cấu hình Nginx lắng nghe trực tiếp trên cổng 443."
+fi
+if [ -f "$FRONTEND_CONF" ]; then
+  sed -i 's/listen 127.0.0.1:8443 ssl http2;/listen 443 ssl http2;\n    listen [::]:443 ssl http2;/g' "$FRONTEND_CONF" 2>/dev/null || true
+  sed -i '/location \^\~ \/vpn-setup\/ {/,/}/d' "$FRONTEND_CONF" 2>/dev/null || true
 fi
 
 # Đảm bảo symlink sites-enabled

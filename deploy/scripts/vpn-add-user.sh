@@ -1,0 +1,183 @@
+#!/bin/bash
+# ==============================================================================
+# Script Cấp Tài khoản OpenVPN Riêng cho Developer (2FA OTP + Profile .ovpn)
+# Sử dụng trên VPS Ubuntu: sudo bash vpn-add-user.sh <username> [password]
+# Ví dụ: sudo bash vpn-add-user.sh dev_nam Pass123@#
+# ==============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVER_IP="163.61.72.183"
+SERVER_PORT="443"
+SERVER_PROTO="tcp-client"
+OPENVPN_DIR="/etc/openvpn/server"
+EASYRSA_DIR="/etc/openvpn/easy-rsa"
+CLIENTS_DIR="/opt/ERP-UTT/openvpn-clients"
+
+USERNAME="$1"
+PASSWORD="$2"
+EXPIRE_MINUTES="${3:-15}"  # Thời gian tự hủy link web bàn giao (phút, mặc định 15)
+
+if [ -z "$USERNAME" ]; then
+    echo "❌ LỖI: Bạn chưa truyền tên tài khoản (username)!"
+    echo "Cú pháp: sudo bash vpn-add-user.sh <username> [password] [expire_minutes]"
+    echo "Ví dụ:   sudo bash vpn-add-user.sh dev_nam MyPassword123@ 15"
+    exit 1
+fi
+
+# Kiểm tra ký tự hợp lệ cho username
+if [[ ! "$USERNAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "❌ LỖI: Username chỉ được chứa chữ cái, số, gạch dưới (_) hoặc gạch nối (-)."
+    exit 1
+fi
+
+# Nếu chưa có password, tự sinh password ngẫu nhiên 12 ký tự
+if [ -z "$PASSWORD" ]; then
+    PASSWORD=$(openssl rand -base64 9 | tr -dc 'a-zA-Z0-9@#%^&*')
+fi
+
+if [ ! -f "$OPENVPN_DIR/ca.crt" ] || [ ! -d "$EASYRSA_DIR" ]; then
+    echo "❌ LỖI: Chưa tìm thấy OpenVPN Server! Bạn cần chạy script cài đặt trước:"
+    echo "   sudo bash deploy/scripts/06-setup-openvpn.sh"
+    exit 1
+fi
+
+CLIENT_OUT_DIR="$CLIENTS_DIR/$USERNAME"
+mkdir -p "$CLIENT_OUT_DIR"
+
+echo "========================================================"
+echo " [BƯỚC 1/4] Tạo tài khoản hệ thống cho $USERNAME"
+echo "========================================================"
+
+if id "$USERNAME" &>/dev/null; then
+    echo "ℹ️ Tài khoản $USERNAME đã tồn tại, tiến hành cập nhật mật khẩu..."
+    echo "$USERNAME:$PASSWORD" | chpasswd
+    usermod -U "$USERNAME" 2>/dev/null || true
+else
+    useradd -M -s /usr/sbin/nologin "$USERNAME"
+    echo "$USERNAME:$PASSWORD" | chpasswd
+    echo "✅ Đã tạo người dùng $USERNAME (Không có quyền SSH, chỉ dùng xác thực VPN)"
+fi
+
+echo ""
+echo "========================================================"
+echo " [BƯỚC 2/4] Thiết lập 2FA Google Authenticator cho $USERNAME"
+echo "========================================================"
+
+USER_2FA_DIR="/etc/openvpn/2fa/$USERNAME"
+mkdir -p "$USER_2FA_DIR"
+
+# Tạo file secret Google Authenticator không tương tác (cờ -q và pipe y)
+yes y | google-authenticator -q -t -d -f -r 3 -R 30 -W -s "$USER_2FA_DIR/.google_authenticator" >/dev/null 2>&1 || true
+
+chown -R "$USERNAME:$USERNAME" "$USER_2FA_DIR"
+chmod 700 "$USER_2FA_DIR"
+chmod 600 "$USER_2FA_DIR/.google_authenticator"
+
+# Lấy mã Secret Key dạng text
+SECRET_KEY=$(head -n 1 "$USER_2FA_DIR/.google_authenticator")
+OTP_URL="otpauth://totp/ERP-UTT:${USERNAME}?secret=${SECRET_KEY}&issuer=ERP-UTT"
+
+# Xuất file ảnh QR code để gửi cho dev nếu cần
+qrencode -o "$CLIENT_OUT_DIR/qrcode.png" "$OTP_URL"
+
+echo ""
+echo "========================================================"
+echo " [BƯỚC 3/4] Sinh chứng chỉ SSL riêng cho $USERNAME (Easy-RSA)"
+echo "========================================================"
+
+cd "$EASYRSA_DIR"
+# Xóa chứng chỉ cũ nếu có để sinh mới
+if [ -f "pki/issued/$USERNAME.crt" ]; then
+    echo "Thu hồi chứng chỉ cũ của $USERNAME trước khi cấp lại..."
+    ./easyrsa --batch revoke "$USERNAME" || true
+    ./easyrsa gen-crl
+    cp pki/crl.pem "$OPENVPN_DIR/crl.pem"
+fi
+
+./easyrsa --batch build-client-full "$USERNAME" nopass
+
+echo ""
+echo "========================================================"
+echo " [BƯỚC 4/4] Đóng gói file cấu hình $USERNAME.ovpn duy nhất"
+echo "========================================================"
+
+CA_CERT=$(cat "$OPENVPN_DIR/ca.crt")
+CLIENT_CERT=$(cat "pki/issued/$USERNAME.crt")
+CLIENT_KEY=$(cat "pki/private/$USERNAME.key")
+TLS_AUTH=$(cat "$OPENVPN_DIR/ta.key")
+
+OVPN_FILE="$CLIENT_OUT_DIR/$USERNAME.ovpn"
+
+cat << EOF > "$OVPN_FILE"
+# ==============================================================================
+# Cấu hình OpenVPN Client ERP-UTT cho Developer: $USERNAME
+# Yêu cầu: Xác thực 2 lớp (Password + Google Authenticator OTP)
+# ==============================================================================
+client
+dev tun
+proto $SERVER_PROTO
+remote $SERVER_IP $SERVER_PORT
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-GCM
+auth SHA256
+key-direction 1
+
+# Yêu cầu OpenVPN GUI hiển thị popup nhập Username & Password
+auth-user-pass
+
+# Tách riêng hộp thoại nhập mã OTP Google Authenticator
+static-challenge "Nhap ma OTP Google Authenticator (6 so):" 1
+
+<ca>
+$CA_CERT
+</ca>
+
+<cert>
+$CLIENT_CERT
+</cert>
+
+<key>
+$CLIENT_KEY
+</key>
+
+<tls-auth>
+$TLS_AUTH
+</tls-auth>
+EOF
+
+chmod 600 "$OVPN_FILE"
+
+echo ""
+echo "================================================================================"
+echo "🎉 CẤP TÀI KHOẢN OPENVPN CHO $USERNAME THÀNH CÔNG!"
+echo "================================================================================"
+echo ""
+echo "📱 QUÉT MÃ QR DƯỚI ĐÂY BẰNG GOOGLE AUTHENTICATOR HOẶC AUTHY TRÊN ĐIỆN THOẠI:"
+echo ""
+qrencode -t UTF8 "$OTP_URL"
+echo ""
+echo "Khóa bí mật (Secret Key thủ công nếu không quét được QR): $SECRET_KEY"
+echo ""
+echo "--------------------------------------------------------------------------------"
+echo "🔑 THÔNG TIN ĐĂNG NHẬP CỦA DEVELOPER $USERNAME:"
+echo " - Username:    $USERNAME"
+echo " - Password:    $PASSWORD"
+echo " - Cách đăng nhập trên OpenVPN GUI (Đã tách riêng ô OTP):"
+echo "   + Hộp thoại 1: Nhập Username: $USERNAME và Password: $PASSWORD"
+echo "   + Hộp thoại 2 (hiện riêng biệt): Nhập mã 6 số OTP từ app điện thoại"
+echo "--------------------------------------------------------------------------------"
+echo "📂 FILE CẤU HÌNH ĐÃ TẠO SẴN TRÊN SERVER:"
+echo " - File OVPN:   $OVPN_FILE"
+echo " - Ảnh QR Code: $CLIENT_OUT_DIR/qrcode.png"
+echo "================================================================================"
+
+# Tự động tạo link bàn giao Web bảo mật cho Developer (Tự hủy sau $EXPIRE_MINUTES phút)
+if [ -f "$SCRIPT_DIR/vpn-share.sh" ]; then
+    bash "$SCRIPT_DIR/vpn-share.sh" "$USERNAME" "$PASSWORD" "$EXPIRE_MINUTES"
+fi

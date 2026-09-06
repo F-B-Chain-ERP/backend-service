@@ -11,15 +11,24 @@ Thư mục trên Server: `/opt/ERP-UTT/backend-service`
 /opt/ERP-UTT/backend-service/
 ├── deploy/
 │   ├── DEPLOYMENT_GUIDE.md
+│   ├── OPENVPN_MANAGEMENT_GUIDE.md   # Hướng dẫn OpenVPN 2FA OTP cho Admin & Dev
 │   ├── server-setup.sh               # Cài đặt server & khởi động infra
 │   └── scripts/
 │       ├── 01-server-infra.sh        # Chạy trên server: Khởi động DB & Redis
 │       ├── 02-build-push.sh / .ps1   # Chạy trên local: Build & chuyển image lên server
-│       └── 03-deploy-app.sh          # Chạy trên server: Khởi chạy backend container
+│       ├── 03-deploy-app.sh          # Chạy trên server: Khởi chạy backend container
+│       ├── 05-harden-firewall.sh     # Thiết lập tường lửa UFW (SSH, HTTP, HTTPS, DB, Redis)
+│       ├── cleanup-vpn-server.sh     # Dọn dẹp OpenVPN trên VPS -> chuyển Nginx trực tiếp cổng 443
+│       └── [Tùy chọn tương lai]
+│           ├── 06-setup-openvpn.sh   # (Dự phòng) Dựng OpenVPN Server 2FA OTP + CRL
+│           ├── vpn-add-user.sh       # (Dự phòng) Cấp tài khoản VPN + OTP cho Dev
+│           ├── vpn-share.sh          # (Dự phòng) Tạo link tải cấu hình VPN tự hủy
+│           ├── vpn-revoke-user.sh    # (Dự phòng) Thu hồi quyền khi Dev nghỉ việc
+│           └── vpn-status.sh         # (Dự phòng) Kiểm tra trạng thái OpenVPN
 └── src/
     └── main/docker/
         ├── infra.yml                 # Compose chỉ chạy PostgreSQL + Redis
-        ├── app.yml                   # Compose chạy Backend (kết nối DB/Redis)
+        ├── app.yml                   # Compose chạy Backend (127.0.0.1:8080 nội bộ)
         ├── postgresql.yml            # Service PostgreSQL 16
         └── redis.yml                 # Service Redis 7
 ```
@@ -73,8 +82,10 @@ chmod +x deploy/scripts/*.sh
 sudo bash deploy/scripts/01-server-infra.sh
 ```
 
-### Bước 2: Kiểm tra kết nối từ Local
-Từ máy local dev, mở DBeaver / DataGrip hoặc terminal:
+### Bước 2: Kiểm tra kết nối từ Local vào Database & Redis
+> 💡 **Kết nối trực tiếp nhanh gọn:** Các port 5432 (PostgreSQL) và 6379 (Redis) được mở trực tiếp trên Firewall Server (hoặc có thể kết nối bảo mật qua SSH Tunnel: `ssh -N -L 5432:localhost:5432 root@163.61.72.183`).
+
+Từ máy local dev, mở DBeaver / DataGrip / pgAdmin hoặc Redis GUI:
 - **PostgreSQL:**
   - Host: `163.61.72.183` | Port: `5432` | DB: `erp_dev` | User: `erp_user` | Pass: `erp123456@`
 - **Redis:**
@@ -90,7 +101,7 @@ Dev mở các file SQL trong `src/main/resources/db/changelog/changeset/` và ch
 > Nếu DB cũ đã chạy migration, hãy `TRUNCATE TABLE databasechangelog;` trước khi chạy lại để tránh trùng lịch sử.
 
 ### Bước 4: Chạy Backend Local kết nối Server DB
-Trong `application-dev.yaml`, cấu hình đã mặc định trỏ về IP server `163.61.72.183`. Chạy backend:
+Trong `application-dev.yaml`, cấu hình mặc định đã trỏ thẳng tới IP Server `163.61.72.183`. Chạy backend:
 ```bash
 cd backend-service
 ./mvnw spring-boot:run
@@ -133,12 +144,33 @@ cd /opt/ERP-UTT/backend-service
 sudo bash deploy/scripts/03-deploy-app.sh latest
 ```
 
-Kiểm tra API trên server:
-- **URL:** `http://163.61.72.183:8080/api/v1/auth/login`
+Kiểm tra API trên server (qua Reverse Proxy HTTPS):
+- **URL HTTPS:** `https://erp-utt.duckdns.org/api/v1/auth/login`
+- **Nội bộ VPS:** `http://127.0.0.1:8080/actuator/health`
 
 ---
 
-## 3. Các lệnh Quản trị thường dùng trên Server
+## 3. Quản trị Tường lửa & Dọn dẹp OpenVPN trên Server
+
+### A. Thiết lập tường lửa UFW tiêu chuẩn (SSH, HTTP, HTTPS, DB, Redis):
+```bash
+cd /opt/ERP-UTT/backend-service
+sudo bash deploy/scripts/05-harden-firewall.sh
+```
+
+### B. Dọn dẹp OpenVPN trên Server & Chuyển Nginx sang cổng 443 trực tiếp:
+```bash
+cd /opt/ERP-UTT/backend-service
+sudo bash deploy/scripts/cleanup-vpn-server.sh
+```
+
+> 📌 **Ghi chú về OpenVPN:**
+> Hệ thống hiện tại vận hành trực tiếp qua HTTPS (Nginx 443) và Direct Port DB/Redis để quy trình CI/CD và triển khai đơn giản, nhanh nhất.
+> Nếu trong tương lai doanh nghiệp muốn siết chặt bảo mật thêm kênh OpenVPN 2FA OTP, toàn bộ script (`06-setup-openvpn.sh`, `vpn-add-user.sh`,...) và tài liệu hướng dẫn [OPENVPN_MANAGEMENT_GUIDE.md](file:///c:/ERP-UTT/backend-service/deploy/OPENVPN_MANAGEMENT_GUIDE.md) vẫn được lưu trữ đầy đủ trong repo để kích hoạt lại bất kỳ lúc nào.
+
+---
+
+## 4. Các lệnh Quản trị thường dùng trên Server
 
 ```bash
 cd /opt/ERP-UTT/backend-service

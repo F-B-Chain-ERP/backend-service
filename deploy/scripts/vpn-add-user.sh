@@ -9,7 +9,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_IP="163.61.72.183"
-SERVER_PORT="1194"
+SERVER_PORT="443"
+SERVER_PROTO="tcp-client"
 OPENVPN_DIR="/etc/openvpn/server"
 EASYRSA_DIR="/etc/openvpn/easy-rsa"
 CLIENTS_DIR="/opt/ERP-UTT/openvpn-clients"
@@ -115,7 +116,7 @@ cat << EOF > "$OVPN_FILE"
 # ==============================================================================
 client
 dev tun
-proto udp
+proto $SERVER_PROTO
 remote $SERVER_IP $SERVER_PORT
 resolv-retry infinite
 nobind

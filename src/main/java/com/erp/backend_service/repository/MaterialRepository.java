@@ -26,6 +26,7 @@ public interface MaterialRepository extends JpaRepository<Material, UUID> {
             OR LOWER(m.name) LIKE CONCAT('%', LOWER(:search), '%'))
         AND (:categoryId IS NULL OR m.categoryId = :categoryId)
         AND (:status IS NULL OR m.status = :status)
+        AND (:isPerishable IS NULL OR m.isPerishable = :isPerishable)
     """)
-    Page<Material> search(String search, UUID categoryId, String status, Pageable pageable);
+    Page<Material> search(String search, UUID categoryId, String status, Boolean isPerishable, Pageable pageable);
 }

@@ -31,8 +31,9 @@ public class MaterialController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(ApiResponse.success(materialService.list(page, size, search, categoryId, status)));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Boolean isPerishable) {
+        return ResponseEntity.ok(ApiResponse.success(materialService.list(page, size, search, categoryId, status, isPerishable)));
     }
 
     @GetMapping("/{id}")

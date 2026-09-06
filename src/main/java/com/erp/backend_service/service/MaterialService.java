@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public interface MaterialService {
 
-    PageResponse<MaterialResponse> list(int page, int size, String search, UUID categoryId, String status);
+    PageResponse<MaterialResponse> list(int page, int size, String search, UUID categoryId, String status, Boolean isPerishable);
 
     MaterialResponse get(UUID id);
 

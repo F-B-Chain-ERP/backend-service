@@ -375,10 +375,9 @@ cat << EOF > "$SHARE_DIR/index.html"
                 <div class="guide-box">
                     1. Tải và cài đặt ứng dụng <a href="https://openvpn.net/community-downloads/" target="_blank" style="color: #60a5fa; font-weight: 600;">OpenVPN GUI cho Windows</a>.<br>
                     2. Nhấp chuột phải icon OpenVPN GUI ở khay Taskbar (góc phải dưới) $\rightarrow$ Chọn <strong>Import file...</strong> $\rightarrow$ Chọn file <strong>$USERNAME.ovpn</strong> vừa tải.<br>
-                    3. Bấm <strong>Connect</strong> và nhập:<br>
-                    &bull; <strong>Username:</strong> <span class="highlight">$USERNAME</span><br>
-                    &bull; <strong>Password:</strong> Gõ <strong>[Mật khẩu]</strong> ghép liền với <strong>[Mã 6 số OTP trên điện thoại]</strong>.<br>
-                    &bull; <em>Ví dụ:</em> Mật khẩu là <code>$PASSWORD</code> và mã OTP trên điện thoại đang là <code>482910</code> $\rightarrow$ Gõ: <span class="highlight">${PASSWORD}482910</span>.<br><br>
+                    3. Bấm <strong>Connect</strong> và đăng nhập với 2 hộp thoại riêng biệt:<br>
+                    &bull; <strong>Hộp thoại 1:</strong> Nhập Username: <span class="highlight">$USERNAME</span> và Password: <span class="highlight">$PASSWORD</span> (chỉ nhập mật khẩu).<br>
+                    &bull; <strong>Hộp thoại 2 (hiện riêng biệt):</strong> Nhập mã 6 số OTP từ ứng dụng Google Authenticator trên điện thoại.<br><br>
                     🎉 <strong>Địa chỉ kết nối Database & Cache nội bộ (sau khi kết nối VPN):</strong><br>
                     &bull; <strong>PostgreSQL 16:</strong> Host: <code>10.8.0.1</code> | Port: <code>5432</code> | DB: <code>erp_dev</code><br>
                     &bull; <strong>Redis 7:</strong> Host: <code>10.8.0.1</code> | Port: <code>6379</code>

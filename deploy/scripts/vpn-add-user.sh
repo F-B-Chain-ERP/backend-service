@@ -128,6 +128,9 @@ key-direction 1
 # Yêu cầu OpenVPN GUI hiển thị popup nhập Username & Password
 auth-user-pass
 
+# Tách riêng hộp thoại nhập mã OTP Google Authenticator
+static-challenge "Nhap ma OTP Google Authenticator (6 so):" 1
+
 <ca>
 $CA_CERT
 </ca>
@@ -162,10 +165,9 @@ echo "--------------------------------------------------------------------------
 echo "🔑 THÔNG TIN ĐĂNG NHẬP CỦA DEVELOPER $USERNAME:"
 echo " - Username:    $USERNAME"
 echo " - Password:    $PASSWORD"
-echo " - Cách đăng nhập trên OpenVPN GUI:"
-echo "   + Ô Username: $USERNAME"
-echo "   + Ô Password: Nhập [Mật khẩu] liền với [Mã 6 số OTP]"
-echo "   + Ví dụ: Nếu OTP trên điện thoại đang là 123456 $\rightarrow$ Nhập: ${PASSWORD}123456"
+echo " - Cách đăng nhập trên OpenVPN GUI (Đã tách riêng ô OTP):"
+echo "   + Hộp thoại 1: Nhập Username: $USERNAME và Password: $PASSWORD"
+echo "   + Hộp thoại 2 (hiện riêng biệt): Nhập mã 6 số OTP từ app điện thoại"
 echo "--------------------------------------------------------------------------------"
 echo "📂 FILE CẤU HÌNH ĐÃ TẠO SẴN TRÊN SERVER:"
 echo " - File OVPN:   $OVPN_FILE"

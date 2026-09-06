@@ -2,6 +2,9 @@ package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.Account;
 import com.erp.core.dto.auth.AccountResponse;
+import com.erp.core.dto.auth.AssignedBranchResponse;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /** Chuyển đổi entity Account sang DTO phản hồi AccountResponse. */
@@ -10,6 +13,15 @@ public class AccountMapper {
 
     /** Ánh xạ thông tin tài khoản sang response (ẩn mật khẩu, chỉ báo có/không). */
     public AccountResponse toResponse(Account account) {
+        return toResponse(account, List.of(), List.of(), List.of());
+    }
+
+    public AccountResponse toResponse(Account account, List<AssignedBranchResponse> assignedBranches) {
+        return toResponse(account, assignedBranches, List.of(), List.of());
+    }
+
+    public AccountResponse toResponse(Account account, List<AssignedBranchResponse> assignedBranches,
+                                      List<UUID> roleIds, List<String> roles) {
         return new AccountResponse(
                 account.getId(),
                 account.getUsername(),
@@ -23,7 +35,10 @@ public class AccountMapper {
                 account.getPrimaryBranchId(),
                 account.getLastLoginAt(),
                 account.getCreatedAt(),
-                account.getUpdatedAt()
+                account.getUpdatedAt(),
+                assignedBranches,
+                roleIds,
+                roles
         );
     }
 }

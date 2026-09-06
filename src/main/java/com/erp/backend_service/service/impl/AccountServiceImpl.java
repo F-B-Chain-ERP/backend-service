@@ -15,8 +15,11 @@ import com.erp.backend_service.service.AccountService;
 import com.erp.backend_service.service.PermissionService;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.AccountRole;
+import com.erp.core.domain.Branch;
 import com.erp.core.domain.Scope;
+import com.erp.core.domain.Role;
 import com.erp.core.dto.auth.AccountResponse;
+import com.erp.core.dto.auth.AssignedBranchResponse;
 import com.erp.core.dto.auth.CreateAccountRequest;
 import com.erp.core.dto.auth.ResetPasswordRequest;
 import com.erp.core.dto.auth.UpdateAccountRequest;
@@ -38,6 +41,9 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -126,7 +132,7 @@ public class AccountServiceImpl implements AccountService {
             syncRolesForBranch(account, request.primaryBranchId(), request.roleIds());
         }
 
-        return accountMapper.toResponse(account);
+        return toResponseWithBranches(account);
     }
 
     /** {@inheritDoc} */
@@ -138,7 +144,7 @@ public class AccountServiceImpl implements AccountService {
         if (!dataScopeHelper.isAllSystem() && account.getPrimaryBranchId() != null) {
             dataScopeHelper.enforceBranchAccess(account.getPrimaryBranchId());
         }
-        return accountMapper.toResponse(account);
+        return toResponseWithBranches(account);
     }
 
     /** {@inheritDoc} */
@@ -161,7 +167,7 @@ public class AccountServiceImpl implements AccountService {
                 accountPage.getSize(),
                 accountPage.getTotalElements(),
                 accountPage.getTotalPages(),
-                accountPage.getContent().stream().map(accountMapper::toResponse).toList()
+                accountPage.getContent().stream().map(this::toResponseWithBranches).toList()
         );
     }
 
@@ -223,7 +229,7 @@ public class AccountServiceImpl implements AccountService {
             permissionService.evictSnapshot(id);
         }
 
-        return accountMapper.toResponse(saved);
+        return toResponseWithBranches(saved);
     }
 
     /** {@inheritDoc} */
@@ -267,6 +273,16 @@ public class AccountServiceImpl implements AccountService {
 
         List<AccountRole> existingAssignments = accountRoleRepository.findByAccountId(account.getId());
 
+        // Hủy các role cũ của scope này khi admin bỏ chọn role trên form.
+        existingAssignments.stream()
+                .filter(ar -> ar.getScopeId().equals(scope.getId()))
+                .filter(ar -> ar.getStatus() == EntityStatus.ACTIVE)
+                .filter(ar -> !roleIds.contains(ar.getRoleId()))
+                .forEach(ar -> {
+                    ar.setStatus(EntityStatus.INACTIVE);
+                    accountRoleRepository.save(ar);
+                });
+
         for (UUID roleId : roleIds) {
             if (!roleRepository.existsById(roleId)) {
                 throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
@@ -291,6 +307,48 @@ public class AccountServiceImpl implements AccountService {
                 accountRoleRepository.save(ar);
             }
         }
+    }
+
+    /** Gộp chi nhánh chính và các chi nhánh xuất hiện trong scope được gán cho tài khoản. */
+    private AccountResponse toResponseWithBranches(Account account) {
+        Set<UUID> branchIds = new LinkedHashSet<>();
+        if (account.getPrimaryBranchId() != null) {
+            branchIds.add(account.getPrimaryBranchId());
+        }
+
+        List<AccountRole> assignments = accountRoleRepository.findEffectiveByAccountIdIn(
+                List.of(account.getId()), EntityStatus.ACTIVE, Instant.now());
+        if (!assignments.isEmpty()) {
+            Map<UUID, Scope> scopes = scopeRepository.findAllById(
+                    assignments.stream().map(AccountRole::getScopeId).distinct().toList())
+                    .stream().collect(java.util.stream.Collectors.toMap(Scope::getId, s -> s));
+            assignments.stream()
+                    .map(AccountRole::getScopeId)
+                    .map(scopes::get)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(s -> s.getStatus() == EntityStatus.ACTIVE && s.getBranchId() != null)
+                    .map(Scope::getBranchId)
+                    .forEach(branchIds::add);
+        }
+
+        Map<UUID, Branch> branches = branchRepository.findAllById(branchIds).stream()
+                .collect(java.util.stream.Collectors.toMap(Branch::getId, b -> b));
+        List<AssignedBranchResponse> assignedBranches = branchIds.stream()
+                .map(branches::get)
+                .filter(java.util.Objects::nonNull)
+                .map(b -> new AssignedBranchResponse(b.getId(), b.getCode(), b.getName()))
+                .toList();
+        List<UUID> roleIds = assignments.stream().map(AccountRole::getRoleId).distinct().toList();
+        Map<UUID, Role> rolesById = roleRepository.findAllById(roleIds).stream()
+                .collect(java.util.stream.Collectors.toMap(Role::getId, r -> r));
+        List<UUID> activeRoleIds = roleIds.stream()
+                .map(rolesById::get)
+                .filter(java.util.Objects::nonNull)
+                .filter(r -> r.getStatus() == EntityStatus.ACTIVE)
+                .map(Role::getId)
+                .toList();
+        List<String> roles = activeRoleIds.stream().map(rolesById::get).map(Role::getName).toList();
+        return accountMapper.toResponse(account, assignedBranches, activeRoleIds, roles);
     }
 
     /** Lấy tài khoản theo id, ném lỗi nếu không tồn tại. */

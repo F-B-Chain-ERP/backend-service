@@ -70,10 +70,9 @@ mkdir -p /etc/openvpn/2fa
 chmod 755 /etc/openvpn/2fa
 
 cat << 'EOF' > /etc/pam.d/openvpn
-# Cấu hình xác thực 2 lớp cho OpenVPN
-# Dev đăng nhập bằng: <Mật khẩu><Mã OTP 6 số>
-auth required pam_google_authenticator.so secret=/etc/openvpn/2fa/${USER}/.google_authenticator forward_pass
-auth required pam_unix.so use_first_pass
+# Cấu hình xác thực 2 lớp riêng biệt: Mật khẩu và OTP nhập ở 2 ô riêng
+auth required pam_unix.so
+auth required pam_google_authenticator.so secret=/etc/openvpn/2fa/${USER}/.google_authenticator authtok_prompt=pin
 account required pam_unix.so
 EOF
 
@@ -104,8 +103,8 @@ push "route 10.8.0.0 255.255.255.0"
 # Danh sách chứng chỉ đã bị thu hồi (Khi Dev nghỉ việc)
 crl-verify crl.pem
 
-# Xác thực người dùng qua PAM (2FA Password + Google Authenticator)
-plugin /usr/lib/x86_64-linux-gnu/openvpn/plugins/openvpn-plugin-auth-pam.so openvpn
+# Xác thực người dùng qua PAM (Mật khẩu và OTP tách riêng biệt)
+plugin /usr/lib/x86_64-linux-gnu/openvpn/plugins/openvpn-plugin-auth-pam.so "openvpn login USERNAME password PASSWORD pin OTP"
 verify-client-cert require
 username-as-common-name
 

@@ -18,6 +18,8 @@ public interface MaterialRepository extends JpaRepository<Material, UUID> {
 
     boolean existsByBaseUnitId(UUID baseUnitId);
 
+    long countByCategoryId(UUID categoryId);
+
     @Query("""
         SELECT m
         FROM Material m

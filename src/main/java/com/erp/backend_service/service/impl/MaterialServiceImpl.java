@@ -86,7 +86,7 @@ public class MaterialServiceImpl implements MaterialService {
         }
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_CATEGORY_NOT_FOUND));
-        if (!"MATERIAL".equals(category.getCategoryType())) {
+        if (!"MATERIAL".equals(category.getCategoryType()) || !"ACTIVE".equals(category.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_MATERIAL_CATEGORY);
         }
         if (!unitRepository.existsById(request.baseUnitId())) {
@@ -106,14 +106,21 @@ public class MaterialServiceImpl implements MaterialService {
         }
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_CATEGORY_NOT_FOUND));
-        if (!"MATERIAL".equals(category.getCategoryType())) {
+        if (!"MATERIAL".equals(category.getCategoryType()) || !"ACTIVE".equals(category.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_MATERIAL_CATEGORY);
         }
         if (!unitRepository.existsById(request.baseUnitId())) {
             throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
         }
+        String status = request.status() != null ? request.status().trim().toUpperCase() : null;
+        if (status != null && !"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
+        }
 
         materialMapper.updateEntity(material, request);
+        if (status != null) {
+            material.setStatus(status);
+        }
         return materialMapper.toResponse(materialRepository.save(material));
     }
 

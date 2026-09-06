@@ -37,7 +37,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('proc:purchase_order:view')")
     public ResponseEntity<ApiResponse<PageResponse<PurchaseOrderResponse>>> list(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(10) int size,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID supplierId,

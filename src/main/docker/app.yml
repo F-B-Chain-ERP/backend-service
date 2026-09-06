@@ -13,7 +13,7 @@ services:
       - REDIS_PASSWORD=erp_redis_2026
       - JWT_SECRET=ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgresql:
         condition: service_healthy

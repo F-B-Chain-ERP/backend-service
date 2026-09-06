@@ -25,21 +25,18 @@ echo ""
 echo "========================================================"
 echo " [BƯỚC 2/6] Khởi tạo PKI (Public Key Infrastructure) & CA"
 echo "========================================================"
-rm -rf "$EASYRSA_DIR"
-make-cadir "$EASYRSA_DIR"
-cd "$EASYRSA_DIR"
-
-# Cấu hình vars cho Easy-RSA không tương tác (sử dụng chuẩn RSA 2048bit)
-cat << 'EOF' > vars
+# Khởi tạo PKI và xây dựng CA (Nếu chưa có)
+if [ ! -d "$EASYRSA_DIR/pki" ]; then
+    echo "Đang khởi tạo PKI và xây dựng CA mới..."
+    rm -rf "$EASYRSA_DIR"
+    make-cadir "$EASYRSA_DIR"
+    cd "$EASYRSA_DIR"
+    cat << 'EOF' > vars
 set_var EASYRSA_ALGO "rsa"
 set_var EASYRSA_KEY_SIZE 2048
 set_var EASYRSA_DIGEST "sha256"
 set_var EASYRSA_BATCH "1"
 EOF
-
-# Khởi tạo PKI và xây dựng CA (Nếu chưa có)
-if [ ! -f "$OPENVPN_DIR/ca.crt" ] || [ ! -f "$OPENVPN_DIR/server.crt" ]; then
-    echo "Đang khởi tạo PKI và xây dựng CA mới..."
     ./easyrsa init-pki
     EASYRSA_REQ_CN="ERP-UTT-CA" ./easyrsa build-ca nopass
     ./easyrsa build-server-full server nopass
@@ -53,7 +50,7 @@ if [ ! -f "$OPENVPN_DIR/ca.crt" ] || [ ! -f "$OPENVPN_DIR/server.crt" ]; then
     cp pki/crl.pem "$OPENVPN_DIR/"
     chmod 644 "$OPENVPN_DIR/crl.pem"
 else
-    echo "ℹ️ Chứng chỉ CA và Server đã tồn tại trong $OPENVPN_DIR, giữ nguyên để không làm gián đoạn tài khoản cũ."
+    echo "ℹ️ PKI và Chứng chỉ đã tồn tại tại $EASYRSA_DIR/pki, giữ nguyên để không làm gián đoạn tài khoản cũ."
 fi
 
 echo ""

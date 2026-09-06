@@ -170,7 +170,10 @@ echo "--------------------------------------------------------------------------
 echo "📂 FILE CẤU HÌNH ĐÃ TẠO SẴN TRÊN SERVER:"
 echo " - File OVPN:   $OVPN_FILE"
 echo " - Ảnh QR Code: $CLIENT_OUT_DIR/qrcode.png"
-echo ""
-echo "📥 LỆNH TẢI VỀ MÁY DEV (Chạy trên máy tính cá nhân qua PowerShell):"
-echo " scp root@$SERVER_IP:$OVPN_FILE ."
 echo "================================================================================"
+
+# Tự động tạo link bàn giao Web bảo mật cho Developer (Tự hủy sau 5 phút)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/vpn-share.sh" ]; then
+    bash "$SCRIPT_DIR/vpn-share.sh" "$USERNAME" "$PASSWORD" "5"
+fi

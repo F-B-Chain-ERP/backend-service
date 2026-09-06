@@ -55,6 +55,21 @@ if [ -f "$USER_QR" ]; then
     cp "$USER_QR" "$SHARE_DIR/"
 fi
 
+# Tự sinh mã QR nếu chưa có
+OTP_URL="otpauth://totp/ERP-UTT:${USERNAME}?secret=${SECRET_KEY}&issuer=ERP-UTT"
+if [ ! -f "$SHARE_DIR/qrcode.png" ] && [ -n "$SECRET_KEY" ] && [ "$SECRET_KEY" != "Không xác định" ]; then
+    qrencode -o "$SHARE_DIR/qrcode.png" "$OTP_URL" 2>/dev/null || true
+fi
+
+# Chuyển QR Code sang Base64 Data URL nhúng trực tiếp vào HTML (tránh lỗi 404 và hiển thị tức thì 100%)
+QR_SRC="qrcode.png"
+if [ -f "$SHARE_DIR/qrcode.png" ]; then
+    QR_B64=$(base64 -w 0 "$SHARE_DIR/qrcode.png" 2>/dev/null || base64 "$SHARE_DIR/qrcode.png" | tr -d '\r\n')
+    if [ -n "$QR_B64" ]; then
+        QR_SRC="data:image/png;base64,$QR_B64"
+    fi
+fi
+
 # Tính thời gian hết hạn dạng Unix timestamp cho JavaScript đếm ngược
 EXPIRE_SECONDS=$((EXPIRE_MINUTES * 60))
 
@@ -347,7 +362,7 @@ cat << EOF > "$SHARE_DIR/index.html"
                 </div>
                 <div class="qr-container">
                     <div class="qr-box">
-                        <img src="qrcode.png" alt="Google Authenticator QR Code">
+                        <img src="$QR_SRC" alt="Google Authenticator QR Code">
                     </div>
                     <div style="font-size: 0.85rem; color: var(--text-muted);">Mở Google Authenticator hoặc Authy trên điện thoại và quét mã trên.</div>
                     <div style="font-size: 0.8rem; color: #64748b; margin-top: 10px;">Khóa bí mật thủ công (nếu camera không quét được):</div>

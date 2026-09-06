@@ -37,29 +37,24 @@ set_var EASYRSA_DIGEST "sha256"
 set_var EASYRSA_BATCH "1"
 EOF
 
-# Khởi tạo PKI và xây dựng CA
-./easyrsa init-pki
-EASYRSA_REQ_CN="ERP-UTT-CA" ./easyrsa build-ca nopass
-
-# Sinh Certificate & Private Key cho OpenVPN Server
-./easyrsa build-server-full server nopass
-
-# Sinh Diffie-Hellman parameters
-./easyrsa gen-dh
-
-# Khởi tạo danh sách thu hồi chứng chỉ (CRL - Certificate Revocation List)
-./easyrsa gen-crl
-
-# Tạo TLS Auth Key (HMAC firewall chống DoS port scanning)
-openvpn --genkey secret "$OPENVPN_DIR/ta.key"
-
-# Sao chép các chứng chỉ và khóa vào thư mục OpenVPN Server
-cp pki/ca.crt "$OPENVPN_DIR/"
-cp pki/issued/server.crt "$OPENVPN_DIR/"
-cp pki/private/server.key "$OPENVPN_DIR/"
-cp pki/dh.pem "$OPENVPN_DIR/"
-cp pki/crl.pem "$OPENVPN_DIR/"
-chmod 644 "$OPENVPN_DIR/crl.pem"
+# Khởi tạo PKI và xây dựng CA (Nếu chưa có)
+if [ ! -f "$OPENVPN_DIR/ca.crt" ] || [ ! -f "$OPENVPN_DIR/server.crt" ]; then
+    echo "Đang khởi tạo PKI và xây dựng CA mới..."
+    ./easyrsa init-pki
+    EASYRSA_REQ_CN="ERP-UTT-CA" ./easyrsa build-ca nopass
+    ./easyrsa build-server-full server nopass
+    ./easyrsa gen-dh
+    ./easyrsa gen-crl
+    openvpn --genkey secret "$OPENVPN_DIR/ta.key"
+    cp pki/ca.crt "$OPENVPN_DIR/"
+    cp pki/issued/server.crt "$OPENVPN_DIR/"
+    cp pki/private/server.key "$OPENVPN_DIR/"
+    cp pki/dh.pem "$OPENVPN_DIR/"
+    cp pki/crl.pem "$OPENVPN_DIR/"
+    chmod 644 "$OPENVPN_DIR/crl.pem"
+else
+    echo "ℹ️ Chứng chỉ CA và Server đã tồn tại trong $OPENVPN_DIR, giữ nguyên để không làm gián đoạn tài khoản cũ."
+fi
 
 echo ""
 echo "========================================================"
@@ -82,10 +77,11 @@ echo " [BƯỚC 4/6] Tạo file cấu hình OpenVPN Server (/etc/openvpn/server/
 echo "========================================================"
 
 cat << EOF > "$OPENVPN_DIR/server.conf"
-# Cổng & Giao thức
-port 1194
-proto udp
+# Cổng & Giao thức (Chia sẻ cổng 443 TCP với Nginx Web HTTPS để bypass mọi Firewall)
+port 443
+proto tcp-server
 dev tun
+port-share 127.0.0.1 8443
 
 # Chứng chỉ & Khóa
 ca ca.crt
@@ -142,19 +138,34 @@ fi
 
 echo ""
 echo "========================================================"
-echo " [BƯỚC 6/6] Khởi động Dịch vụ OpenVPN Server"
+echo " [BƯỚC 6/6] Cấu hình Nginx 8443 & Khởi động OpenVPN Server (Cổng 443 TCP)"
 echo "========================================================"
+
+# Chuyển Nginx sang lắng nghe 127.0.0.1:8443 để nhường 0.0.0.0:443 cho OpenVPN port-share
+NGINX_CONF="/etc/nginx/sites-available/erp-utt"
+if [ -f "$NGINX_CONF" ]; then
+    echo "Đang cấu hình Nginx lắng nghe tại 127.0.0.1:8443..."
+    sed -i 's/listen 443 ssl http2;/listen 127.0.0.1:8443 ssl http2;/' "$NGINX_CONF"
+    sed -i '/listen \[::\]:443 ssl http2;/d' "$NGINX_CONF"
+    nginx -t
+    systemctl reload nginx
+    echo "✅ Nginx đã nhường cổng 443 và chuyển sang lắng nghe 127.0.0.1:8443 thành công!"
+fi
+
+# Mở cổng UFW
+ufw allow 443/tcp comment 'HTTPS & OpenVPN TCP Port-Share' || true
+ufw allow 80/tcp comment 'HTTP Web Redirect' || true
 
 systemctl daemon-reload
 systemctl enable openvpn-server@server
 systemctl restart openvpn-server@server
 
 # Kiểm tra trạng thái
-systemctl is-active --quiet openvpn-server@server && echo "✅ OpenVPN Server đang chạy thành công!" || echo "⚠️ Kiểm tra logs: journalctl -u openvpn-server@server -e"
+systemctl is-active --quiet openvpn-server@server && echo "✅ OpenVPN Server (Cổng 443 TCP Stealth) đang chạy thành công!" || echo "⚠️ Kiểm tra logs: journalctl -u openvpn-server@server -e"
 
 echo ""
 echo "========================================================"
-echo "✅ HOÀN TẤT CÀI ĐẶT OPENVPN SERVER!"
+echo "✅ HOÀN TẤT CÀI ĐẶT OPENVPN SERVER CỔNG 443 (PORT-SHARE)!"
 echo " Tiếp theo, để cấp tài khoản cho một Dev mới:"
 echo " sudo bash /opt/ERP-UTT/backend-service/deploy/scripts/vpn-add-user.sh <username>"
 echo "========================================================"

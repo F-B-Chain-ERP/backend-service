@@ -8,6 +8,7 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOMAIN="erp-utt.duckdns.org"
 CLIENTS_DIR="/opt/ERP-UTT/openvpn-clients"
 WEB_SHARES_DIR="/opt/ERP-UTT/vpn-web-shares"
@@ -15,12 +16,12 @@ USER_2FA_DIR="/etc/openvpn/2fa"
 
 USERNAME="$1"
 PASSWORD="$2"
-EXPIRE_MINUTES="${3:-5}"  # Mặc định tự hủy sau 5 phút
+EXPIRE_MINUTES="${3:-15}"  # Mặc định tự hủy sau 15 phút
 
 if [ -z "$USERNAME" ]; then
     echo "❌ LỖI: Bạn chưa truyền tên tài khoản (username)!"
     echo "Cú pháp: sudo bash vpn-share.sh <username> [password] [expire_minutes]"
-    echo "Ví dụ:   sudo bash vpn-share.sh dunghd 123456789 5"
+    echo "Ví dụ:   sudo bash vpn-share.sh dunghd 123456789 15"
     exit 1
 fi
 
@@ -29,9 +30,16 @@ USER_QR="$CLIENTS_DIR/$USERNAME/qrcode.png"
 USER_SECRET_FILE="$USER_2FA_DIR/$USERNAME/.google_authenticator"
 
 if [ ! -f "$USER_OVPN" ]; then
-    echo "❌ LỖI: Không tìm thấy file cấu hình $USER_OVPN!"
-    echo "Vui lòng kiểm tra lại tài khoản hoặc tạo mới bằng vpn-add-user.sh."
-    exit 1
+    if [ -f "$SCRIPT_DIR/vpn-add-user.sh" ]; then
+        echo "ℹ️ Tài khoản '$USERNAME' chưa tồn tại cấu hình VPN (thiếu $USER_OVPN)."
+        echo "🔄 Đang tự động gọi 'vpn-add-user.sh' để khởi tạo tài khoản, sinh chứng chỉ và tạo link bàn giao..."
+        echo ""
+        exec bash "$SCRIPT_DIR/vpn-add-user.sh" "$USERNAME" "$PASSWORD" "$EXPIRE_MINUTES"
+    else
+        echo "❌ LỖI: Không tìm thấy file cấu hình $USER_OVPN!"
+        echo "Vui lòng kiểm tra lại tài khoản hoặc tạo mới bằng: sudo bash deploy/scripts/vpn-add-user.sh $USERNAME"
+        exit 1
+    fi
 fi
 
 SECRET_KEY="Không xác định"
@@ -72,6 +80,7 @@ fi
 
 # Tính thời gian hết hạn dạng Unix timestamp cho JavaScript đếm ngược
 EXPIRE_SECONDS=$((EXPIRE_MINUTES * 60))
+TIMER_INIT_STR=$(printf "%02d:00" "$EXPIRE_MINUTES")
 
 # Tạo trang HTML bàn giao hiện đại, có đồng hồ đếm ngược tự hủy
 cat << EOF > "$SHARE_DIR/index.html"
@@ -321,7 +330,7 @@ cat << EOF > "$SHARE_DIR/index.html"
             <div class="timer-text">
                 ⚠️ <strong>Bảo mật cao:</strong> Trang cài đặt sẽ tự hủy sau:
             </div>
-            <div class="timer-badge" id="countdown">05:00</div>
+            <div class="timer-badge" id="countdown">$TIMER_INIT_STR</div>
         </div>
 
         <div id="content-view">
@@ -448,6 +457,7 @@ cat << EOF > "$SHARE_DIR/index.html"
 EOF
 
 # Phân quyền cho Nginx đọc được
+chmod 755 /opt/ERP-UTT 2>/dev/null || true
 chmod -R 755 "$WEB_SHARES_DIR"
 chown -R www-data:www-data "$WEB_SHARES_DIR" 2>/dev/null || true
 
@@ -463,7 +473,8 @@ echo "==========================================================================
 echo ""
 echo "👉 HÃY GỬI NGAY ĐƯỜNG LINK NÀY CHO DEVELOPER ($USERNAME):"
 echo ""
-echo "   🔗 $SHARE_URL"
+echo "   🔗 Domain HTTPS:    $SHARE_URL"
+echo "   🔗 IP VPS dự phòng: https://163.61.72.183/vpn-setup/$TOKEN/"
 echo ""
 echo "--------------------------------------------------------------------------------"
 echo "⏳ CƠ CHẾ BẢO MẬT TỰ HỦY (SELF-DESTRUCT):"

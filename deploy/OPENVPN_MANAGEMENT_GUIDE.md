@@ -39,14 +39,16 @@ sudo bash deploy/scripts/06-setup-openvpn.sh
 ### B. Cấp tài khoản cho Developer mới (Onboarding)
 Khi có một lập trình viên mới tham gia dự án:
 ```bash
-# Cú pháp: sudo bash deploy/scripts/vpn-add-user.sh <username> [password]
-# Ví dụ:
-sudo bash deploy/scripts/vpn-add-user.sh dev_nam "MatKhau123@#"
+# Cách 1 (Khuyên dùng): Cấp tài khoản + tự động tạo link bàn giao web (tự hủy sau 15 phút):
+sudo bash deploy/scripts/vpn-add-user.sh dev_nam "MatKhau123@#" 15
+
+# Cách 2: Gọi trực tiếp vpn-share.sh (script sẽ tự động kiểm tra và tạo user nếu chưa có):
+sudo bash deploy/scripts/vpn-share.sh dev_nam "MatKhau123@#" 15
 ```
 **Kết quả hiển thị trên màn hình:**
-1. **Mã QR Code**: Cho Dev dùng điện thoại mở Google Authenticator hoặc Authy lên quét.
-2. **File cấu hình client**: Được tạo tại `/opt/ERP-UTT/openvpn-clients/dev_nam/dev_nam.ovpn`.
-3. Gửi file `dev_nam.ovpn` và mật khẩu cho Developer.
+1. **Link Web bàn giao tự hủy**: Dev chỉ cần truy cập link HTTPS trên trình duyệt để xem mã QR quét 2FA, tải file `.ovpn` và làm theo hướng dẫn kết nối.
+2. **File cấu hình client lưu trên VPS**: Được tạo tại `/opt/ERP-UTT/openvpn-clients/dev_nam/dev_nam.ovpn`.
+3. **Mã QR Code**: Hiển thị trực tiếp trên giao diện console và trang web bàn giao.
 
 ### C. Thu hồi quyền khi Developer nghỉ việc (Offboarding - Revoke 1 chạm)
 Khi nhân sự nghỉ việc hoặc đổi dự án, Admin chỉ cần chạy:

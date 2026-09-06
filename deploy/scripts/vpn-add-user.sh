@@ -17,11 +17,12 @@ CLIENTS_DIR="/opt/ERP-UTT/openvpn-clients"
 
 USERNAME="$1"
 PASSWORD="$2"
+EXPIRE_MINUTES="${3:-15}"  # Thời gian tự hủy link web bàn giao (phút, mặc định 15)
 
 if [ -z "$USERNAME" ]; then
     echo "❌ LỖI: Bạn chưa truyền tên tài khoản (username)!"
-    echo "Cú pháp: sudo bash vpn-add-user.sh <username> [password]"
-    echo "Ví dụ:   sudo bash vpn-add-user.sh dev_nam MyPassword123@"
+    echo "Cú pháp: sudo bash vpn-add-user.sh <username> [password] [expire_minutes]"
+    echo "Ví dụ:   sudo bash vpn-add-user.sh dev_nam MyPassword123@ 15"
     exit 1
 fi
 
@@ -176,7 +177,7 @@ echo " - File OVPN:   $OVPN_FILE"
 echo " - Ảnh QR Code: $CLIENT_OUT_DIR/qrcode.png"
 echo "================================================================================"
 
-# Tự động tạo link bàn giao Web bảo mật cho Developer (Tự hủy sau 5 phút)
+# Tự động tạo link bàn giao Web bảo mật cho Developer (Tự hủy sau $EXPIRE_MINUTES phút)
 if [ -f "$SCRIPT_DIR/vpn-share.sh" ]; then
-    bash "$SCRIPT_DIR/vpn-share.sh" "$USERNAME" "$PASSWORD" "5"
+    bash "$SCRIPT_DIR/vpn-share.sh" "$USERNAME" "$PASSWORD" "$EXPIRE_MINUTES"
 fi

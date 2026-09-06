@@ -81,7 +81,25 @@ public enum ErrorCode {
     PERMISSION_NOT_FOUND(404, "PERMISSION_NOT_FOUND", "Permission not found"),
     PERMISSION_CODE_EXISTS(409, "PERMISSION_CODE_EXISTS", "Permission code already exists"),
     PERMISSION_IN_USE(409, "PERMISSION_IN_USE", "Permission is still assigned to one or more roles"),
-    SCOPE_IN_USE(409, "SCOPE_IN_USE", "Phạm vi vẫn đang được gán cho một hoặc nhiều tài khoản"),;
+    SCOPE_IN_USE(409, "SCOPE_IN_USE", "Phạm vi vẫn đang được gán cho một hoặc nhiều tài khoản"),
+    INV_400_INSUFFICIENT_STOCK(400, "INV_400_INSUFFICIENT_STOCK", "Tồn kho khả dụng không đủ."),
+    INV_400_INVALID_STATUS(400, "INV_400_INVALID_STATUS", "Trạng thái phiếu không cho phép thực hiện thao tác này."),
+    INV_400_WAREHOUSE_SAME(400, "INV_400_WAREHOUSE_SAME", "Kho nguồn và kho đích phải khác nhau."),
+    INV_400_ITEMS_EMPTY(400, "INV_400_ITEMS_EMPTY", "Phiếu phải có ít nhất một mặt hàng."),
+    INV_400_DUPLICATE_MATERIAL(400, "INV_400_DUPLICATE_MATERIAL", "Một mặt hàng không được xuất hiện nhiều lần trong cùng một phiếu."),
+    INV_400_RECEIVE_EXCEED(400, "INV_400_RECEIVE_EXCEED", "Số lượng nhận vượt quá số lượng đang chuyển."),
+    INV_400_COUNT_BELOW_RESERVED(400, "INV_400_COUNT_BELOW_RESERVED", "Số lượng kiểm kê không được nhỏ hơn số lượng đang giữ chỗ."),
+    INV_400_COUNT_ALREADY_ADJUSTED(400, "INV_400_COUNT_ALREADY_ADJUSTED", "Phiếu kiểm kê đã được điều chỉnh."),
+    INV_404_TRANSFER_NOT_FOUND(404, "INV_404_TRANSFER_NOT_FOUND", "Không tìm thấy phiếu chuyển kho."),
+    INV_404_COUNT_NOT_FOUND(404, "INV_404_COUNT_NOT_FOUND", "Không tìm thấy phiếu kiểm kê."),
+    INV_400_TRANSFER_CANNOT_EDIT(400, "INV_400_TRANSFER_CANNOT_EDIT", "Chỉ có thể chỉnh sửa phiếu chuyển kho ở trạng thái PENDING."),
+    INV_400_COUNT_CANNOT_EDIT(400, "INV_400_COUNT_CANNOT_EDIT", "Chỉ có thể chỉnh sửa phiếu kiểm kê ở trạng thái DRAFT hoặc IN_PROGRESS."),
+    INV_400_COUNT_ITEMS_EMPTY(400, "INV_400_COUNT_ITEMS_EMPTY", "Phiếu kiểm kê phải có ít nhất một mặt hàng."),
+    INV_400_COUNT_NOT_COMPLETED(400, "INV_400_COUNT_NOT_COMPLETED", "Phiếu kiểm kê phải ở trạng thái COMPLETED trước khi điều chỉnh."),
+    INV_400_TRANSFER_NOT_IN_TRANSIT(400, "INV_400_TRANSFER_NOT_IN_TRANSIT", "Phiếu chuyển kho chưa ở trạng thái IN_TRANSIT."),
+    INV_400_TRANSFER_NOT_RECEIVABLE(400, "INV_400_TRANSFER_NOT_RECEIVABLE", "Phiếu chuyển kho không thể nhận ở trạng thái hiện tại."),
+    INVALID_QUANTITY(400, "INVALID_QUANTITY", "Số lượng không hợp lệ.");
+
 
 
     private final int statusCode;

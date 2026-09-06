@@ -29,17 +29,17 @@ rm -rf "$EASYRSA_DIR"
 make-cadir "$EASYRSA_DIR"
 cd "$EASYRSA_DIR"
 
-# Cấu hình vars cho Easy-RSA không tương tác
+# Cấu hình vars cho Easy-RSA không tương tác (sử dụng chuẩn RSA 2048bit)
 cat << 'EOF' > vars
-set_var EASYRSA_ALGO "ec"
+set_var EASYRSA_ALGO "rsa"
+set_var EASYRSA_KEY_SIZE 2048
 set_var EASYRSA_DIGEST "sha256"
 set_var EASYRSA_BATCH "1"
-set_var EASYRSA_REQ_CN "ERP-UTT-CA"
 EOF
 
 # Khởi tạo PKI và xây dựng CA
 ./easyrsa init-pki
-./easyrsa build-ca nopass
+EASYRSA_REQ_CN="ERP-UTT-CA" ./easyrsa build-ca nopass
 
 # Sinh Certificate & Private Key cho OpenVPN Server
 ./easyrsa build-server-full server nopass

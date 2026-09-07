@@ -23,7 +23,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class MaterialServiceImpl implements MaterialService {
@@ -50,7 +53,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<MaterialResponse> list(int page, int size, String search, UUID categoryId, String status) {
+    public PageResponse<MaterialResponse> list(int page, int size, String search, UUID categoryId, String status, Boolean isPerishable) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
@@ -60,13 +63,22 @@ public class MaterialServiceImpl implements MaterialService {
                 StringUtils.hasText(search) ? search.trim() : null,
                 categoryId,
                 StringUtils.hasText(status) ? status.trim().toUpperCase() : null,
+                isPerishable,
                 pageable);
+
+        List<Material> materials = pageResult.getContent();
+
+        Map<UUID, String> categoryNameMap = resolveCategoryNames(materials);
+        Map<UUID, String> unitNameMap = resolveUnitNames(materials);
+
         return new PageResponse<>(
                 pageResult.getNumber(),
                 pageResult.getSize(),
                 pageResult.getTotalElements(),
                 pageResult.getTotalPages(),
-                pageResult.getContent().stream().map(materialMapper::toResponse).toList());
+                materials.stream()
+                        .map(m -> materialMapper.toResponse(m, categoryNameMap.get(m.getCategoryId()), unitNameMap.get(m.getBaseUnitId())))
+                        .toList());
     }
 
     @Override
@@ -86,7 +98,7 @@ public class MaterialServiceImpl implements MaterialService {
         }
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_CATEGORY_NOT_FOUND));
-        if (!"MATERIAL".equals(category.getCategoryType())) {
+        if (!"MATERIAL".equals(category.getCategoryType()) || !"ACTIVE".equals(category.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_MATERIAL_CATEGORY);
         }
         if (!unitRepository.existsById(request.baseUnitId())) {
@@ -106,14 +118,21 @@ public class MaterialServiceImpl implements MaterialService {
         }
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_CATEGORY_NOT_FOUND));
-        if (!"MATERIAL".equals(category.getCategoryType())) {
+        if (!"MATERIAL".equals(category.getCategoryType()) || !"ACTIVE".equals(category.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_MATERIAL_CATEGORY);
         }
         if (!unitRepository.existsById(request.baseUnitId())) {
             throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
         }
+        String status = request.status() != null ? request.status().trim().toUpperCase() : null;
+        if (status != null && !"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
+        }
 
         materialMapper.updateEntity(material, request);
+        if (status != null) {
+            material.setStatus(status);
+        }
         return materialMapper.toResponse(materialRepository.save(material));
     }
 
@@ -165,5 +184,31 @@ public class MaterialServiceImpl implements MaterialService {
             return null;
         }
         return unitRepository.findById(unitId).map(Unit::getName).orElse(null);
+    }
+
+    private Map<UUID, String> resolveCategoryNames(List<Material> materials) {
+        List<UUID> categoryIds = materials.stream()
+                .map(Material::getCategoryId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (categoryIds.isEmpty()) {
+            return Map.of();
+        }
+        return categoryRepository.findAllById(categoryIds).stream()
+                .collect(Collectors.toMap(Category::getId, Category::getName));
+    }
+
+    private Map<UUID, String> resolveUnitNames(List<Material> materials) {
+        List<UUID> unitIds = materials.stream()
+                .map(Material::getBaseUnitId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (unitIds.isEmpty()) {
+            return Map.of();
+        }
+        return unitRepository.findAllById(unitIds).stream()
+                .collect(Collectors.toMap(Unit::getId, Unit::getName));
     }
 }

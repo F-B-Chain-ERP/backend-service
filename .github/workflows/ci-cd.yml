@@ -202,8 +202,10 @@ jobs:
             echo "▶ Đồng bộ source files mới nhất..."
             git remote set-url origin "${REPO_URL}"
             git fetch origin dev
-            git checkout dev
+            git reset --hard HEAD || true
+            git checkout -f dev
             git reset --hard origin/dev
+            git clean -fd
 
             # Cấp quyền thực thi cho các scripts
             chmod +x deploy/scripts/*.sh

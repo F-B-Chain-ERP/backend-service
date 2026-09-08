@@ -10,35 +10,17 @@ import java.util.UUID;
 
 public interface StockTransferService {
 
-    PageResponse<StockTransferResponse> list(
-            int page,
-            int size,
-            String search,
-            String status,
-            UUID warehouseId
-    );
+    PageResponse<StockTransferResponse> list(int page, int size, String search, String status, UUID warehouseId);
 
     StockTransferResponse get(UUID id);
 
-    StockTransferResponse create(
-            CreateStockTransferRequest request
-    );
+    StockTransferResponse create(CreateStockTransferRequest request);
 
-    StockTransferResponse update(
-            UUID id,
-            UpdateStockTransferRequest request
-    );
+    StockTransferResponse update(UUID id, UpdateStockTransferRequest request);
 
-    StockTransferResponse dispatch(
-            UUID id
-    );
+    StockTransferResponse dispatch(UUID id);
 
-    StockTransferResponse receive(
-            UUID id,
-            ReceiveStockTransferRequest request
-    );
+    StockTransferResponse receive(UUID id, ReceiveStockTransferRequest request);
 
-    StockTransferResponse cancel(
-            UUID id
-    );
+    StockTransferResponse cancel(UUID id, String reason);
 }

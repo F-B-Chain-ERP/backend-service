@@ -14,6 +14,11 @@ public interface StockOutItemRepository extends JpaRepository<StockOutItem, UUID
     /** Lấy tất cả dòng chi tiết theo phiếu xuất kho. */
     List<StockOutItem> findByStockOutId(UUID stockOutId);
 
+    /** Batch load items cho list (chống N+1). */
+    List<StockOutItem> findByStockOutIdIn(java.util.Collection<UUID> stockOutIds);
+
+    boolean existsByMaterialId(java.util.UUID materialId);
+
     /** Xóa tất cả dòng chi tiết theo phiếu xuất kho. */
     void deleteByStockOutId(UUID stockOutId);
 }

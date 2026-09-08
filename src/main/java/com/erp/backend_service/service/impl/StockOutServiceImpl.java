@@ -7,6 +7,7 @@ import com.erp.backend_service.mapper.StockOutMapper;
 import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.MaterialRepository;
 import com.erp.backend_service.repository.MaterialStockBalanceRepository;
+import com.erp.backend_service.repository.StockCountRepository;
 import com.erp.backend_service.repository.StockOutItemRepository;
 import com.erp.backend_service.repository.StockOutRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
@@ -63,8 +64,11 @@ public class StockOutServiceImpl implements StockOutService {
     private static final String STATUS_POSTED = "POSTED";
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final List<String> VALID_STATUSES = List.of("DRAFT", "POSTED", "CANCELLED");
-    private static final List<String> VALID_DESTINATION_TYPES = List.of(
-            "PRODUCTION_ISSUE", "TRANSFER_OUT", "ADJUSTMENT", "WASTAGE", "BRANCH_ISSUE");
+    private static final List<String> VALID_DESTINATION_TYPES = List.of("PRODUCTION_ISSUE", "TRANSFER_OUT", "ADJUSTMENT", "WASTAGE", "BRANCH_ISSUE");
+    /**
+     * Đích do hệ thống tự sinh (chuyển kho/điều chỉnh), cấm tạo tay qua API xuất.
+     */
+    private static final List<String> SYSTEM_DESTINATION_TYPES = List.of("TRANSFER_OUT", "ADJUSTMENT");
     private static final DateTimeFormatter CODE_MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final StockOutRepository stockOutRepository;
@@ -73,35 +77,32 @@ public class StockOutServiceImpl implements StockOutService {
     private final WarehouseRepository warehouseRepository;
     private final MaterialRepository materialRepository;
     private final AccountRepository accountRepository;
+    private final StockCountRepository stockCountRepository;
     private final StockOutMapper stockOutMapper;
     private final StockOutItemMapper stockOutItemMapper;
     private final DataScopeHelper dataScopeHelper;
+    private final StockBalanceMutationService balanceMutationService;
 
-    public StockOutServiceImpl(StockOutRepository stockOutRepository,
-                               StockOutItemRepository stockOutItemRepository,
-                               MaterialStockBalanceRepository materialStockBalanceRepository,
-                               WarehouseRepository warehouseRepository,
-                               MaterialRepository materialRepository,
-                               AccountRepository accountRepository,
-                               StockOutMapper stockOutMapper,
-                               StockOutItemMapper stockOutItemMapper,
-                               DataScopeHelper dataScopeHelper) {
+    public StockOutServiceImpl(StockOutRepository stockOutRepository, StockOutItemRepository stockOutItemRepository, MaterialStockBalanceRepository materialStockBalanceRepository, WarehouseRepository warehouseRepository, MaterialRepository materialRepository, AccountRepository accountRepository, StockCountRepository stockCountRepository, StockOutMapper stockOutMapper, StockOutItemMapper stockOutItemMapper, DataScopeHelper dataScopeHelper, StockBalanceMutationService balanceMutationService) {
         this.stockOutRepository = stockOutRepository;
         this.stockOutItemRepository = stockOutItemRepository;
         this.materialStockBalanceRepository = materialStockBalanceRepository;
         this.warehouseRepository = warehouseRepository;
         this.materialRepository = materialRepository;
         this.accountRepository = accountRepository;
+        this.stockCountRepository = stockCountRepository;
         this.stockOutMapper = stockOutMapper;
         this.stockOutItemMapper = stockOutItemMapper;
         this.dataScopeHelper = dataScopeHelper;
+        this.balanceMutationService = balanceMutationService;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<StockOutResponse> list(int page, int size, String search, String status,
-                                               UUID warehouseId, String destinationType, LocalDate fromDate, LocalDate toDate) {
+    public PageResponse<StockOutResponse> list(int page, int size, String search, String status, UUID warehouseId, String destinationType, LocalDate fromDate, LocalDate toDate) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw new BaseException(ErrorCode.INV_400_STOCK_OUT_INVALID_FILTER);
@@ -114,36 +115,35 @@ public class StockOutServiceImpl implements StockOutService {
             return new PageResponse<>(page, safeSize, 0L, 0, List.of());
         }
 
-        Page<StockOut> pageResult = stockOutRepository.search(
-                StringUtils.hasText(search) ? search.trim() : null, status,
-                warehouseId, allowedWarehouseIds, destinationType, fromDate, toDate, pageable);
+        Page<StockOut> pageResult = stockOutRepository.search(StringUtils.hasText(search) ? search.trim() : null, status, warehouseId, allowedWarehouseIds, destinationType, fromDate, toDate, pageable);
 
         List<StockOut> stockOuts = pageResult.getContent();
 
         Map<UUID, List<StockOutItem>> itemsByStockOut = new HashMap<>();
         List<StockOutItem> allItems = new ArrayList<>();
-        for (StockOut so : stockOuts) {
-            List<StockOutItem> items = stockOutItemRepository.findByStockOutId(so.getId());
-            itemsByStockOut.put(so.getId(), items);
-            allItems.addAll(items);
+        if (!stockOuts.isEmpty()) {
+            List<UUID> ids = stockOuts.stream().map(StockOut::getId).toList();
+            for (StockOutItem it : stockOutItemRepository.findByStockOutIdIn(ids)) {
+                itemsByStockOut.computeIfAbsent(it.getStockOutId(), k -> new ArrayList<>()).add(it);
+                allItems.add(it);
+            }
+            for (StockOut so : stockOuts) {
+                itemsByStockOut.putIfAbsent(so.getId(), List.of());
+            }
         }
 
-        Map<UUID, Warehouse> warehouseMap = toMap(
-                warehouseRepository.findAllById(distinctNonNull(stockOuts, StockOut::getWarehouseId)), Warehouse::getId);
-        Map<UUID, Account> accountMap = toMap(
-                accountRepository.findAllById(distinctNonNull(stockOuts, StockOut::getIssuedBy)), Account::getId);
-        Map<UUID, Material> materialMap = toMap(
-                materialRepository.findAllById(distinctNonNull(allItems, StockOutItem::getMaterialId)), Material::getId);
+        Map<UUID, Warehouse> warehouseMap = toMap(warehouseRepository.findAllById(distinctNonNull(stockOuts, StockOut::getWarehouseId)), Warehouse::getId);
+        Map<UUID, Account> accountMap = toMap(accountRepository.findAllById(distinctNonNull(stockOuts, StockOut::getIssuedBy)), Account::getId);
+        Map<UUID, Material> materialMap = toMap(materialRepository.findAllById(distinctNonNull(allItems, StockOutItem::getMaterialId)), Material::getId);
 
-        List<StockOutResponse> content = stockOuts.stream()
-                .map(so -> toResponse(so, itemsByStockOut.get(so.getId()), warehouseMap, accountMap, materialMap))
-                .toList();
+        List<StockOutResponse> content = stockOuts.stream().map(so -> toResponse(so, itemsByStockOut.get(so.getId()), warehouseMap, accountMap, materialMap)).toList();
 
-        return new PageResponse<>(pageResult.getNumber(), pageResult.getSize(),
-                pageResult.getTotalElements(), pageResult.getTotalPages(), content);
+        return new PageResponse<>(pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements(), pageResult.getTotalPages(), content);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
     public StockOutResponse get(UUID id) {
@@ -152,19 +152,22 @@ public class StockOutServiceImpl implements StockOutService {
         return toResponseWithNames(stockOut, stockOutItemRepository.findByStockOutId(id));
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional
     public StockOutResponse create(CreateStockOutRequest request) {
         validateWarehouse(request.warehouseId());
         validateDestinationType(request.destinationType());
+        rejectSystemDestination(request.destinationType());
         if (request.items() == null || request.items().isEmpty()) {
             throw new BaseException(ErrorCode.INV_400_STOCK_OUT_ITEMS_EMPTY);
         }
         validateItems(request.items());
 
         StockOut stockOut = new StockOut();
-        stockOut.setCode(generateStockOutCode());
+        stockOut.setCode(generateStockOutCodeUnique());
         stockOut.setWarehouseId(request.warehouseId());
         stockOut.setDestinationType(request.destinationType());
         stockOut.setDestinationReferenceId(request.destinationReferenceId());
@@ -177,17 +180,20 @@ public class StockOutServiceImpl implements StockOutService {
         return toResponseWithNames(stockOut, items);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional
     public StockOutResponse update(UUID id, UpdateStockOutRequest request) {
-        StockOut stockOut = findById(id);
+        StockOut stockOut = findByIdForUpdate(id);
         dataScopeHelper.enforceWarehouseAccess(stockOut.getWarehouseId());
         if (!STATUS_DRAFT.equals(stockOut.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_STOCK_OUT_INVALID_STATUS_FOR_EDIT);
         }
         validateWarehouse(request.warehouseId());
         validateDestinationType(request.destinationType());
+        rejectSystemDestination(request.destinationType());
         if (request.items() == null || request.items().isEmpty()) {
             throw new BaseException(ErrorCode.INV_400_STOCK_OUT_ITEMS_EMPTY);
         }
@@ -205,11 +211,13 @@ public class StockOutServiceImpl implements StockOutService {
         return toResponseWithNames(stockOut, items);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional
     public StockOutResponse changeStatus(UUID id, StatusUpdateRequest request) {
-        StockOut stockOut = findById(id);
+        StockOut stockOut = findByIdForUpdate(id);
         dataScopeHelper.enforceWarehouseAccess(stockOut.getWarehouseId());
         if (!STATUS_DRAFT.equals(stockOut.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_STOCK_OUT_INVALID_STATUS);
@@ -224,6 +232,11 @@ public class StockOutServiceImpl implements StockOutService {
         if (STATUS_POSTED.equals(target)) {
             if (items.isEmpty()) {
                 throw new BaseException(ErrorCode.INV_400_STOCK_OUT_ITEMS_EMPTY);
+            }
+            // Chặn post phiếu hệ thống còn sót từ trước + chặn post khi kho đang kiểm kê.
+            rejectSystemDestination(stockOut.getDestinationType());
+            if (stockCountRepository.existsCounting(stockOut.getWarehouseId())) {
+                throw new BaseException(ErrorCode.INV_400_WAREHOUSE_COUNTING);
             }
             applyStockOutQuantity(stockOut, items);
             stockOut.setIssuedBy(SecurityUtils.getCurrentPrincipalId().orElse(null));
@@ -244,8 +257,7 @@ public class StockOutServiceImpl implements StockOutService {
     }
 
     private Warehouse validateWarehouse(UUID warehouseId) {
-        Warehouse warehouse = warehouseRepository.findById(warehouseId)
-                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
+        Warehouse warehouse = warehouseRepository.findById(warehouseId).orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
         dataScopeHelper.enforceWarehouseAccess(warehouseId);
         if (!EntityStatus.ACTIVE.name().equals(warehouse.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_WAREHOUSE_INACTIVE);
@@ -259,10 +271,23 @@ public class StockOutServiceImpl implements StockOutService {
         }
     }
 
+    /**
+     * Đích TRANSFER_OUT/ADJUSTMENT do luồng chuyển kho/kiểm kê tự sinh
+     * (kèm reference_id), cấm tạo/post tay để tránh trừ tồn không đối ứng.
+     */
+    private void rejectSystemDestination(String destinationType) {
+        if (SYSTEM_DESTINATION_TYPES.contains(destinationType)) {
+            throw new BaseException(ErrorCode.INV_400_SYSTEM_VOUCHER_ONLY);
+        }
+    }
+
     private void validateItems(List<StockOutItemRequest> itemRequests) {
+        java.util.Set<UUID> seen = new java.util.HashSet<>();
         for (StockOutItemRequest r : itemRequests) {
-            Material material = materialRepository.findById(r.materialId())
-                    .orElseThrow(() -> new BaseException(ErrorCode.INV_404_MATERIAL_NOT_FOUND));
+            if (!seen.add(r.materialId())) {
+                throw new BaseException(ErrorCode.INV_400_DUPLICATE_MATERIAL);
+            }
+            Material material = materialRepository.findById(r.materialId()).orElseThrow(() -> new BaseException(ErrorCode.INV_404_MATERIAL_NOT_FOUND));
             if (!EntityStatus.ACTIVE.name().equals(material.getStatus())) {
                 throw new BaseException(ErrorCode.INV_404_MATERIAL_NOT_FOUND);
             }
@@ -275,27 +300,8 @@ public class StockOutServiceImpl implements StockOutService {
             requiredByMaterial.merge(item.getMaterialId(), item.getQuantity(), BigDecimal::add);
         }
         for (Map.Entry<UUID, BigDecimal> entry : requiredByMaterial.entrySet()) {
-            MaterialStockBalance balance = materialStockBalanceRepository
-                    .findByWarehouseIdAndMaterialId(stockOut.getWarehouseId(), entry.getKey())
-                    .orElse(null);
-            BigDecimal current = balance == null ? BigDecimal.ZERO : balance.getQuantityOnHand();
-            if (current.compareTo(entry.getValue()) < 0) {
-                throw new BaseException(ErrorCode.INV_400_INSUFFICIENT_STOCK);
-            }
-            MaterialStockBalance target = balance != null ? balance
-                    : createBalance(stockOut.getWarehouseId(), entry.getKey());
-            target.setQuantityOnHand(current.subtract(entry.getValue()));
-            materialStockBalanceRepository.save(target);
+            balanceMutationService.decrease(stockOut.getWarehouseId(), entry.getKey(), entry.getValue());
         }
-    }
-
-    private MaterialStockBalance createBalance(UUID warehouseId, UUID materialId) {
-        MaterialStockBalance balance = new MaterialStockBalance();
-        balance.setWarehouseId(warehouseId);
-        balance.setMaterialId(materialId);
-        balance.setQuantityOnHand(BigDecimal.ZERO);
-        balance.setQuantityReserved(BigDecimal.ZERO);
-        return balance;
     }
 
     private List<StockOutItem> buildItems(UUID stockOutId, List<StockOutItemRequest> requests) {
@@ -309,6 +315,17 @@ public class StockOutServiceImpl implements StockOutService {
             item.setStatus("ACTIVE");
             return item;
         }).toList();
+    }
+
+    private String generateStockOutCodeUnique() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String code = generateStockOutCode();
+            boolean exists = stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(code, PageRequest.of(0, 1)).getContent().stream().anyMatch(s -> s.getCode().equals(code));
+            if (!exists) {
+                return code;
+            }
+        }
+        return "SO-" + LocalDate.now().format(CODE_MONTH_FMT) + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
     }
 
     private String generateStockOutCode() {
@@ -327,37 +344,30 @@ public class StockOutServiceImpl implements StockOutService {
     }
 
     private StockOut findById(UUID id) {
-        return stockOutRepository.findById(id)
-                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_STOCK_OUT_NOT_FOUND));
+        return stockOutRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_STOCK_OUT_NOT_FOUND));
+    }
+
+    private StockOut findByIdForUpdate(UUID id) {
+        return stockOutRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_STOCK_OUT_NOT_FOUND));
     }
 
     private StockOutResponse toResponseWithNames(StockOut stockOut, List<StockOutItem> items) {
-        Map<UUID, Warehouse> warehouseMap = toMap(
-                warehouseRepository.findAllById(List.of(stockOut.getWarehouseId())), Warehouse::getId);
-        Map<UUID, Account> accountMap = stockOut.getIssuedBy() == null ? Map.of()
-                : toMap(accountRepository.findAllById(List.of(stockOut.getIssuedBy())), Account::getId);
-        Map<UUID, Material> materialMap = toMap(
-                materialRepository.findAllById(distinctNonNull(items, StockOutItem::getMaterialId)), Material::getId);
+        Map<UUID, Warehouse> warehouseMap = toMap(warehouseRepository.findAllById(List.of(stockOut.getWarehouseId())), Warehouse::getId);
+        Map<UUID, Account> accountMap = stockOut.getIssuedBy() == null ? Map.of() : toMap(accountRepository.findAllById(List.of(stockOut.getIssuedBy())), Account::getId);
+        Map<UUID, Material> materialMap = toMap(materialRepository.findAllById(distinctNonNull(items, StockOutItem::getMaterialId)), Material::getId);
         return toResponse(stockOut, items, warehouseMap, accountMap, materialMap);
     }
 
-    private StockOutResponse toResponse(StockOut stockOut, List<StockOutItem> items,
-                                        Map<UUID, Warehouse> warehouseMap, Map<UUID, Account> accountMap,
-                                        Map<UUID, Material> materialMap) {
+    private StockOutResponse toResponse(StockOut stockOut, List<StockOutItem> items, Map<UUID, Warehouse> warehouseMap, Map<UUID, Account> accountMap, Map<UUID, Material> materialMap) {
         Warehouse warehouse = stockOut.getWarehouseId() != null ? warehouseMap.get(stockOut.getWarehouseId()) : null;
         Account issuedBy = stockOut.getIssuedBy() != null ? accountMap.get(stockOut.getIssuedBy()) : null;
 
-        List<StockOutItemResponse> itemResponses = (items == null ? List.<StockOutItem>of() : items).stream()
-                .map(i -> {
-                    Material m = i.getMaterialId() != null ? materialMap.get(i.getMaterialId()) : null;
-                    return stockOutItemMapper.toResponse(
-                            i, m != null ? m.getCode() : null, m != null ? m.getName() : null);
-                }).toList();
+        List<StockOutItemResponse> itemResponses = (items == null ? List.<StockOutItem>of() : items).stream().map(i -> {
+            Material m = i.getMaterialId() != null ? materialMap.get(i.getMaterialId()) : null;
+            return stockOutItemMapper.toResponse(i, m != null ? m.getCode() : null, m != null ? m.getName() : null);
+        }).toList();
 
-        return stockOutMapper.toResponse(stockOut,
-                warehouse != null ? new StockOutWarehouseResponse(warehouse.getId(), warehouse.getCode(), warehouse.getName()) : null,
-                issuedBy != null ? new StockOutUserResponse(issuedBy.getId(), issuedBy.getFullName()) : null,
-                itemResponses);
+        return stockOutMapper.toResponse(stockOut, warehouse != null ? new StockOutWarehouseResponse(warehouse.getId(), warehouse.getCode(), warehouse.getName()) : null, issuedBy != null ? new StockOutUserResponse(issuedBy.getId(), issuedBy.getFullName()) : null, itemResponses);
     }
 
     private <T> Map<UUID, T> toMap(Iterable<T> iterable, Function<T, UUID> idFn) {

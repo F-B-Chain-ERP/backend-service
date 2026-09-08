@@ -20,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+
 import java.util.stream.Collectors;
 
 @Service
@@ -30,47 +32,39 @@ public class StockTransferServiceImpl implements StockTransferService {
     private static final String IN_TRANSIT = "IN_TRANSIT";
     private static final String RECEIVED = "RECEIVED";
     private static final String CANCELLED = "CANCELLED";
-
     private static final String POSTED = "POSTED";
-
     private static final String TRANSFER_OUT = "TRANSFER_OUT";
     private static final String TRANSFER_IN = "TRANSFER_IN";
+    private static final DateTimeFormatter CODE_MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final StockTransferRepository transferRepository;
     private final StockTransferItemRepository itemRepository;
     private final WarehouseRepository warehouseRepository;
     private final MaterialRepository materialRepository;
+    private final StockInRepository stockInRepository;
+    private final StockOutRepository stockOutRepository;
+    private final StockCountRepository stockCountRepository;
     private final DataScopeHelper dataScopeHelper;
     private final StockBalanceMutationService balanceMutationService;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public StockTransferServiceImpl(
-            StockTransferRepository transferRepository,
-            StockTransferItemRepository itemRepository,
-            WarehouseRepository warehouseRepository,
-            MaterialRepository materialRepository,
-            DataScopeHelper dataScopeHelper,
-            StockBalanceMutationService balanceMutationService
-    ) {
+    public StockTransferServiceImpl(StockTransferRepository transferRepository, StockTransferItemRepository itemRepository, WarehouseRepository warehouseRepository, MaterialRepository materialRepository, StockInRepository stockInRepository, StockOutRepository stockOutRepository, StockCountRepository stockCountRepository, DataScopeHelper dataScopeHelper, StockBalanceMutationService balanceMutationService) {
         this.transferRepository = transferRepository;
         this.itemRepository = itemRepository;
         this.warehouseRepository = warehouseRepository;
         this.materialRepository = materialRepository;
+        this.stockInRepository = stockInRepository;
+        this.stockOutRepository = stockOutRepository;
+        this.stockCountRepository = stockCountRepository;
         this.dataScopeHelper = dataScopeHelper;
         this.balanceMutationService = balanceMutationService;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<StockTransferResponse> list(
-            int page,
-            int size,
-            String search,
-            String status,
-            UUID warehouseId
-    ) {
+    public PageResponse<StockTransferResponse> list(int page, int size, String search, String status, UUID warehouseId) {
         page = Math.max(page, 0);
         size = Math.min(Math.max(size, 1), 100);
 
@@ -80,30 +74,11 @@ public class StockTransferServiceImpl implements StockTransferService {
             return new PageResponse<>(page, size, 0, 0, List.of());
         }
 
-        Page<StockTransfer> result = transferRepository.search(
-                blankToNull(search),
-                blankToNull(status),
-                warehouseId,
-                allowed,
-                PageRequest.of(
-                        page,
-                        size,
-                        Sort.by("createdAt").descending()
-                )
-        );
+        Page<StockTransfer> result = transferRepository.search(blankToNull(search), blankToNull(status), warehouseId, allowed, PageRequest.of(page, size, Sort.by("createdAt").descending()));
 
-        List<StockTransferResponse> content = result.getContent()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        List<StockTransferResponse> content = toResponseBatch(result.getContent());
 
-        return new PageResponse<>(
-                result.getNumber(),
-                result.getSize(),
-                result.getTotalElements(),
-                result.getTotalPages(),
-                content
-        );
+        return new PageResponse<>(result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages(), content);
     }
 
     @Override
@@ -125,9 +100,7 @@ public class StockTransferServiceImpl implements StockTransferService {
 
         validateItems(request.items());
 
-        String code = request.code() == null || request.code().isBlank()
-                ? generateCode()
-                : request.code().trim();
+        String code = request.code() == null || request.code().isBlank() ? generateCode() : request.code().trim();
 
         if (transferRepository.existsByCode(code)) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
@@ -138,9 +111,7 @@ public class StockTransferServiceImpl implements StockTransferService {
         transfer.setCode(code);
         transfer.setFromWarehouseId(from.getId());
         transfer.setToWarehouseId(to.getId());
-        transfer.setTransferDate(
-                request.transferDate() == null ? LocalDate.now() : request.transferDate()
-        );
+        transfer.setTransferDate(request.transferDate() == null ? LocalDate.now() : request.transferDate());
         transfer.setNote(request.note());
         transfer.setStatus(PENDING);
 
@@ -156,9 +127,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     public StockTransferResponse update(UUID id, UpdateStockTransferRequest request) {
         StockTransfer transfer = findAccessibleForUpdate(id);
 
-        if (request == null
-                || request.fromWarehouseId() == null
-                || request.toWarehouseId() == null) {
+        if (request == null || request.fromWarehouseId() == null || request.toWarehouseId() == null) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
 
@@ -199,7 +168,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional
     public StockTransferResponse dispatch(UUID id) {
-        StockTransfer transfer = findAccessibleForUpdate(id);
+        StockTransfer transfer = findFromForUpdate(id);
 
         /*
          * Idempotency level 1:
@@ -214,6 +183,15 @@ public class StockTransferServiceImpl implements StockTransferService {
             throw new BaseException(ErrorCode.INV_400_INVALID_STATUS);
         }
 
+        // Kho nguồn/đích có thể đã bị khóa sau lúc tạo phiếu — kiểm tra lại trước khi xuất.
+        getActiveWarehouse(transfer.getFromWarehouseId());
+        getActiveWarehouse(transfer.getToWarehouseId());
+
+        // Kho nguồn đang kiểm kê thì không cho xuất đi (số chốt sẽ sai).
+        if (stockCountRepository.existsCounting(transfer.getFromWarehouseId())) {
+            throw new BaseException(ErrorCode.INV_400_WAREHOUSE_COUNTING);
+        }
+
         List<StockTransferItem> items = itemRepository.findByStockTransferId(id);
 
         if (items.isEmpty()) {
@@ -225,10 +203,7 @@ public class StockTransferServiceImpl implements StockTransferService {
          * bất kỳ dữ liệu nào.
          */
         for (StockTransferItem item : items) {
-            MaterialStockBalance balance = balanceMutationService.lockOrCreate(
-                    transfer.getFromWarehouseId(),
-                    item.getMaterialId()
-            );
+            MaterialStockBalance balance = balanceMutationService.lockOrCreate(transfer.getFromWarehouseId(), item.getMaterialId());
 
             BigDecimal onHand = nvl(balance.getQuantityOnHand());
             BigDecimal reserved = nvl(balance.getQuantityReserved());
@@ -244,7 +219,7 @@ public class StockTransferServiceImpl implements StockTransferService {
          */
         StockOut stockOut = new StockOut();
 
-        stockOut.setCode("OUT-" + transfer.getCode());
+        stockOut.setCode(generateStockOutCode());
         stockOut.setWarehouseId(transfer.getFromWarehouseId());
         stockOut.setDestinationType(TRANSFER_OUT);
         stockOut.setDestinationReferenceId(transfer.getId());
@@ -270,11 +245,7 @@ public class StockTransferServiceImpl implements StockTransferService {
 
             entityManager.persist(outItem);
 
-            balanceMutationService.decrease(
-                    transfer.getFromWarehouseId(),
-                    transferItem.getMaterialId(),
-                    transferItem.getQuantity()
-            );
+            balanceMutationService.decrease(transfer.getFromWarehouseId(), transferItem.getMaterialId(), transferItem.getQuantity());
         }
 
         transfer.setStatus(IN_TRANSIT);
@@ -286,49 +257,44 @@ public class StockTransferServiceImpl implements StockTransferService {
 
     @Override
     @Transactional
-    public StockTransferResponse receive(
-            UUID id,
-            ReceiveStockTransferRequest request
-    ) {
-        StockTransfer transfer = findAccessibleForUpdate(id);
+    public StockTransferResponse receive(UUID id, ReceiveStockTransferRequest request) {
+        StockTransfer transfer = findToForUpdate(id);
 
         if (!IN_TRANSIT.equals(transfer.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_TRANSFER_NOT_RECEIVABLE);
         }
 
-        if (request == null
-                || request.items() == null
-                || request.items().isEmpty()) {
+        // Kho đích có thể đã bị khóa giữa đường — không nhập vào kho ngừng hoạt động.
+        getActiveWarehouse(transfer.getToWarehouseId());
+
+        // Kho đích đang kiểm kê thì không cho nhập vào (số chốt sẽ sai).
+        if (stockCountRepository.existsCounting(transfer.getToWarehouseId())) {
+            throw new BaseException(ErrorCode.INV_400_WAREHOUSE_COUNTING);
+        }
+
+        if (request == null || request.items() == null || request.items().isEmpty()) {
             throw new BaseException(ErrorCode.INV_400_ITEMS_EMPTY);
         }
 
-        Map<UUID, StockTransferItem> itemMap = itemRepository.findByStockTransferId(id)
-                .stream()
-                .collect(Collectors.toMap(
-                        StockTransferItem::getId,
-                        item -> item
-                ));
+        Map<UUID, StockTransferItem> itemMap = itemRepository.findByStockTransferId(id).stream().collect(Collectors.toMap(StockTransferItem::getId, item -> item));
 
-        // Receive is intentionally one-shot because the schema has no
-        // partial-receipt state or request idempotency key.
-        if (request.items().size() != itemMap.size()) {
+        if (itemMap.isEmpty()) {
             throw new BaseException(ErrorCode.INV_400_ITEMS_EMPTY);
         }
 
         Set<UUID> receivedItemIds = new HashSet<>();
+        Map<StockTransferItem, BigDecimal> toApply = new LinkedHashMap<>();
 
         /*
-         * Kiểm tra toàn bộ receive trước.
+         * Kiểm tra toàn bộ đợt nhận trước: cộng dồn vào số đã nhận,
+         * không cho vượt số lượng chuyển của từng dòng (cho phép nhận thiếu).
          */
         for (ReceiveStockTransferItemRequest req : request.items()) {
-            if (req == null
-                    || req.itemId() == null
-                    || !receivedItemIds.add(req.itemId())) {
+            if (req == null || req.itemId() == null || !receivedItemIds.add(req.itemId())) {
                 throw new BaseException(ErrorCode.INV_400_DUPLICATE_MATERIAL);
             }
 
-            if (req.receivedQuantity() == null
-                    || req.receivedQuantity().signum() <= 0) {
+            if (req.receivedQuantity() == null || req.receivedQuantity().signum() <= 0) {
                 throw new BaseException(ErrorCode.INV_400_RECEIVE_EXCEED);
             }
 
@@ -338,20 +304,19 @@ public class StockTransferServiceImpl implements StockTransferService {
                 throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
             }
 
-            if (nvl(item.getReceivedQuantity()).signum() != 0
-                    || req.receivedQuantity().compareTo(item.getQuantity()) != 0) {
+            if (nvl(item.getReceivedQuantity()).add(req.receivedQuantity()).compareTo(item.getQuantity()) > 0) {
                 throw new BaseException(ErrorCode.INV_400_RECEIVE_EXCEED);
             }
+
+            toApply.put(item, req.receivedQuantity());
         }
 
         /*
-         * Tạo STOCK_IN cho lần receive này.
+         * Tạo STOCK_IN cho đợt nhận này (mỗi đợt một phiếu SI- riêng).
          */
         StockIn stockIn = new StockIn();
 
-        stockIn.setCode(
-                "IN-" + transfer.getCode() + "-" + System.currentTimeMillis()
-        );
+        stockIn.setCode(generateStockInCode());
         stockIn.setWarehouseId(transfer.getToWarehouseId());
         stockIn.setSourceType(TRANSFER_IN);
         stockIn.setSourceReferenceId(transfer.getId());
@@ -364,12 +329,13 @@ public class StockTransferServiceImpl implements StockTransferService {
         entityManager.persist(stockIn);
 
         /*
-         * Ghi từng dòng receive.
+         * Ghi từng dòng nhận: cộng dồn số đã nhận + tăng tồn kho đích.
          */
-        for (ReceiveStockTransferItemRequest req : request.items()) {
-            StockTransferItem item = itemMap.get(req.itemId());
+        for (Map.Entry<StockTransferItem, BigDecimal> entry : toApply.entrySet()) {
+            StockTransferItem item = entry.getKey();
+            BigDecimal receivedQty = entry.getValue();
 
-            item.setReceivedQuantity(req.receivedQuantity());
+            item.setReceivedQuantity(nvl(item.getReceivedQuantity()).add(receivedQty));
 
             itemRepository.save(item);
 
@@ -377,51 +343,112 @@ public class StockTransferServiceImpl implements StockTransferService {
 
             inItem.setStockInId(stockIn.getId());
             inItem.setMaterialId(item.getMaterialId());
-            inItem.setQuantity(req.receivedQuantity());
+            inItem.setQuantity(receivedQty);
             inItem.setUnitPrice(nvl(item.getUnitPrice()));
             inItem.setStatus("ACTIVE");
 
             entityManager.persist(inItem);
 
-            balanceMutationService.increase(
-                    transfer.getToWarehouseId(),
-                    item.getMaterialId(),
-                    req.receivedQuantity()
-            );
+            balanceMutationService.increase(transfer.getToWarehouseId(), item.getMaterialId(), receivedQty);
         }
 
         /*
-         * Kiểm tra tất cả item đã nhận đủ chưa.
+         * Đủ hết các dòng mới đóng phiếu; còn thiếu thì giữ IN_TRANSIT
+         * để nhận tiếp đợt sau (phần thiếu xử lý dứt điểm khi void).
          */
-        transfer.setStatus(RECEIVED);
-        transfer.setReceivedBy(currentUserId());
-        transfer.setReceivedAt(Instant.now());
+        boolean fullyReceived = itemMap.values().stream().allMatch(item -> nvl(item.getReceivedQuantity()).compareTo(item.getQuantity()) >= 0);
 
-        transferRepository.save(transfer);
+        if (fullyReceived) {
+            transfer.setStatus(RECEIVED);
+            transfer.setReceivedBy(currentUserId());
+            transfer.setReceivedAt(Instant.now());
+
+            transferRepository.save(transfer);
+        }
 
         return toResponse(transfer);
     }
 
+    /**
+     * Hủy phiếu chuyển. PENDING hủy tự do; IN_TRANSIT bắt buộc kèm lý do và
+     * hoàn phần chưa nhận về kho nguồn (tránh mất hàng sổ sách).
+     */
     @Override
     @Transactional
-    public StockTransferResponse cancel(UUID id) {
-        StockTransfer transfer = findAccessibleForUpdate(id);
+    public StockTransferResponse cancel(UUID id, String reason) {
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
 
-        if (!PENDING.equals(transfer.getStatus())) {
+        if (PENDING.equals(transfer.getStatus())) {
+            if (!hasWarehouseAccess(transfer.getFromWarehouseId()) && !hasWarehouseAccess(transfer.getToWarehouseId())) {
+                throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
+            }
+            transfer.setStatus(CANCELLED);
+            transferRepository.save(transfer);
+            return toResponse(transfer);
+        }
+
+        if (!IN_TRANSIT.equals(transfer.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_STATUS);
+        }
+        // Hủy khi đang đi đường hoàn tồn về nguồn -> yêu cầu quyền kho nguồn
+        dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
+
+        if (reason == null || reason.isBlank()) {
+            throw new BaseException(ErrorCode.INV_400_TRANSFER_CANCEL_REASON_REQUIRED);
+        }
+
+        List<StockTransferItem> items = itemRepository.findByStockTransferId(id);
+        Map<UUID, BigDecimal> missingByMaterial = new LinkedHashMap<>();
+        for (StockTransferItem it : items) {
+            BigDecimal missing = nvl(it.getQuantity()).subtract(nvl(it.getReceivedQuantity()));
+            if (missing.signum() > 0) {
+                missingByMaterial.merge(it.getMaterialId(), missing, BigDecimal::add);
+            }
+        }
+        if (!missingByMaterial.isEmpty()) {
+            StockIn returnIn = new StockIn();
+            returnIn.setCode(generateStockInCode());
+            returnIn.setWarehouseId(transfer.getFromWarehouseId());
+            returnIn.setSourceType(TRANSFER_IN);
+            returnIn.setSourceReferenceId(transfer.getId());
+            returnIn.setInDate(LocalDate.now());
+            returnIn.setNote("Return unreceived qty on cancel transfer " + transfer.getCode() + ": " + reason.trim());
+            returnIn.setStatus(POSTED);
+            returnIn.setReceivedBy(currentUserId());
+            returnIn.setPostedAt(Instant.now());
+            entityManager.persist(returnIn);
+            for (Map.Entry<UUID, BigDecimal> e : missingByMaterial.entrySet()) {
+                StockInItem ri = new StockInItem();
+                ri.setStockInId(returnIn.getId());
+                ri.setMaterialId(e.getKey());
+                ri.setQuantity(e.getValue());
+                ri.setUnitPrice(BigDecimal.ZERO);
+                ri.setStatus("ACTIVE");
+                entityManager.persist(ri);
+                balanceMutationService.increase(transfer.getFromWarehouseId(), e.getKey(), e.getValue());
+            }
         }
 
         transfer.setStatus(CANCELLED);
+        transfer.setNote(buildVoidNote(reason, transfer.getNote()));
 
         transferRepository.save(transfer);
 
         return toResponse(transfer);
     }
 
-    private void saveItems(
-            StockTransfer transfer,
-            List<StockTransferItemRequest> requests
-    ) {
+    /** Ghi lý do void vào note (varchar 500), cắt ngắn để không vỡ DB. */
+    private String buildVoidNote(String reason, String existingNote) {
+        String suffix = (existingNote == null || existingNote.isBlank()) ? "" : " | " + existingNote;
+        int maxReason = 500 - "Void in-transit []".length() - suffix.length();
+        String trimmed = reason.trim();
+        if (trimmed.length() > maxReason) {
+            trimmed = trimmed.substring(0, Math.max(maxReason, 0));
+        }
+        return "Void in-transit [" + trimmed + "]" + suffix;
+    }
+
+    private void saveItems(StockTransfer transfer, List<StockTransferItemRequest> requests) {
         Set<UUID> materials = new HashSet<>();
         List<StockTransferItem> items = new ArrayList<>();
 
@@ -434,10 +461,10 @@ public class StockTransferServiceImpl implements StockTransferService {
                 throw new BaseException(ErrorCode.INVALID_QUANTITY);
             }
 
-            materialRepository.findById(req.materialId())
-                    .orElseThrow(() ->
-                            new BaseException(ErrorCode.MATERIAL_NOT_FOUND)
-                    );
+            com.erp.core.domain.Material mat = materialRepository.findById(req.materialId()).orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
+            if (!"ACTIVE".equals(mat.getStatus())) {
+                throw new BaseException(ErrorCode.MATERIAL_NOT_FOUND);
+            }
 
             StockTransferItem item = new StockTransferItem();
 
@@ -459,8 +486,7 @@ public class StockTransferServiceImpl implements StockTransferService {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
 
-        if (request.fromWarehouseId() == null
-                || request.toWarehouseId() == null) {
+        if (request.fromWarehouseId() == null || request.toWarehouseId() == null) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
 
@@ -481,9 +507,7 @@ public class StockTransferServiceImpl implements StockTransferService {
         Set<UUID> materialIds = new HashSet<>();
 
         for (StockTransferItemRequest item : items) {
-            if (item.materialId() == null
-                    || item.quantity() == null
-                    || item.quantity().signum() <= 0) {
+            if (item.materialId() == null || item.quantity() == null || item.quantity().signum() <= 0) {
                 throw new BaseException(ErrorCode.INVALID_QUANTITY);
             }
 
@@ -494,10 +518,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     }
 
     private Warehouse getActiveWarehouse(UUID id) {
-        Warehouse warehouse = warehouseRepository.findById(id)
-                .orElseThrow(() ->
-                        new BaseException(ErrorCode.PROC_404_WAREHOUSE_NOT_FOUND)
-                );
+        Warehouse warehouse = warehouseRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
 
         if (!"ACTIVE".equals(warehouse.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_WAREHOUSE_INACTIVE);
@@ -507,22 +528,18 @@ public class StockTransferServiceImpl implements StockTransferService {
     }
 
     private StockTransfer findAccessible(UUID id) {
-        StockTransfer transfer = transferRepository.findById(id)
-                .orElseThrow(() ->
-                        new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND)
-                );
+        StockTransfer transfer = transferRepository.findById(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
 
-        dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
-        dataScopeHelper.enforceWarehouseAccess(transfer.getToWarehouseId());
+        // Xem phiếu: chỉ cần quyền 1 trong 2 kho (bên gửi hoặc bên nhận)
+        if (!hasWarehouseAccess(transfer.getFromWarehouseId()) && !hasWarehouseAccess(transfer.getToWarehouseId())) {
+            throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
+        }
 
         return transfer;
     }
 
     private StockTransfer findAccessibleForUpdate(UUID id) {
-        StockTransfer transfer = transferRepository.findByIdForUpdate(id)
-                .orElseThrow(() ->
-                        new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND)
-                );
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
 
         dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
         dataScopeHelper.enforceWarehouseAccess(transfer.getToWarehouseId());
@@ -530,66 +547,82 @@ public class StockTransferServiceImpl implements StockTransferService {
         return transfer;
     }
 
+    /** Xuất kho: chỉ cần quyền kho nguồn. */
+    private StockTransfer findFromForUpdate(UUID id) {
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
+        dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
+        return transfer;
+    }
+
+    /** Nhận kho: chỉ cần quyền kho đích. */
+    private StockTransfer findToForUpdate(UUID id) {
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
+        dataScopeHelper.enforceWarehouseAccess(transfer.getToWarehouseId());
+        return transfer;
+    }
+
+    private boolean hasWarehouseAccess(UUID warehouseId) {
+        try {
+            dataScopeHelper.enforceWarehouseAccess(warehouseId);
+            return true;
+        } catch (BaseException e) {
+            return false;
+        }
+    }
+
     private StockTransferResponse toResponse(StockTransfer transfer) {
-        Warehouse from = warehouseRepository.findById(transfer.getFromWarehouseId())
-                .orElse(null);
+        return toResponseBatch(List.of(transfer)).get(0);
+    }
 
-        Warehouse to = warehouseRepository.findById(transfer.getToWarehouseId())
-                .orElse(null);
+    private List<StockTransferResponse> toResponseBatch(List<StockTransfer> transfers) {
+        if (transfers.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> ids = transfers.stream().map(StockTransfer::getId).toList();
+        Map<UUID, List<StockTransferItem>> itemsByTransfer = new HashMap<>();
+        for (StockTransferItem it : itemRepository.findByStockTransferIdIn(ids)) {
+            itemsByTransfer.computeIfAbsent(it.getStockTransferId(), k -> new ArrayList<>()).add(it);
+        }
+        Set<UUID> warehouseIds = new HashSet<>();
+        Set<UUID> materialIds = new HashSet<>();
+        for (StockTransfer t : transfers) {
+            warehouseIds.add(t.getFromWarehouseId());
+            warehouseIds.add(t.getToWarehouseId());
+        }
+        for (List<StockTransferItem> items : itemsByTransfer.values()) {
+            for (StockTransferItem it : items) {
+                materialIds.add(it.getMaterialId());
+            }
+        }
+        Map<UUID, Warehouse> warehouseMap = warehouseRepository.findAllById(warehouseIds.stream().filter(Objects::nonNull).toList())
+                .stream().collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        Map<UUID, Material> materialMap = materialRepository.findAllById(new ArrayList<>(materialIds))
+                .stream().collect(Collectors.toMap(Material::getId, m -> m, (a, b) -> a));
+        List<StockTransferResponse> out = new ArrayList<>();
+        for (StockTransfer transfer : transfers) {
+            out.add(buildTransferResponse(transfer,
+                    warehouseMap.get(transfer.getFromWarehouseId()),
+                    warehouseMap.get(transfer.getToWarehouseId()),
+                    itemsByTransfer.getOrDefault(transfer.getId(), List.of()),
+                    materialMap));
+        }
+        return out;
+    }
 
-        List<StockTransferItem> items =
-                itemRepository.findByStockTransferId(transfer.getId());
+    private StockTransferResponse buildTransferResponse(StockTransfer transfer, Warehouse from, Warehouse to,
+                                                        List<StockTransferItem> items, Map<UUID, Material> materials) {
 
-        Map<UUID, Material> materials = materialRepository.findAllById(
-                        items.stream()
-                                .map(StockTransferItem::getMaterialId)
-                                .distinct()
-                                .toList()
-                )
-                .stream()
-                .collect(Collectors.toMap(Material::getId, m -> m));
+        List<StockTransferItemResponse> itemResponses = items.stream().map(item -> {
+            Material material = materials.get(item.getMaterialId());
 
-        List<StockTransferItemResponse> itemResponses = items.stream()
-                .map(item -> {
-                    Material material = materials.get(item.getMaterialId());
+            BigDecimal quantity = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
 
-                    BigDecimal quantity = item.getQuantity() == null
-                            ? BigDecimal.ZERO
-                            : item.getQuantity();
+            BigDecimal received = item.getReceivedQuantity() == null ? BigDecimal.ZERO : item.getReceivedQuantity();
 
-                    BigDecimal received = item.getReceivedQuantity() == null
-                            ? BigDecimal.ZERO
-                            : item.getReceivedQuantity();
+            return new StockTransferItemResponse(item.getId(), item.getMaterialId(), material == null ? null : material.getCode(), material == null ? null : material.getName(), quantity, received, quantity.subtract(received), item.getUnitPrice());
+        }).toList();
 
-                    return new StockTransferItemResponse(
-                            item.getId(),
-                            item.getMaterialId(),
-                            material == null ? null : material.getCode(),
-                            material == null ? null : material.getName(),
-                            quantity,
-                            received,
-                            quantity.subtract(received),
-                            item.getUnitPrice()
-                    );
-                })
-                .toList();
-
-        return new StockTransferResponse(
-                transfer.getId(),
-                transfer.getCode(),
-                transfer.getFromWarehouseId(),
-                from == null ? null : from.getCode(),
-                from == null ? null : from.getName(),
-                transfer.getToWarehouseId(),
-                to == null ? null : to.getCode(),
-                to == null ? null : to.getName(),
-                transfer.getTransferDate(),
-                transfer.getStatus(),
-                transfer.getNote(),
-                transfer.getReceivedBy(),
-                transfer.getReceivedAt(),
-                itemResponses
-        );
+        return new StockTransferResponse(transfer.getId(), transfer.getCode(), transfer.getFromWarehouseId(), from == null ? null : from.getCode(), from == null ? null : from.getName(), transfer.getToWarehouseId(), to == null ? null : to.getCode(), to == null ? null : to.getName(), transfer.getTransferDate(), transfer.getStatus(), transfer.getNote(), transfer.getReceivedBy(), transfer.getReceivedAt(), itemResponses);
     }
 
     private UUID currentUserId() {
@@ -601,10 +634,30 @@ public class StockTransferServiceImpl implements StockTransferService {
     }
 
     private String generateCode() {
-        return "TRF-" + UUID.randomUUID()
-                .toString()
-                .substring(0, 8)
-                .toUpperCase();
+        return "TRF-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    private String generateStockInCode() {
+        String prefix = "SI-" + LocalDate.now().format(CODE_MONTH_FMT) + "-";
+        Page<StockIn> last = stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1));
+        return prefix + String.format("%04d", nextSequence(last.isEmpty() ? null : last.getContent().get(0).getCode(), prefix));
+    }
+
+    private String generateStockOutCode() {
+        String prefix = "SO-" + LocalDate.now().format(CODE_MONTH_FMT) + "-";
+        Page<StockOut> last = stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1));
+        return prefix + String.format("%04d", nextSequence(last.isEmpty() ? null : last.getContent().get(0).getCode(), prefix));
+    }
+
+    private int nextSequence(String lastCode, String prefix) {
+        if (lastCode == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(lastCode.substring(prefix.length())) + 1;
+        } catch (RuntimeException e) {
+            return 1;
+        }
     }
 
     private String blankToNull(String value) {

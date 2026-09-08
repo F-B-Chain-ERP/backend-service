@@ -45,6 +45,37 @@ public interface MaterialStockBalanceRepository
             UUID materialId
     );
 
+    boolean existsByWarehouseId(UUID warehouseId);
+
+    boolean existsByMaterialId(UUID materialId);
+
+    @Query("""
+        SELECT b FROM MaterialStockBalance b
+        WHERE (:warehouseId IS NULL OR b.warehouseId = :warehouseId)
+          AND (:materialId IS NULL OR b.materialId = :materialId)
+          AND (:allowed IS NULL OR b.warehouseId IN :allowed)
+        """)
+    org.springframework.data.domain.Page<MaterialStockBalance> searchPaged(
+            UUID warehouseId,
+            UUID materialId,
+            java.util.Collection<UUID> allowed,
+            org.springframework.data.domain.Pageable pageable);
+
+    @Query("""
+        SELECT b FROM MaterialStockBalance b
+        WHERE (:warehouseId IS NULL OR b.warehouseId = :warehouseId)
+          AND (:materialId IS NULL OR b.materialId = :materialId)
+          AND (:allowed IS NULL OR b.warehouseId IN :allowed)
+          AND (b.warehouseId IN :whIds OR b.materialId IN :matIds)
+        """)
+    org.springframework.data.domain.Page<MaterialStockBalance> searchPagedWithKeyword(
+            UUID warehouseId,
+            UUID materialId,
+            java.util.Collection<UUID> allowed,
+            java.util.Collection<UUID> whIds,
+            java.util.Collection<UUID> matIds,
+            org.springframework.data.domain.Pageable pageable);
+
     @Modifying
     @Query(value = """
         INSERT INTO material_stock_balance (

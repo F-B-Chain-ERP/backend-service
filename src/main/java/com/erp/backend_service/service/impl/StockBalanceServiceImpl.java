@@ -12,6 +12,10 @@ import com.erp.core.domain.MaterialStockBalance;
 import com.erp.core.domain.Warehouse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.inv.StockBalanceResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,25 +79,29 @@ public class StockBalanceServiceImpl implements StockBalanceService {
             );
         }
 
-        List<MaterialStockBalance> balances;
-
-        if (allowedWarehouseIds == null) {
-            balances = balanceRepository.search(
-                    warehouseId,
-                    materialId
-            );
+        Pageable pageable = PageRequest.of(page, size, Sort.by("warehouseId").ascending().and(Sort.by("materialId").ascending()));
+        String keyword = search == null ? "" : search.trim();
+        Page<MaterialStockBalance> balancePage;
+        if (keyword.isBlank()) {
+            balancePage = balanceRepository.searchPaged(warehouseId, materialId, allowedWarehouseIds, pageable);
         } else {
-            balances = balanceRepository
-                    .findByWarehouseIdIn(allowedWarehouseIds)
-                    .stream()
-                    .filter(b ->
-                            warehouseId == null
-                                    || warehouseId.equals(b.getWarehouseId()))
-                    .filter(b ->
-                            materialId == null
-                                    || materialId.equals(b.getMaterialId()))
-                    .toList();
+            // Resolve kho/NVL khớp keyword (giới hạn 200 mỗi loại để tránh full scan balance)
+            Pageable lookup = PageRequest.of(0, 200);
+            List<UUID> whIds = warehouseRepository.search(keyword, null, null, null, lookup)
+                    .getContent().stream().map(Warehouse::getId).toList();
+            List<UUID> matIds = materialRepository.search(keyword, null, null, null, lookup)
+                    .getContent().stream().map(Material::getId).toList();
+            if (whIds.isEmpty() && matIds.isEmpty()) {
+                return new PageResponse<>(page, size, 0, 0, List.of());
+            }
+            // Đảm bảo collection non-empty cho câu IN (tránh lỗi DB khi 1 phía rỗng)
+            List<UUID> safeWhIds = whIds.isEmpty() ? List.of(new UUID(0L, 0L)) : whIds;
+            List<UUID> safeMatIds = matIds.isEmpty() ? List.of(new UUID(0L, 0L)) : matIds;
+            balancePage = balanceRepository.searchPagedWithKeyword(
+                    warehouseId, materialId, allowedWarehouseIds, safeWhIds, safeMatIds, pageable);
         }
+
+        List<MaterialStockBalance> balances = balancePage.getContent();
 
         Map<UUID, Warehouse> warehouseMap =
                 warehouseRepository.findAllById(
@@ -121,11 +129,6 @@ public class StockBalanceServiceImpl implements StockBalanceService {
                                 m -> m
                         ));
 
-        String keyword =
-                search == null
-                        ? ""
-                        : search.trim().toLowerCase();
-
         List<StockBalanceResponse> result =
                 balances.stream()
                         .map(balance ->
@@ -137,25 +140,6 @@ public class StockBalanceServiceImpl implements StockBalanceService {
                                         materialMap.get(
                                                 balance.getMaterialId()
                                         )
-                                )
-                        )
-                        .filter(response ->
-                                keyword.isBlank()
-                                        || contains(
-                                        response.materialCode(),
-                                        keyword
-                                )
-                                        || contains(
-                                        response.materialName(),
-                                        keyword
-                                )
-                                        || contains(
-                                        response.warehouseCode(),
-                                        keyword
-                                )
-                                        || contains(
-                                        response.warehouseName(),
-                                        keyword
                                 )
                         )
                         .sorted(
@@ -173,35 +157,12 @@ public class StockBalanceServiceImpl implements StockBalanceService {
                         )
                         .toList();
 
-        long totalElements = result.size();
-
-        int fromIndex = Math.min(
-                page * size,
-                result.size()
-        );
-
-        int toIndex = Math.min(
-                fromIndex + size,
-                result.size()
-        );
-
-        List<StockBalanceResponse> content =
-                result.subList(
-                        fromIndex,
-                        toIndex
-                );
-
-        int totalPages =
-                (int) Math.ceil(
-                        (double) totalElements / size
-                );
-
         return new PageResponse<>(
-                page,
-                size,
-                totalElements,
-                totalPages,
-                content
+                balancePage.getNumber(),
+                balancePage.getSize(),
+                balancePage.getTotalElements(),
+                balancePage.getTotalPages(),
+                result
         );
     }
 

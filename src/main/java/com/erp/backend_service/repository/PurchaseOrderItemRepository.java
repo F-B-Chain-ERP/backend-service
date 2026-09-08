@@ -1,7 +1,11 @@
 package com.erp.backend_service.repository;
 
 import com.erp.core.domain.PurchaseOrderItem;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -13,6 +17,11 @@ public interface PurchaseOrderItemRepository extends JpaRepository<PurchaseOrder
 
     /** Lấy tất cả dòng chi tiết theo đơn mua hàng. */
     List<PurchaseOrderItem> findByPurchaseOrderId(UUID purchaseOrderId);
+
+    /** Lock bi quan các dòng PO để chống over-receipt concurrent. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from PurchaseOrderItem i where i.purchaseOrderId = :purchaseOrderId")
+    List<PurchaseOrderItem> findByPurchaseOrderIdForUpdate(@Param("purchaseOrderId") UUID purchaseOrderId);
 
     /** Xóa tất cả dòng chi tiết theo đơn mua hàng. */
     void deleteByPurchaseOrderId(UUID purchaseOrderId);

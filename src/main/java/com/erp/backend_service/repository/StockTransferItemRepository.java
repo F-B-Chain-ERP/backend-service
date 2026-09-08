@@ -9,5 +9,7 @@ import java.util.UUID;
 @Repository
 public interface StockTransferItemRepository extends JpaRepository<StockTransferItem, UUID> {
     List<StockTransferItem> findByStockTransferId(UUID stockTransferId);
+    List<StockTransferItem> findByStockTransferIdIn(java.util.Collection<UUID> stockTransferIds);
     void deleteByStockTransferId(UUID stockTransferId);
+    boolean existsByMaterialId(UUID materialId);
 }

@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -51,6 +53,30 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     Page<Account> search(@Param("search") String search,
                          @Param("branchId") UUID branchId,
                          Pageable pageable);
+
+    /**
+     * Tìm kiếm nhân sự mà tài khoản thuộc một trong các chi nhánh: hoặc chi nhánh
+     * công tác, hoặc có gán vai trò hiệu lực trong scope của chi nhánh đó.
+     * Dùng cho admin chi nhánh xem nhân sự đa chi nhánh (không lọc cứng primary).
+     */
+    @Query("""
+            select a from Account a
+            where (:search is null or :search = ''
+                   or lower(a.username) like lower(concat('%', :search, '%'))
+                   or lower(a.fullName) like lower(concat('%', :search, '%'))
+                   or lower(a.email) like lower(concat('%', :search, '%')))
+              and (a.primaryBranchId in :branchIds
+                   or exists (select 1 from AccountRole ar, Scope s
+                              where ar.accountId = a.id and ar.scopeId = s.id
+                                and s.branchId in :branchIds
+                                and ar.status = com.erp.core.enums.EntityStatus.ACTIVE
+                                and s.status = com.erp.core.enums.EntityStatus.ACTIVE
+                                and (ar.expiresAt is null or ar.expiresAt > :now)))
+            """)
+    Page<Account> searchByBranches(@Param("search") String search,
+                                   @Param("branchIds") Collection<UUID> branchIds,
+                                   @Param("now") Instant now,
+                                   Pageable pageable);
 }
 
 

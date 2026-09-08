@@ -1,9 +1,11 @@
 package com.erp.backend_service.repository;
 
 import com.erp.core.domain.StockOut;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -18,6 +20,13 @@ public interface StockOutRepository extends JpaRepository<StockOut, UUID> {
 
     /** Lấy phiếu xuất có mã lớn nhất theo tiền tố cho trước (dùng sinh mã SO-yyyyMM-XXXX). */
     Page<StockOut> findFirstByCodeStartingWithOrderByCodeDesc(String prefix, Pageable pageable);
+
+    /** Lock bi quan header để chống double-POST concurrent. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select so from StockOut so where so.id = :id")
+    java.util.Optional<StockOut> findByIdForUpdate(@Param("id") java.util.UUID id);
+
+    boolean existsByWarehouseId(java.util.UUID warehouseId);
 
     /**
      * Tìm kiếm phân trang theo mã phiếu, trạng thái, kho và loại đích xuất, khoảng ngày xuất,

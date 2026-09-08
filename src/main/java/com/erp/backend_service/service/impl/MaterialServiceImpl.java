@@ -5,7 +5,12 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.MaterialMapper;
 import com.erp.backend_service.repository.CategoryRepository;
 import com.erp.backend_service.repository.MaterialRepository;
+import com.erp.backend_service.repository.MaterialStockBalanceRepository;
 import com.erp.backend_service.repository.PurchaseOrderItemRepository;
+import com.erp.backend_service.repository.StockCountItemRepository;
+import com.erp.backend_service.repository.StockInItemRepository;
+import com.erp.backend_service.repository.StockOutItemRepository;
+import com.erp.backend_service.repository.StockTransferItemRepository;
 import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.service.MaterialService;
 import com.erp.core.domain.Category;
@@ -37,17 +42,32 @@ public class MaterialServiceImpl implements MaterialService {
     private final CategoryRepository categoryRepository;
     private final UnitRepository unitRepository;
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
+    private final StockInItemRepository stockInItemRepository;
+    private final StockOutItemRepository stockOutItemRepository;
+    private final StockTransferItemRepository stockTransferItemRepository;
+    private final StockCountItemRepository stockCountItemRepository;
+    private final MaterialStockBalanceRepository balanceRepository;
     private final MaterialMapper materialMapper;
 
     public MaterialServiceImpl(MaterialRepository materialRepository,
                                CategoryRepository categoryRepository,
                                UnitRepository unitRepository,
                                PurchaseOrderItemRepository purchaseOrderItemRepository,
+                               StockInItemRepository stockInItemRepository,
+                               StockOutItemRepository stockOutItemRepository,
+                               StockTransferItemRepository stockTransferItemRepository,
+                               StockCountItemRepository stockCountItemRepository,
+                               MaterialStockBalanceRepository balanceRepository,
                                MaterialMapper materialMapper) {
         this.materialRepository = materialRepository;
         this.categoryRepository = categoryRepository;
         this.unitRepository = unitRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
+        this.stockInItemRepository = stockInItemRepository;
+        this.stockOutItemRepository = stockOutItemRepository;
+        this.stockTransferItemRepository = stockTransferItemRepository;
+        this.stockCountItemRepository = stockCountItemRepository;
+        this.balanceRepository = balanceRepository;
         this.materialMapper = materialMapper;
     }
 
@@ -93,7 +113,8 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     @Transactional
     public MaterialResponse create(CreateMaterialRequest request) {
-        if (materialRepository.existsByCode(request.code())) {
+        String code = request.code() == null ? null : request.code().trim().toUpperCase();
+        if (code == null || code.isEmpty() || materialRepository.existsByCode(code)) {
             throw new BaseException(ErrorCode.INV_400_MATERIAL_CODE_EXISTED);
         }
         Category category = categoryRepository.findById(request.categoryId())
@@ -101,11 +122,17 @@ public class MaterialServiceImpl implements MaterialService {
         if (!"MATERIAL".equals(category.getCategoryType()) || !"ACTIVE".equals(category.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_MATERIAL_CATEGORY);
         }
-        if (!unitRepository.existsById(request.baseUnitId())) {
+        Unit unit = unitRepository.findById(request.baseUnitId())
+                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND));
+        if (!"ACTIVE".equals(unit.getStatus())) {
             throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
+        }
+        if (Boolean.TRUE.equals(request.isPerishable()) && request.shelfLifeDays() == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
 
         Material material = materialMapper.toEntity(request);
+        material.setCode(code);
         return materialMapper.toResponse(materialRepository.save(material));
     }
 
@@ -113,15 +140,25 @@ public class MaterialServiceImpl implements MaterialService {
     @Transactional
     public MaterialResponse update(UUID id, UpdateMaterialRequest request) {
         Material material = findById(id);
-        if (!material.getCode().equals(request.code()) && materialRepository.existsByCode(request.code())) {
+        String newCode = request.code() == null ? material.getCode() : request.code().trim().toUpperCase();
+        if (!material.getCode().equals(newCode) && materialRepository.existsByCode(newCode)) {
             throw new BaseException(ErrorCode.INV_400_MATERIAL_CODE_EXISTED);
+        }
+        // Chặn đổi đơn vị cơ sở khi đã có tồn/lịch sử
+        if (!material.getBaseUnitId().equals(request.baseUnitId())
+                && (balanceRepository.existsByMaterialId(id)
+                    || stockInItemRepository.existsByMaterialId(id)
+                    || stockOutItemRepository.existsByMaterialId(id))) {
+            throw new BaseException(ErrorCode.INV_400_MATERIAL_IN_USE);
         }
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_CATEGORY_NOT_FOUND));
         if (!"MATERIAL".equals(category.getCategoryType()) || !"ACTIVE".equals(category.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_MATERIAL_CATEGORY);
         }
-        if (!unitRepository.existsById(request.baseUnitId())) {
+        Unit unit = unitRepository.findById(request.baseUnitId())
+                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND));
+        if (!"ACTIVE".equals(unit.getStatus())) {
             throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
         }
         String status = request.status() != null ? request.status().trim().toUpperCase() : null;
@@ -160,7 +197,12 @@ public class MaterialServiceImpl implements MaterialService {
     public void delete(UUID id) {
         Material material = findById(id);
 
-        if (purchaseOrderItemRepository.existsByMaterialId(id)) {
+        if (purchaseOrderItemRepository.existsByMaterialId(id)
+                || stockInItemRepository.existsByMaterialId(id)
+                || stockOutItemRepository.existsByMaterialId(id)
+                || stockTransferItemRepository.existsByMaterialId(id)
+                || stockCountItemRepository.existsByMaterialId(id)
+                || balanceRepository.existsByMaterialId(id)) {
             throw new BaseException(ErrorCode.INV_400_MATERIAL_IN_USE);
         }
 

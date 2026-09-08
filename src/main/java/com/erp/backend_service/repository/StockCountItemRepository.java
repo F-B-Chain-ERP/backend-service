@@ -11,4 +11,5 @@ public interface StockCountItemRepository extends JpaRepository<StockCountItem, 
     List<StockCountItem> findByStockCountId(UUID stockCountId);
     boolean existsByStockCountIdAndMaterialId(UUID stockCountId, UUID materialId);
     void deleteByStockCountId(UUID stockCountId);
+    boolean existsByMaterialId(UUID materialId);
 }

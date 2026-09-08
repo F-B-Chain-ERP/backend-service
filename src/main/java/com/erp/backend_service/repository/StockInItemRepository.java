@@ -14,6 +14,11 @@ public interface StockInItemRepository extends JpaRepository<StockInItem, UUID> 
     /** Lấy tất cả dòng chi tiết theo phiếu nhập kho. */
     List<StockInItem> findByStockInId(UUID stockInId);
 
+    /** Batch load items cho list (chống N+1). */
+    List<StockInItem> findByStockInIdIn(java.util.Collection<UUID> stockInIds);
+
+    boolean existsByMaterialId(java.util.UUID materialId);
+
     /** Xóa tất cả dòng chi tiết theo phiếu nhập kho. */
     void deleteByStockInId(UUID stockInId);
 }

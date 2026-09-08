@@ -52,7 +52,6 @@ import java.util.UUID;
 public class AccountServiceImpl implements AccountService {
 
     private static final int MAX_PAGE_SIZE = 100;
-
     private final AccountRepository accountRepository;
     private final BranchRepository branchRepository;
     private final ScopeRepository scopeRepository;

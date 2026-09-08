@@ -19,3 +19,5 @@ databaseChangeLog:
       file: db/changelog/changeset/009-platform.sql
   - include:
       file: db/changelog/changeset/010-permission-seed.sql
+  - include:
+      file: db/changelog/changeset/011-inv-count-snapshot.sql

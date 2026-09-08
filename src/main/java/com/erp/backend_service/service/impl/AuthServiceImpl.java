@@ -503,12 +503,11 @@ public class AuthServiceImpl implements AuthService {
         Account account = accountRepository.findById(current.getPrincipalId())
                 .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
 
-        boolean allowed = branchId != null && (
-                current.getScopes().stream().anyMatch(scope ->
-                        scope.scopeType() == ScopeType.ALL_SYSTEM
-                                || (scope.branchId() != null && scope.branchId().equals(branchId)))
-                || (account.getPrimaryBranchId() != null && account.getPrimaryBranchId().equals(branchId))
-        );
+        // Chỉ được chọn chi nhánh nằm trong các scope đã gán (không dùng
+        // primaryBranch để bypass: quyền xem dữ liệu phải đi qua scope).
+        boolean allowed = branchId != null && current.getScopes().stream().anyMatch(scope ->
+                scope.scopeType() == ScopeType.ALL_SYSTEM
+                        || (scope.branchId() != null && scope.branchId().equals(branchId)));
 
         if (!allowed) {
             throw new BadRequestException(ErrorCode.CROSS_SCOPE_DENIED);

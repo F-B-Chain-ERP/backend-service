@@ -4,8 +4,14 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.WarehouseMapper;
 import com.erp.backend_service.repository.BranchRepository;
+import com.erp.backend_service.repository.MaterialStockBalanceRepository;
 import com.erp.backend_service.repository.PurchaseOrderRepository;
+import com.erp.backend_service.repository.StockCountRepository;
+import com.erp.backend_service.repository.StockInRepository;
+import com.erp.backend_service.repository.StockOutRepository;
+import com.erp.backend_service.repository.StockTransferRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
+import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.service.WarehouseService;
 import com.erp.core.domain.Branch;
 import com.erp.core.domain.Warehouse;
@@ -32,16 +38,34 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final WarehouseRepository warehouseRepository;
     private final BranchRepository branchRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final StockInRepository stockInRepository;
+    private final StockOutRepository stockOutRepository;
+    private final StockTransferRepository stockTransferRepository;
+    private final StockCountRepository stockCountRepository;
+    private final MaterialStockBalanceRepository balanceRepository;
     private final WarehouseMapper warehouseMapper;
+    private final DataScopeHelper dataScopeHelper;
 
     public WarehouseServiceImpl(WarehouseRepository warehouseRepository,
                                 BranchRepository branchRepository,
                                 PurchaseOrderRepository purchaseOrderRepository,
-                                WarehouseMapper warehouseMapper) {
+                                StockInRepository stockInRepository,
+                                StockOutRepository stockOutRepository,
+                                StockTransferRepository stockTransferRepository,
+                                StockCountRepository stockCountRepository,
+                                MaterialStockBalanceRepository balanceRepository,
+                                WarehouseMapper warehouseMapper,
+                                DataScopeHelper dataScopeHelper) {
         this.warehouseRepository = warehouseRepository;
         this.branchRepository = branchRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
+        this.stockInRepository = stockInRepository;
+        this.stockOutRepository = stockOutRepository;
+        this.stockTransferRepository = stockTransferRepository;
+        this.stockCountRepository = stockCountRepository;
+        this.balanceRepository = balanceRepository;
         this.warehouseMapper = warehouseMapper;
+        this.dataScopeHelper = dataScopeHelper;
     }
 
     @Override
@@ -51,11 +75,12 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Warehouse> pageResult = warehouseRepository.search(
                 StringUtils.hasText(search) ? search.trim() : null,
-                branchId,
+                effectiveBranchId,
                 StringUtils.hasText(warehouseType) ? warehouseType.trim().toUpperCase() : null,
                 StringUtils.hasText(status) ? status.trim().toUpperCase() : null,
                 pageable
@@ -87,6 +112,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional(readOnly = true)
     public WarehouseResponse get(UUID id) {
         Warehouse warehouse = findById(id);
+        dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
         String branchName = resolveSingleBranchName(warehouse.getBranchId());
         return warehouseMapper.toResponse(warehouse, branchName);
     }
@@ -98,10 +124,9 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (warehouseRepository.existsByCode(normalizedCode)) {
             throw new BaseException(ErrorCode.INV_409_WAREHOUSE_CODE_EXISTED);
         }
+        dataScopeHelper.enforceBranchAccess(request.branchId());
 
-        if (request.branchId() != null && !branchRepository.existsById(request.branchId())) {
-            throw new BaseException(ErrorCode.INV_404_BRANCH_NOT_FOUND);
-        }
+        validateBranch(request.branchId());
 
         Warehouse warehouse = warehouseMapper.toEntity(request);
         Warehouse saved = warehouseRepository.save(warehouse);
@@ -113,15 +138,15 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional
     public WarehouseResponse update(UUID id, UpdateWarehouseRequest request) {
         Warehouse warehouse = findById(id);
+        dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
+        dataScopeHelper.enforceBranchAccess(request.branchId());
         String normalizedCode = request.code().trim().toUpperCase();
 
         if (warehouseRepository.existsByCodeAndIdNot(normalizedCode, id)) {
             throw new BaseException(ErrorCode.INV_409_WAREHOUSE_CODE_EXISTED);
         }
 
-        if (request.branchId() != null && !branchRepository.existsById(request.branchId())) {
-            throw new BaseException(ErrorCode.INV_404_BRANCH_NOT_FOUND);
-        }
+        validateBranch(request.branchId());
 
         warehouseMapper.updateEntity(warehouse, request);
         Warehouse saved = warehouseRepository.save(warehouse);
@@ -133,6 +158,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional
     public WarehouseResponse updateStatus(UUID id, String status) {
         Warehouse warehouse = findById(id);
+        dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
 
         if (!StringUtils.hasText(status)) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
@@ -153,8 +179,14 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional
     public void delete(UUID id) {
         Warehouse warehouse = findById(id);
+        dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
 
-        if (purchaseOrderRepository.existsByWarehouseId(id)) {
+        if (purchaseOrderRepository.existsByWarehouseId(id)
+                || stockInRepository.existsByWarehouseId(id)
+                || stockOutRepository.existsByWarehouseId(id)
+                || stockTransferRepository.existsByWarehouseId(id)
+                || stockCountRepository.existsByWarehouseId(id)
+                || balanceRepository.existsByWarehouseId(id)) {
             throw new BaseException(ErrorCode.INV_400_WAREHOUSE_IN_USE);
         }
 
@@ -164,6 +196,15 @@ public class WarehouseServiceImpl implements WarehouseService {
     private Warehouse findById(UUID id) {
         return warehouseRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
+    }
+
+    /** Kho bắt buộc thuộc một chi nhánh đang hoạt động (chống kho mồ côi). */
+    private void validateBranch(UUID branchId) {
+        Branch branch = branchRepository.findById(branchId)
+                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_BRANCH_NOT_FOUND));
+        if (!"ACTIVE".equals(branch.getStatus())) {
+            throw new BaseException(ErrorCode.INV_400_BRANCH_INACTIVE);
+        }
     }
 
     private String resolveSingleBranchName(UUID branchId) {

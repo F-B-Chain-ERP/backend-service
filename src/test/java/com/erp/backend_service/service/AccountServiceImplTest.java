@@ -18,6 +18,7 @@ import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Role;
 import com.erp.core.domain.Scope;
 import com.erp.core.dto.auth.AccountResponse;
+import com.erp.core.dto.auth.AccountBranchRoleRequest;
 import com.erp.core.dto.auth.CreateAccountRequest;
 import com.erp.core.dto.auth.UpdateAccountRequest;
 import com.erp.core.dto.response.PageResponse;
@@ -151,7 +152,7 @@ class AccountServiceImplTest {
                 savedAcc.getId(), "user1", "user1@example.com", "User One", "0901234567",
                 null, AuthProvider.LOCAL, true, EntityStatus.ACTIVE, branchA, null, Instant.now(), Instant.now()
         );
-        when(accountMapper.toResponse(savedAcc)).thenReturn(resp);
+        when(accountMapper.toResponse(any(Account.class), anyList(), anyList(), anyList())).thenReturn(resp);
 
         AccountResponse result = accountService.createAccount(req);
         assertNotNull(result);
@@ -161,18 +162,62 @@ class AccountServiceImplTest {
     }
 
     @Test
-    @DisplayName("listAccounts should filter by currentBranchId for branch manager")
+    @DisplayName("listAccounts should filter by scope branches (primary or assigned) for branch manager")
     void testListAccountsBranchScoped() {
         when(dataScopeHelper.isAllSystem()).thenReturn(false);
-        when(dataScopeHelper.getCurrentBranchId()).thenReturn(Optional.of(branchA));
+        when(dataScopeHelper.getAllowedBranchIds()).thenReturn(List.of(branchA));
 
         Page<Account> page = new PageImpl<>(List.of());
-        when(accountRepository.search(isNull(), eq(branchA), any(Pageable.class)))
+        when(accountRepository.searchByBranches(isNull(), eq(List.of(branchA)), any(Instant.class), any(Pageable.class)))
                 .thenReturn(page);
 
         PageResponse<AccountResponse> result = accountService.listAccounts(0, 10, null);
         assertNotNull(result);
-        verify(accountRepository).search(isNull(), eq(branchA), any(Pageable.class));
+        verify(accountRepository).searchByBranches(isNull(), eq(List.of(branchA)), any(Instant.class), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("updateAccount with branchRoles should sync roles per branch")
+    void testUpdateAccountBranchRoles() {
+        UUID accountId = UUID.randomUUID();
+        Account acc = new Account();
+        acc.setId(accountId);
+        acc.setUsername("user1");
+        acc.setPrimaryBranchId(branchA);
+        acc.setStatus(EntityStatus.ACTIVE);
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(acc));
+        when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Scope scopeB = new Scope();
+        scopeB.setId(UUID.randomUUID());
+        scopeB.setScopeType(ScopeType.STORE);
+        scopeB.setBranchId(branchB);
+        scopeB.setStatus(EntityStatus.ACTIVE);
+        when(branchRepository.existsById(branchB)).thenReturn(true);
+        when(scopeRepository.findByScopeTypeAndBranchId(ScopeType.STORE, branchB))
+                .thenReturn(Optional.of(scopeB));
+        when(roleRepository.existsById(roleId1)).thenReturn(true);
+        when(accountRoleRepository.findByAccountId(accountId)).thenReturn(List.of());
+        when(branchRepository.findAllById(anyCollection())).thenReturn(List.of());
+        when(roleRepository.findAllById(anyList())).thenReturn(List.of());
+        when(accountMapper.toResponse(any(Account.class), anyList(), anyList(), anyList()))
+                .thenReturn(new AccountResponse(
+                        accountId, "user1", "user1@example.com", "User One", "0901234567",
+                        null, AuthProvider.LOCAL, true, EntityStatus.ACTIVE, branchA, null, Instant.now(), Instant.now()));
+
+        UpdateAccountRequest req = new UpdateAccountRequest(
+                null, null, null, null, null, null, null,
+                List.of(new AccountBranchRoleRequest(branchB, List.of(roleId1))));
+
+        AccountResponse result = accountService.updateAccount(accountId, req);
+        assertNotNull(result);
+
+        var assignmentCaptor = org.mockito.ArgumentCaptor.forClass(AccountRole.class);
+        verify(accountRoleRepository, times(1)).save(assignmentCaptor.capture());
+        assertEquals(roleId1, assignmentCaptor.getValue().getRoleId());
+        assertEquals(scopeB.getId(), assignmentCaptor.getValue().getScopeId());
+        verify(revocationService, times(1)).revokeAccount(eq(accountId), any());
+        verify(permissionService, times(1)).evictSnapshot(accountId);
     }
 
     @Test

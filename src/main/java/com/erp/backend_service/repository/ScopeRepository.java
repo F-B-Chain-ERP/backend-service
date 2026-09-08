@@ -5,6 +5,7 @@ import com.erp.core.enums.ScopeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,4 +15,7 @@ public interface ScopeRepository extends JpaRepository<Scope, UUID> {
 
     /** Tìm phạm vi theo loại phạm vi và chi nhánh. */
     Optional<Scope> findByScopeTypeAndBranchId(ScopeType scopeType, UUID branchId);
+
+    /** Lấy mọi scope gắn với một chi nhánh (dùng thu hồi khi nhân sự chuyển đi). */
+    List<Scope> findByBranchId(UUID branchId);
 }

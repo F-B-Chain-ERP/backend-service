@@ -3,17 +3,103 @@ package com.erp.backend_service.repository;
 import com.erp.core.domain.MaterialStockBalance;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /** Truy vấn tồn kho nguyên vật liệu theo kho (material_stock_balance). */
 @Repository
-public interface MaterialStockBalanceRepository extends JpaRepository<MaterialStockBalance, UUID> {
+public interface MaterialStockBalanceRepository
+        extends JpaRepository<MaterialStockBalance, UUID> {
+
+    @Query("""
+        SELECT b
+        FROM MaterialStockBalance b
+        WHERE (:warehouseId IS NULL
+               OR b.warehouseId = :warehouseId)
+          AND (:materialId IS NULL
+               OR b.materialId = :materialId)
+    """)
+    List<MaterialStockBalance> search(
+            UUID warehouseId,
+            UUID materialId
+    );
+
+    List<MaterialStockBalance> findByWarehouseId(
+            UUID warehouseId
+    );
+
+    List<MaterialStockBalance> findByWarehouseIdIn(
+            Collection<UUID> warehouseIds
+    );
+
+    Optional<MaterialStockBalance>
+    findByWarehouseIdAndMaterialId(
+            UUID warehouseId,
+            UUID materialId
+    );
+
+    boolean existsByWarehouseId(UUID warehouseId);
+
+    boolean existsByMaterialId(UUID materialId);
+
+    @Query("""
+        SELECT b FROM MaterialStockBalance b
+        WHERE (:warehouseId IS NULL OR b.warehouseId = :warehouseId)
+          AND (:materialId IS NULL OR b.materialId = :materialId)
+          AND (:allowed IS NULL OR b.warehouseId IN :allowed)
+        """)
+    org.springframework.data.domain.Page<MaterialStockBalance> searchPaged(
+            UUID warehouseId,
+            UUID materialId,
+            java.util.Collection<UUID> allowed,
+            org.springframework.data.domain.Pageable pageable);
+
+    @Query("""
+        SELECT b FROM MaterialStockBalance b
+        WHERE (:warehouseId IS NULL OR b.warehouseId = :warehouseId)
+          AND (:materialId IS NULL OR b.materialId = :materialId)
+          AND (:allowed IS NULL OR b.warehouseId IN :allowed)
+          AND (b.warehouseId IN :whIds OR b.materialId IN :matIds)
+        """)
+    org.springframework.data.domain.Page<MaterialStockBalance> searchPagedWithKeyword(
+            UUID warehouseId,
+            UUID materialId,
+            java.util.Collection<UUID> allowed,
+            java.util.Collection<UUID> whIds,
+            java.util.Collection<UUID> matIds,
+            org.springframework.data.domain.Pageable pageable);
+
+    @Modifying
+    @Query(value = """
+        INSERT INTO material_stock_balance (
+            id, warehouse_id, material_id,
+            quantity_on_hand, quantity_reserved,
+            created_at, updated_at
+        ) VALUES (
+            gen_random_uuid(), :warehouseId, :materialId,
+            0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (warehouse_id, material_id) DO NOTHING
+        """, nativeQuery = true)
+    int ensureExists(UUID warehouseId, UUID materialId);
 
     /** Lấy số dư tồn của một nguyên vật liệu tại một kho, khóa bi quan để tránh điều kiện tranh chấp. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<MaterialStockBalance> findByWarehouseIdAndMaterialId(UUID warehouseId, UUID materialId);
+    @Query("""
+        SELECT b
+        FROM MaterialStockBalance b
+        WHERE b.warehouseId = :warehouseId
+          AND b.materialId = :materialId
+    """)
+    Optional<MaterialStockBalance> findForUpdate(
+            UUID warehouseId,
+            UUID materialId
+    );
 }

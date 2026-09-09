@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "9000:9000"              # S3 API
-      - "9001:9001"              # Web Console (truy cập trực tiếp cho team Dev)
+      - "127.0.0.1:9002:9001"    # Web Console nội bộ (Nginx 9001 SSL proxy vào)
     volumes:
       - minio_data:/data
     environment:
@@ -13,7 +13,7 @@ services:
       MINIO_ROOT_PASSWORD: erp123456@
     command: server --console-address ":9001" /data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5

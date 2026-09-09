@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# BƯỚC 1: Khởi chạy hạ tầng (PostgreSQL 16 + Redis 7) trên Server
+# BƯỚC 1: Khởi chạy hạ tầng (PostgreSQL 16 + Redis 7 + Minio) trên Server
 # Chạy trực tiếp trên server: ssh root@163.61.72.183
 # Lệnh chạy: sudo bash /opt/ERP-UTT/backend-service/deploy/scripts/01-server-infra.sh
 # ==============================================================================
@@ -8,17 +8,18 @@
 set -e
 
 echo "=========================================================="
-echo "  [BƯỚC 1] KHỞI CHẠY HẠ TẦNG POSTGRESQL & REDIS TRÊN SERVER"
+echo "  [BƯỚC 1] KHỞI CHẠY HẠ TẦNG POSTGRESQL - REDIS - MINIO TRÊN SERVER"
 echo "=========================================================="
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "▶ 1. Pull Docker images cho PostgreSQL và Redis..."
+echo "▶ 1. Pull Docker images cho PostgreSQL, Redis và MinIO..."
 docker pull postgres:16-alpine
 docker pull redis:7-alpine
+docker pull minio/minio:RELEASE.2024-08-29T01-40-52Z
 
-echo "▶ 2. Khởi chạy container PostgreSQL và Redis qua infra.yml..."
+echo "▶ 2. Khởi chạy container PostgreSQL, Redis và MinIO qua infra.yml..."
 docker compose -f src/main/docker/infra.yml up -d
 
 echo ""
@@ -40,4 +41,10 @@ echo "2. Redis:"
 echo "   - Host: 163.61.72.183"
 echo "   - Port: 6379"
 echo "   - Password: erp_redis_2026"
+echo ""
+echo "3. MinIO (Object Storage):"
+echo "   - S3 API: http://163.61.72.183:9000"
+echo "   - Web Console: http://127.0.0.1:9001 (SSH Tunnel: ssh -L 9001:localhost:9001 root@163.61.72.183)"
+echo "   - Root User: erp_minio"
+echo "   - Root Password: erp123456@"
 echo "=========================================================="

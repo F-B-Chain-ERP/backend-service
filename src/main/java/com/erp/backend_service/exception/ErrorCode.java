@@ -120,7 +120,15 @@ public enum ErrorCode {
     INV_400_PO_INVALID_STATUS_FOR_RECEIVE(400, "INV_400_PO_INVALID_STATUS_FOR_RECEIVE", "Đơn mua hàng không ở trạng thái cho phép ghi nhận nhập kho."),
     INV_400_STOCK_IN_INVALID_FILTER(400, "INV_400_STOCK_IN_INVALID_FILTER", "Khoảng ngày hoặc giá trị lọc phiếu nhập không hợp lệ."),
     INV_400_STOCK_OUT_INVALID_FILTER(400, "INV_400_STOCK_OUT_INVALID_FILTER", "Khoảng ngày hoặc giá trị lọc phiếu xuất không hợp lệ."),
-    INVALID_QUANTITY(400, "INVALID_QUANTITY", "Số lượng không hợp lệ.");
+    INVALID_QUANTITY(400, "INVALID_QUANTITY", "Số lượng không hợp lệ."),
+    MENU_404_PRODUCT_NOT_FOUND(404, "MENU_404_PRODUCT_NOT_FOUND", "Không tìm thấy sản phẩm."),
+    MENU_409_PRODUCT_CODE_EXISTED(409, "MENU_409_PRODUCT_CODE_EXISTED", "Mã sản phẩm đã tồn tại trong hệ thống."),
+    MENU_404_CATEGORY_NOT_FOUND(404, "MENU_404_CATEGORY_NOT_FOUND", "Không tìm thấy danh mục sản phẩm."),
+    MENU_400_CATEGORY_INACTIVE(400, "MENU_400_CATEGORY_INACTIVE", "Danh mục đã ngừng hoạt động, không thể thêm sản phẩm."),
+    MENU_400_PRODUCT_IMAGE_REQUIRED(400, "MENU_400_PRODUCT_IMAGE_REQUIRED", "Vui lòng chọn ảnh sản phẩm."),
+    MENU_400_PRODUCT_IMAGE_TOO_LARGE(400, "MENU_400_PRODUCT_IMAGE_TOO_LARGE", "Ảnh sản phẩm không được vượt quá 5 MB."),
+    MENU_400_PRODUCT_IMAGE_INVALID_TYPE(400, "MENU_400_PRODUCT_IMAGE_INVALID_TYPE", "Ảnh sản phẩm chỉ chấp nhận định dạng JPEG, PNG, WebP hoặc GIF."),
+    MENU_500_STORAGE_UPLOAD_FAILED(500, "MENU_500_STORAGE_UPLOAD_FAILED", "Không thể tải ảnh lên máy chủ lưu trữ.");
 
 
 

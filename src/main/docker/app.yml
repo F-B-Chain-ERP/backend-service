@@ -4,20 +4,31 @@ services:
     container_name: erp-backend
     restart: unless-stopped
     environment:
+      #Config Profile
       - SPRING_PROFILES_ACTIVE=dev
+      #Config Database
       - DB_URL=jdbc:postgresql://postgresql:5432/erp_dev
       - DB_USERNAME=erp_user
       - DB_PASSWORD=erp123456@
+      #Config Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=erp_redis_2026
       - JWT_SECRET=ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==
+      # Config MinIO
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-erp_minio}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-erp123456@}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-erp-products}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
       postgresql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
@@ -36,8 +47,15 @@ services:
       file: redis.yml
       service: redis
 
+  minio:
+    extends:
+      file: minio.yml
+      service: minio
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  minio_data:
     driver: local

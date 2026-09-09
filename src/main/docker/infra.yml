@@ -9,8 +9,15 @@ services:
       file: redis.yml
       service: redis
 
+  minio:
+    extends:
+      file: minio.yml
+      service: minio
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  minio_data:
     driver: local

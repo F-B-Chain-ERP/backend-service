@@ -16,6 +16,11 @@ spring:
   output:
     ansi:
       enabled: always
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 20MB
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -59,6 +64,12 @@ app:
       capacity: ${RL_AUTH_CAPACITY:100}
       refill-tokens: ${RL_AUTH_REFILL:100}
       refill-seconds: ${RL_AUTH_PERIOD:60}
+  minio:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:erp_minio}
+    secret-key: ${MINIO_SECRET_KEY:erp123456@}
+    bucket-name: ${MINIO_BUCKET_NAME:erp-products}
+    public-url: ${MINIO_PUBLIC_URL:http://localhost:9000}
 
 management:
   endpoints:

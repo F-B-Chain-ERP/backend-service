@@ -45,6 +45,12 @@ app:
     expiry-seconds: 900
     max-attempts: 5
     resend-cooldown-seconds: 60
+  minio:
+    endpoint: ${MINIO_ENDPOINT:http://${MINIO_HOST:163.61.72.183}:${MINIO_PORT:9000}}
+    access-key: ${MINIO_ACCESS_KEY:erp_minio}
+    secret-key: ${MINIO_SECRET_KEY:erp123456@}
+    bucket-name: ${MINIO_BUCKET_NAME:erp-products}
+    public-url: ${MINIO_PUBLIC_URL:http://${MINIO_HOST:163.61.72.183}:${MINIO_PORT:9000}}
 
 logging:
   level:

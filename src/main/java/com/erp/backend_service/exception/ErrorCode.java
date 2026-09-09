@@ -128,7 +128,10 @@ public enum ErrorCode {
     MENU_400_PRODUCT_IMAGE_REQUIRED(400, "MENU_400_PRODUCT_IMAGE_REQUIRED", "Vui lòng chọn ảnh sản phẩm."),
     MENU_400_PRODUCT_IMAGE_TOO_LARGE(400, "MENU_400_PRODUCT_IMAGE_TOO_LARGE", "Ảnh sản phẩm không được vượt quá 5 MB."),
     MENU_400_PRODUCT_IMAGE_INVALID_TYPE(400, "MENU_400_PRODUCT_IMAGE_INVALID_TYPE", "Ảnh sản phẩm chỉ chấp nhận định dạng JPEG, PNG, WebP hoặc GIF."),
-    MENU_500_STORAGE_UPLOAD_FAILED(500, "MENU_500_STORAGE_UPLOAD_FAILED", "Không thể tải ảnh lên máy chủ lưu trữ.");
+    MENU_500_STORAGE_UPLOAD_FAILED(500, "MENU_500_STORAGE_UPLOAD_FAILED", "Không thể tải ảnh lên máy chủ lưu trữ."),
+    MENU_404_VARIANT_NOT_FOUND(404, "MENU_404_VARIANT_NOT_FOUND", "Không tìm thấy biến thể sản phẩm."),
+    MENU_409_VARIANT_CODE_EXISTED(409, "MENU_409_VARIANT_CODE_EXISTED", "Mã biến thể đã tồn tại trong sản phẩm này."),
+    MENU_400_VARIANT_IN_USE(400, "MENU_400_VARIANT_IN_USE", "Biến thể đang được liên kết trong công thức định lượng (BOM) hoặc đơn hàng, không thể xóa.");
 
 
 

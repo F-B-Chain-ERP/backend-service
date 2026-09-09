@@ -30,6 +30,12 @@ ufw allow 5432/tcp comment 'PostgreSQL Remote Dev/Admin'
 echo "Cho phép Port 6379 (Redis Cache)..."
 ufw allow 6379/tcp comment 'Redis Remote Dev/Admin'
 
+echo "Cho phép Port 9000 (MinIO S3 API)..."
+ufw allow 9000/tcp comment 'MinIO S3 API Remote Dev'
+
+echo "Cho phép Port 9001 (MinIO Web Console)..."
+ufw allow 9001/tcp comment 'MinIO Web Console Remote Dev'
+
 echo ""
 echo "========================================================"
 echo " [BƯỚC 2/3] Bảo vệ Docker Ports (Backend 8080 nội bộ)"
@@ -55,6 +61,6 @@ echo ""
 echo "========================================================"
 echo "✅ HOÀN TẤT THIẾT LẬP TƯỜNG LỬA BẢO VỆ PRODUCTION!"
 echo " - Port 22, 80, 443: MỞ CÔNG KHAI (SSH & Web/API HTTPS)"
-echo " - Port 5432, 6379: MỞ CHO DEVELOPER / QUẢN TRỊ"
+echo " - Port 5432, 6379, 9000, 9001: MỞ CHO DEVELOPER / QUẢN TRỊ (DB, Redis, MinIO S3 & Web)"
 echo " - Port 8080 (Spring Boot): BẢO VỆ NỘI BỘ QUA REVERSE PROXY NGINX"
 echo "========================================================"

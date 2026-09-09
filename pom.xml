@@ -121,6 +121,13 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- MinIO Java SDK -->
+		<dependency>
+			<groupId>io.minio</groupId>
+			<artifactId>minio</artifactId>
+			<version>8.5.11</version>
+		</dependency>
+
 		<!-- Rate Limiting (Bucket4j) -->
 		<dependency>
 			<groupId>com.bucket4j</groupId>

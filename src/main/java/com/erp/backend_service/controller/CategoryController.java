@@ -28,7 +28,7 @@ public class CategoryController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('menu:category:view')")
+    @PreAuthorize("hasAnyAuthority('menu:category:view', 'menu:product:view')")
     public ResponseEntity<ApiResponse<PageResponse<CategoryResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,

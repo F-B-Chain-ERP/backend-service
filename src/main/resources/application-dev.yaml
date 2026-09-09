@@ -28,8 +28,8 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==}
-    access-token-expiry: 3600
-    refresh-token-expiry: 86400
+    access-token-expiry: 2592000
+    refresh-token-expiry: 2592000
     password-reset-expiry: 900
   rate-limit:
     anonymous:

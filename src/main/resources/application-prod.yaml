@@ -40,9 +40,9 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET}
-    access-token-expiry: 900
-    refresh-token-expiry: 604800
-    password-reset-expiry: 900
+    access-token-expiry: ${JWT_ACCESS_EXPIRY:2592000}
+    refresh-token-expiry: ${JWT_REFRESH_EXPIRY:2592000}
+    password-reset-expiry: ${JWT_PASSWORD_RESET_EXPIRY:900}
   rate-limit:
     anonymous:
       capacity: 20

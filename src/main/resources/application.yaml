@@ -38,8 +38,8 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZy1mb3ItaG1hYw==}
-    access-token-expiry: ${JWT_ACCESS_EXPIRY:900}
-    refresh-token-expiry: ${JWT_REFRESH_EXPIRY:604800}
+    access-token-expiry: ${JWT_ACCESS_EXPIRY:2592000}
+    refresh-token-expiry: ${JWT_REFRESH_EXPIRY:2592000}
     password-reset-expiry: ${JWT_PASSWORD_RESET_EXPIRY:900}
   oauth2:
     google:
@@ -83,3 +83,7 @@ management:
         enabled: true
     prometheus:
       enabled: true
+  health:
+    mail:
+      enabled: false
+

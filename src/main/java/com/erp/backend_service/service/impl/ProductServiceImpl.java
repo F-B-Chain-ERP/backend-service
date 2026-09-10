@@ -62,10 +62,19 @@ public class ProductServiceImpl implements ProductService {
             UUID categoryId,
             String status,
             Boolean isFeatured,
-            Boolean isBestSeller
+            Boolean isBestSeller,
+            String sortBy,
+            String sortDirection
     ) {
-       log.info("Get-list product");
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        log.info("Get-list product with sort: {} {}", sortBy, sortDirection);
+        String sortField = "createdAt";
+        if ("basePrice".equalsIgnoreCase(sortBy) || "price".equalsIgnoreCase(sortBy)) {
+            sortField = "basePrice";
+        } else if ("name".equalsIgnoreCase(sortBy)) {
+            sortField = "name";
+        }
+        Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
         Page<Product> pageResult = productRepository.search(search, categoryId, status, isFeatured, isBestSeller, pageable);
         List<Product> products = pageResult.getContent();
 
@@ -88,6 +97,19 @@ public class ProductServiceImpl implements ProductService {
                 pageResult.getTotalPages(),
                 content
         );
+    }
+
+    @Override
+    public PageResponse<ProductResponse> list(
+            int page,
+            int size,
+            String search,
+            UUID categoryId,
+            String status,
+            Boolean isFeatured,
+            Boolean isBestSeller
+    ) {
+        return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null);
     }
 
     @Override

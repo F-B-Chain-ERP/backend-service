@@ -43,10 +43,9 @@ public class ProductController {
     }
 
     /**
-     * Lấy danh sách sản phẩm phân trang cho quản trị viên.
+     * Lấy danh sách sản phẩm phân trang cho quản trị viên và kênh bán hàng trực tuyến.
      */
     @GetMapping
-    @PreAuthorize("hasAuthority('menu:product:view')")
     public ResponseEntity<ApiResponse<PageResponse<ProductResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -54,10 +53,12 @@ public class ProductController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Boolean isFeatured,
-            @RequestParam(required = false) Boolean isBestSeller
+            @RequestParam(required = false) Boolean isBestSeller,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(defaultValue = "DESC") String sortDirection
     ) {
         PageResponse<ProductResponse> response = productService.list(
-                page, size, search, categoryId, status, isFeatured, isBestSeller
+                page, size, search, categoryId, status, isFeatured, isBestSeller, sortBy, sortDirection
         );
         return ResponseEntity.ok(ApiResponse.success(response));
     }
@@ -66,7 +67,6 @@ public class ProductController {
      * Lấy thông tin chi tiết một sản phẩm theo ID.
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('menu:product:view')")
     public ResponseEntity<ApiResponse<ProductDetailResponse>> get(@PathVariable UUID id) {
         ProductDetailResponse response = productService.get(id);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy chi tiết sản phẩm thành công"));

@@ -20,9 +20,13 @@ import com.erp.core.dto.response.menu.ProductSalesResponse;
 import com.erp.core.dto.response.menu.ProductVariantResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,10 @@ import java.util.stream.Collectors;
 public class ProductServiceImpl implements ProductService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
+
+    /** Chặn size để tránh OOM khi client truyền size=Integer.MAX_VALUE. Không đổi DB. */
+    private static final int MAX_ADMIN_SIZE = 100;
+    private static final int MAX_SALES_SIZE = 100;
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
@@ -67,6 +75,9 @@ public class ProductServiceImpl implements ProductService {
             String sortDirection
     ) {
         log.info("Get-list product with sort: {} {}", sortBy, sortDirection);
+        page = Math.max(page, 0);
+        size = Math.min(Math.max(size, 1), MAX_ADMIN_SIZE);
+        search = normalizeSearch(search);
         String sortField = "createdAt";
         if ("basePrice".equalsIgnoreCase(sortBy) || "price".equalsIgnoreCase(sortBy)) {
             sortField = "basePrice";
@@ -113,6 +124,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = "salesProducts",
+            key = "#page + '.' + #size + '.' + #search + '.' + #categoryId + '.' + #isFeatured + '.' + #isBestSeller + '.' + #sortBy")
     public PageResponse<ProductSalesResponse> listForSales(
             int page,
             int size,
@@ -122,6 +135,9 @@ public class ProductServiceImpl implements ProductService {
             Boolean isBestSeller,
             String sortBy
     ) {
+        page = Math.max(page, 0);
+        size = Math.min(Math.max(size, 1), MAX_SALES_SIZE);
+        search = normalizeSearch(search);
         log.info("Get-list product for sale: page={}, size={}, search={}, categoryId={}, isFeatured={}, isBestSeller={}, sortBy={}",
                 page, size, search, categoryId, isFeatured, isBestSeller, sortBy);
 
@@ -140,8 +156,10 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        Page<Product> pageResult = productRepository.findActiveForSales(search, categoryId, isFeatured, isBestSeller, pageable);
-        List<Product> products = pageResult.getContent();
+        // Dùng Slice để bỏ query COUNT(*) (store không dùng total để pager).
+        // totalElements/totalPages dưới đây là ước lượng đủ cho FE store tải 1 cục.
+        Slice<Product> sliceResult = productRepository.findActiveForSalesSlice(search, categoryId, isFeatured, isBestSeller, pageable);
+        List<Product> products = sliceResult.getContent();
 
         // Tránh lỗi N+1: Gom toàn bộ categoryId duy nhất, bulk-fetch bằng một câu query duy nhất
         List<UUID> catIds = distinctNonNull(products, Product::getCategoryId);
@@ -155,16 +173,19 @@ public class ProductServiceImpl implements ProductService {
                 })
                 .toList();
 
+        long totalElements = (long) page * size + content.size() + (sliceResult.hasNext() ? 1 : 0);
+        int totalPages = sliceResult.hasNext() ? page + 2 : page + 1;
         return new PageResponse<>(
-                pageResult.getNumber(),
-                pageResult.getSize(),
-                pageResult.getTotalElements(),
-                pageResult.getTotalPages(),
+                page,
+                size,
+                totalElements,
+                totalPages,
                 content
         );
     }
 
     @Override
+    @Cacheable(value = "productDetail", key = "#id")
     public ProductDetailResponse get(UUID id) {
         log.info("Get-product by id");
         Product product = findById(id);
@@ -182,6 +203,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = "salesProductDetail", key = "#id")
     public ProductDetailResponse getDetailForSales(UUID id) {
         log.info("Get-product by id for sale");
         Product product = findById(id);
@@ -212,6 +234,11 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "salesProducts", allEntries = true),
+            @CacheEvict(value = "salesProductDetail", allEntries = true),
+            @CacheEvict(value = "productDetail", allEntries = true)
+    })
     public CreateProductResponse create(CreateProductRequest request) {
         log.info("Create product");
         // 1. Validate category
@@ -252,6 +279,12 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "salesProducts", allEntries = true),
+            @CacheEvict(value = "salesProductDetail", allEntries = true),
+            @CacheEvict(value = "productDetail", key = "#id"),
+            @CacheEvict(value = "productVariants", key = "#id")
+    })
     public ProductResponse update(UUID id, UpdateProductRequest request) {
         log.info("Update product");
         Product product = findById(id);
@@ -312,6 +345,12 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "salesProducts", allEntries = true),
+            @CacheEvict(value = "salesProductDetail", allEntries = true),
+            @CacheEvict(value = "productDetail", key = "#id"),
+            @CacheEvict(value = "productVariants", key = "#id")
+    })
     public void delete(UUID id) {
         log.info("Delete product");
         Product product = findById(id);
@@ -326,6 +365,16 @@ public class ProductServiceImpl implements ProductService {
     private Product findById(UUID id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+    }
+
+    /**
+     * Chuẩn hóa search: trim + rỗng thành null để query nhánh static,
+     * giảm planning cost của predicate OR IS NULL. Không đổi DB.
+     */
+    private String normalizeSearch(String search) {
+        if (search == null) return null;
+        String trimmed = search.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String trimOrNull(String value) {

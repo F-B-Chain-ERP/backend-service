@@ -62,7 +62,7 @@ app:
     access-key: ${MINIO_ACCESS_KEY}
     secret-key: ${MINIO_SECRET_KEY}
     bucket-name: ${MINIO_BUCKET_NAME:erp-products}
-    public-url: ${MINIO_PUBLIC_URL:https://erp.utt.edu.vn/storage}
+    public-url: ${MINIO_PUBLIC_URL:/storage}
 
 logging:
   level:

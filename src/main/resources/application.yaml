@@ -69,7 +69,7 @@ app:
     access-key: ${MINIO_ACCESS_KEY:erp_minio}
     secret-key: ${MINIO_SECRET_KEY:erp123456@}
     bucket-name: ${MINIO_BUCKET_NAME:erp-products}
-    public-url: ${MINIO_PUBLIC_URL:http://localhost:9000}
+    public-url: ${MINIO_PUBLIC_URL:/storage}
 
 management:
   endpoints:

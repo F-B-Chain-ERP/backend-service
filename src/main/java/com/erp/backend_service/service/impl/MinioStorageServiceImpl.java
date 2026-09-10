@@ -59,10 +59,22 @@ public class MinioStorageServiceImpl implements StorageService {
     public void delete(String fileUrl) {
         if (fileUrl == null || fileUrl.isBlank()) return;
         try {
-            // Trích xuất objectName từ URL: bỏ phần base + bucket
-            String prefix = props.getPublicUrl() + "/" + props.getBucketName() + "/";
-            if (!fileUrl.startsWith(prefix)) return; // URL ngoài bucket → bỏ qua
-            String objectName = fileUrl.substring(prefix.length());
+            // Trích xuất objectName từ URL: tìm sau /{bucketName}/
+            String bucketMarker = "/" + props.getBucketName() + "/";
+            int idx = fileUrl.indexOf(bucketMarker);
+            String objectName;
+            if (idx != -1) {
+                objectName = fileUrl.substring(idx + bucketMarker.length());
+            } else {
+                String prefix = props.getPublicUrl().endsWith("/")
+                        ? props.getPublicUrl() + props.getBucketName() + "/"
+                        : props.getPublicUrl() + "/" + props.getBucketName() + "/";
+                if (!fileUrl.startsWith(prefix)) return;
+                objectName = fileUrl.substring(prefix.length());
+            }
+
+            if (objectName.isBlank()) return;
+
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(props.getBucketName())

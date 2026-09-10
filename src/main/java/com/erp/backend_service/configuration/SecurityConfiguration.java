@@ -7,6 +7,7 @@ import com.erp.backend_service.security.JwtAuthenticationEntryPoint;
 import com.erp.backend_service.security.RateLimitFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -72,7 +73,9 @@ public class SecurityConfiguration {
             "/api/v1/sales/**"
     };
 
-    /** Khởi tạo SecurityFilterChain với các chính sách bảo mật đã cấu hình. */
+    /**
+     * Khởi tạo SecurityFilterChain với các chính sách bảo mật đã cấu hình.
+     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) {
         return http
@@ -85,8 +88,8 @@ public class SecurityConfiguration {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/menu/categories/**").permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/menu/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/menu/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/menu/products/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
@@ -95,7 +98,9 @@ public class SecurityConfiguration {
                 .build();
     }
 
-    /** Cung cấp AuthenticationProvider sử dụng CustomUserDetailsService và BCrypt. */
+    /**
+     * Cung cấp AuthenticationProvider sử dụng CustomUserDetailsService và BCrypt.
+     */
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(customUserDetailsService);
@@ -103,19 +108,25 @@ public class SecurityConfiguration {
         return authProvider;
     }
 
-    /** Lấy AuthenticationManager từ cấu hình xác thực của Spring. */
+    /**
+     * Lấy AuthenticationManager từ cấu hình xác thực của Spring.
+     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) {
         return config.getAuthenticationManager();
     }
 
-    /** Cung cấp BCryptPasswordEncoder (độ mạnh 12) để mã hóa mật khẩu. */
+    /**
+     * Cung cấp BCryptPasswordEncoder (độ mạnh 12) để mã hóa mật khẩu.
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
     }
 
-    /** Cấu hình nguồn CORS áp dụng cho toàn bộ endpoint. */
+    /**
+     * Cấu hình nguồn CORS áp dụng cho toàn bộ endpoint.
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

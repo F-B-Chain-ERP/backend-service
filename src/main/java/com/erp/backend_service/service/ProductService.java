@@ -43,19 +43,34 @@ public interface ProductService {
      * Lấy danh sách sản phẩm cho kênh bán hàng (Sales channel / Store POS & Web).
      * Chỉ trả về các sản phẩm ACTIVE, không yêu cầu xác thực người dùng.
      *
-     * @param page Số trang (0-indexed)
-     * @param size Số phần tử mỗi trang
-     * @param search Từ khóa tìm kiếm (tuỳ chọn)
+     * @param page       Số trang (0-indexed)
+     * @param size       Số phần tử mỗi trang
+     * @param search     Từ khóa tìm kiếm (tuỳ chọn)
      * @param categoryId ID danh mục lọc (tuỳ chọn)
      * @param isFeatured Lọc món nổi bật (tuỳ chọn)
      * @return Phân trang ProductSalesResponse
+     */
+    default PageResponse<ProductSalesResponse> listForSales(
+            int page,
+            int size,
+            String search,
+            UUID categoryId,
+            Boolean isFeatured
+    ) {
+        return listForSales(page, size, search, categoryId, isFeatured, null, null);
+    }
+
+    /**
+     * Lấy danh sách sản phẩm cho kênh bán hàng (Sales channel) hỗ trợ phân trang, lọc và sắp xếp.
      */
     PageResponse<ProductSalesResponse> listForSales(
             int page,
             int size,
             String search,
             UUID categoryId,
-            Boolean isFeatured
+            Boolean isFeatured,
+            Boolean isBestSeller,
+            String sortBy
     );
 
     /**
@@ -85,7 +100,7 @@ public interface ProductService {
     /**
      * Cập nhật thông tin sản phẩm thực đơn.
      *
-     * @param id ID sản phẩm cần cập nhật
+     * @param id      ID sản phẩm cần cập nhật
      * @param request Thông tin sản phẩm cập nhật
      * @return ProductResponse chi tiết sản phẩm sau cập nhật
      */

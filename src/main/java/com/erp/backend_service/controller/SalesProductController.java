@@ -34,17 +34,21 @@ public class SalesProductController {
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<ProductSalesResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "100") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) Boolean isFeatured
+            @RequestParam(required = false) Boolean isFeatured,
+            @RequestParam(required = false) Boolean isBestSeller,
+            @RequestParam(required = false) String sortBy
     ) {
         PageResponse<ProductSalesResponse> response = productService.listForSales(
                 page,
                 size,
                 search,
                 categoryId,
-                isFeatured
+                isFeatured,
+                isBestSeller,
+                sortBy
         );
         return ResponseEntity.ok(ApiResponse.success(response));
     }

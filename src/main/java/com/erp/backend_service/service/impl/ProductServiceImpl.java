@@ -118,11 +118,29 @@ public class ProductServiceImpl implements ProductService {
             int size,
             String search,
             UUID categoryId,
-            Boolean isFeatured
+            Boolean isFeatured,
+            Boolean isBestSeller,
+            String sortBy
     ) {
-        log.info("Get-list product for sale");
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "name"));
-        Page<Product> pageResult = productRepository.findActiveForSales(search, categoryId, isFeatured, pageable);
+        log.info("Get-list product for sale: page={}, size={}, search={}, categoryId={}, isFeatured={}, isBestSeller={}, sortBy={}",
+                page, size, search, categoryId, isFeatured, isBestSeller, sortBy);
+
+        Sort sort = Sort.by(Sort.Direction.DESC, "isFeatured")
+                .and(Sort.by(Sort.Direction.DESC, "isBestSeller"))
+                .and(Sort.by(Sort.Direction.ASC, "name"));
+
+        if ("price-asc".equalsIgnoreCase(sortBy) || "price_asc".equalsIgnoreCase(sortBy)) {
+            sort = Sort.by(Sort.Direction.ASC, "basePrice");
+        } else if ("price-desc".equalsIgnoreCase(sortBy) || "price_desc".equalsIgnoreCase(sortBy)) {
+            sort = Sort.by(Sort.Direction.DESC, "basePrice");
+        } else if ("newest".equalsIgnoreCase(sortBy)) {
+            sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        } else if ("name".equalsIgnoreCase(sortBy)) {
+            sort = Sort.by(Sort.Direction.ASC, "name");
+        }
+
+        Pageable pageable = PageRequest.of(page, size, sort);
+        Page<Product> pageResult = productRepository.findActiveForSales(search, categoryId, isFeatured, isBestSeller, pageable);
         List<Product> products = pageResult.getContent();
 
         // Tránh lỗi N+1: Gom toàn bộ categoryId duy nhất, bulk-fetch bằng một câu query duy nhất

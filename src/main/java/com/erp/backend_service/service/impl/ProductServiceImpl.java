@@ -18,6 +18,8 @@ import com.erp.core.dto.response.menu.ProductDetailResponse;
 import com.erp.core.dto.response.menu.ProductResponse;
 import com.erp.core.dto.response.menu.ProductSalesResponse;
 import com.erp.core.dto.response.menu.ProductVariantResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +34,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class ProductServiceImpl implements ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
@@ -60,6 +64,7 @@ public class ProductServiceImpl implements ProductService {
             Boolean isFeatured,
             Boolean isBestSeller
     ) {
+       log.info("Get-list product");
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Product> pageResult = productRepository.search(search, categoryId, status, isFeatured, isBestSeller, pageable);
         List<Product> products = pageResult.getContent();
@@ -93,6 +98,7 @@ public class ProductServiceImpl implements ProductService {
             UUID categoryId,
             Boolean isFeatured
     ) {
+        log.info("Get-list product for sale");
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "name"));
         Page<Product> pageResult = productRepository.findActiveForSales(search, categoryId, isFeatured, pageable);
         List<Product> products = pageResult.getContent();
@@ -120,6 +126,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductDetailResponse get(UUID id) {
+        log.info("Get-product by id");
         Product product = findById(id);
         if ("DELETED".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -136,6 +143,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductDetailResponse getDetailForSales(UUID id) {
+        log.info("Get-product by id for sale");
         Product product = findById(id);
         if (!"ACTIVE".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -165,6 +173,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public CreateProductResponse create(CreateProductRequest request) {
+        log.info("Create product");
         // 1. Validate category
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_CATEGORY_NOT_FOUND));
@@ -204,6 +213,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse update(UUID id, UpdateProductRequest request) {
+        log.info("Update product");
         Product product = findById(id);
         if ("DELETED".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -263,6 +273,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete product");
         Product product = findById(id);
         if ("DELETED".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);

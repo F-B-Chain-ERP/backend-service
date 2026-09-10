@@ -12,6 +12,8 @@ import com.erp.core.dto.request.menu.CreateProductVariantRequest;
 import com.erp.core.dto.request.menu.SyncProductVariantsRequest;
 import com.erp.core.dto.request.menu.UpdateProductVariantRequest;
 import com.erp.core.dto.response.menu.ProductVariantResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ProductVariantServiceImpl implements ProductVariantService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductVariantServiceImpl.class);
 
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
@@ -42,6 +46,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductVariantResponse> getVariantsByProductId(UUID productId) {
+        log.info("Get variant by product id");
         ensureProductExists(productId);
         List<ProductVariant> variants = productVariantRepository.findByProductIdOrderByDisplayOrderAsc(productId);
         return variants.stream()
@@ -52,6 +57,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional
     public ProductVariantResponse create(UUID productId, CreateProductVariantRequest request) {
+        log.info("Create product variant");
         ensureProductExists(productId);
 
         String normalizedCode = request.variantCode().trim().toUpperCase();
@@ -75,6 +81,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional
     public ProductVariantResponse update(UUID productId, UUID variantId, UpdateProductVariantRequest request) {
+        log.info("Update product variant");
         ensureProductExists(productId);
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
@@ -108,6 +115,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional
     public void delete(UUID productId, UUID variantId) {
+        log.info("Delete product variant");
         ensureProductExists(productId);
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
@@ -124,6 +132,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional
     public List<ProductVariantResponse> syncVariants(UUID productId, SyncProductVariantsRequest request) {
+        log.info("Sync variants");
         ensureProductExists(productId);
 
         List<SyncProductVariantsRequest.VariantItemRequest> incomingItems =

@@ -3,6 +3,7 @@ package com.erp.backend_service.repository;
 import com.erp.core.domain.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,6 +52,31 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                 AND (:isBestSeller IS NULL OR p.isBestSeller = :isBestSeller)
             """)
     Page<Product> findActiveForSales(
+            @Param("search") String search,
+            @Param("categoryId") UUID categoryId,
+            @Param("isFeatured") Boolean isFeatured,
+            @Param("isBestSeller") Boolean isBestSeller,
+            Pageable pageable
+    );
+
+    /**
+     * Biến thể không COUNT(*) của {@link #findActiveForSales} cho kênh bán hàng.
+     * FE store tải 1 cục (pageSize=100, không pager) nên không cần totalElements;
+     * dùng Slice để Spring Data bỏ query COUNT, tiết kiệm 1 full-scan mỗi request.
+     * Không đổi DB, chỉ đổi cách đọc.
+     */
+    @Query("""
+                SELECT p
+                FROM Product p
+                WHERE p.status = 'ACTIVE'
+                AND (:search IS NULL OR :search = ''
+                    OR LOWER(p.code) LIKE CONCAT('%', LOWER(:search), '%')
+                    OR LOWER(p.name) LIKE CONCAT('%', LOWER(:search), '%'))
+                AND (:categoryId IS NULL OR p.categoryId = :categoryId)
+                AND (:isFeatured IS NULL OR p.isFeatured = :isFeatured)
+                AND (:isBestSeller IS NULL OR p.isBestSeller = :isBestSeller)
+            """)
+    Slice<Product> findActiveForSalesSlice(
             @Param("search") String search,
             @Param("categoryId") UUID categoryId,
             @Param("isFeatured") Boolean isFeatured,

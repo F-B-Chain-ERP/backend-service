@@ -3,6 +3,7 @@ package com.erp.backend_service.configuration;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
+import io.minio.SetBucketPolicyArgs;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,9 +31,24 @@ public class MinioConfiguration {
             if (!exists) {
                 client.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
             }
+            // Thiết lập policy Read-Only công khai để cho phép đọc file ảnh qua reverse proxy /storage
+            String readOnlyPolicy = """
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": "*",
+                                "Action": ["s3:GetObject"],
+                                "Resource": ["arn:aws:s3:::%s/*"]
+                            }
+                        ]
+                    }
+                    """.formatted(bucketName);
+            client.setBucketPolicy(SetBucketPolicyArgs.builder().bucket(bucketName).config(readOnlyPolicy).build());
         } catch (Exception e) {
             // Ghi log nhưng không ném exception để tránh làm fail startup khi minio chưa sẵn sàng
-            System.err.println("[MinIO] Không thể kiểm tra/tạo bucket '" + bucketName + "': " + e.getMessage());
+            System.err.println("[MinIO] Không thể kiểm tra/tạo bucket hoặc thiết lập policy '" + bucketName + "': " + e.getMessage());
         }
     }
 }

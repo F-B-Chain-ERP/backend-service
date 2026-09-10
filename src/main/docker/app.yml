@@ -20,7 +20,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-erp_minio}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-erp123456@}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-erp-products}
-      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-/storage}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

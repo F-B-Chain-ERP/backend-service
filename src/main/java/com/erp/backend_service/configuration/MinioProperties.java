@@ -21,8 +21,8 @@ public class MinioProperties {
     /** Tên bucket lưu trữ ảnh sản phẩm */
     private String bucketName;
 
-    /** URL công khai dùng để tạo link truy cập ảnh */
-    private String publicUrl;
+    /** URL công khai dùng để tạo link truy cập ảnh (mặc định /storage qua Nginx reverse proxy) */
+    private String publicUrl = "/storage";
 
     public String getEndpoint() { return endpoint; }
     public void setEndpoint(String endpoint) { this.endpoint = endpoint; }
@@ -36,6 +36,8 @@ public class MinioProperties {
     public String getBucketName() { return bucketName; }
     public void setBucketName(String bucketName) { this.bucketName = bucketName; }
 
-    public String getPublicUrl() { return publicUrl; }
+    public String getPublicUrl() {
+        return (publicUrl != null && !publicUrl.isBlank()) ? publicUrl : "/storage";
+    }
     public void setPublicUrl(String publicUrl) { this.publicUrl = publicUrl; }
 }

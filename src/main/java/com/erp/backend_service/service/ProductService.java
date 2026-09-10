@@ -13,16 +13,7 @@ import java.util.UUID;
 public interface ProductService {
 
     /**
-     * Lấy danh sách sản phẩm cho quản trị viên (Admin ERP).
-     *
-     * @param page Số trang (0-indexed)
-     * @param size Số phần tử mỗi trang
-     * @param search Từ khóa tìm kiếm (mã hoặc tên món)
-     * @param categoryId ID danh mục lọc (tuỳ chọn)
-     * @param status Trạng thái (ACTIVE, INACTIVE, ...) (tuỳ chọn)
-     * @param isFeatured Lọc món nổi bật (tuỳ chọn)
-     * @param isBestSeller Lọc món bán chạy (tuỳ chọn)
-     * @return Phân trang ProductResponse
+     * Lấy danh sách sản phẩm cho quản trị viên (Admin ERP) và kênh bán hàng, hỗ trợ sắp xếp.
      */
     PageResponse<ProductResponse> list(
             int page,
@@ -31,8 +22,22 @@ public interface ProductService {
             UUID categoryId,
             String status,
             Boolean isFeatured,
-            Boolean isBestSeller
+            Boolean isBestSeller,
+            String sortBy,
+            String sortDirection
     );
+
+    default PageResponse<ProductResponse> list(
+            int page,
+            int size,
+            String search,
+            UUID categoryId,
+            String status,
+            Boolean isFeatured,
+            Boolean isBestSeller
+    ) {
+        return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null);
+    }
 
     /**
      * Lấy danh sách sản phẩm cho kênh bán hàng (Sales channel / Store POS & Web).

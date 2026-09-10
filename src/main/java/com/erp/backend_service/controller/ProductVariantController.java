@@ -34,7 +34,6 @@ public class ProductVariantController {
      * Lấy danh sách toàn bộ biến thể của một sản phẩm.
      */
     @GetMapping("/products/{productId}/variants")
-    @PreAuthorize("hasAuthority('menu:variant:view')")
     public ResponseEntity<ApiResponse<List<ProductVariantResponse>>> getVariants(
             @PathVariable UUID productId
     ) {

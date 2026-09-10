@@ -28,7 +28,6 @@ public class CategoryController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('menu:category:view', 'menu:product:view')")
     public ResponseEntity<ApiResponse<PageResponse<CategoryResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -39,7 +38,6 @@ public class CategoryController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('menu:category:view')")
     public ResponseEntity<ApiResponse<CategoryResponse>> get(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(categoryService.get(id)));
     }

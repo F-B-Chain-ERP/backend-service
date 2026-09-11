@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+import com.erp.backend_service.util.CodeGenerator;
 import java.util.*;
 
 import java.util.stream.Collectors;
@@ -33,7 +33,6 @@ public class StockCountServiceImpl implements StockCountService {
     private static final String ADJUSTED = "ADJUSTED";
     private static final String POSTED = "POSTED";
     private static final String ADJUSTMENT = "ADJUSTMENT";
-    private static final DateTimeFormatter CODE_MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final StockCountRepository countRepository;
     private final StockCountItemRepository itemRepository;
@@ -108,7 +107,8 @@ public class StockCountServiceImpl implements StockCountService {
             throw new BaseException(ErrorCode.INV_400_WAREHOUSE_COUNTING);
         }
 
-        String code = request.code() == null || request.code().isBlank() ? generateCode() : request.code().trim();
+        // Mã phiếu do hệ thống tự sinh, không nhận tay.
+        String code = generateCode();
 
         if (countRepository.existsByCode(code)) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
@@ -589,30 +589,23 @@ public class StockCountServiceImpl implements StockCountService {
     }
 
     private String generateCode() {
-        return "CNT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return CodeGenerator.random("CNT-", countRepository::existsByCode);
     }
 
     private String generateStockInCode() {
-        String prefix = "SI-" + LocalDate.now().format(CODE_MONTH_FMT) + "-";
-        Page<StockIn> last = stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1));
-        return prefix + String.format("%04d", nextSequence(last.isEmpty() ? null : last.getContent().get(0).getCode(), prefix));
+        return CodeGenerator.nextMonthlySequence(
+                "SI-",
+                prefix -> stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1))
+                        .getContent().stream().findFirst().map(StockIn::getCode),
+                stockInRepository::existsByCode);
     }
 
     private String generateStockOutCode() {
-        String prefix = "SO-" + LocalDate.now().format(CODE_MONTH_FMT) + "-";
-        Page<StockOut> last = stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1));
-        return prefix + String.format("%04d", nextSequence(last.isEmpty() ? null : last.getContent().get(0).getCode(), prefix));
-    }
-
-    private int nextSequence(String lastCode, String prefix) {
-        if (lastCode == null) {
-            return 1;
-        }
-        try {
-            return Integer.parseInt(lastCode.substring(prefix.length())) + 1;
-        } catch (RuntimeException e) {
-            return 1;
-        }
+        return CodeGenerator.nextMonthlySequence(
+                "SO-",
+                prefix -> stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1))
+                        .getContent().stream().findFirst().map(StockOut::getCode),
+                stockOutRepository::existsByCode);
     }
 
     private String blankToNull(String value) {

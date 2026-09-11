@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -111,18 +113,25 @@ public class RateLimitFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    /**
+     * Script Lua gộp INCR + EXPIRE thành 1 round-trip duy nhất (trước đây 2-3 lượt
+     * INCR/TTL/EXPIRE qua WAN). Nguyên tử nên key zombie (có key mà mất TTL) không
+     * thể xảy ra, không cần nhánh vá TTL riêng. Ngữ nghĩa giữ nguyên: fixed-window
+     * counter, quá capacity thì false.
+     */
+    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = new DefaultRedisScript<>(
+            "local current = redis.call('INCR', KEYS[1])\n"
+                    + "if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end\n"
+                    + "return current",
+            Long.class);
+
     /** Kiểm tra và tăng bộ đếm truy cập trên Redis, trả về false nếu vượt quota. */
     private boolean checkRateLimit(String key, long capacity, long windowSeconds) {
         try {
-            Long currentCount = stringRedisTemplate.opsForValue().increment(key);
+            Long currentCount = stringRedisTemplate.execute(
+                    RATE_LIMIT_SCRIPT, List.of(key), String.valueOf(windowSeconds));
             if (currentCount == null) {
                 return true;
-            }
-            if (currentCount == 1L) {
-                stringRedisTemplate.expire(key, Duration.ofSeconds(windowSeconds));
-            } else if (currentCount != null && stringRedisTemplate.getExpire(key) < 0) {
-                // Key tồn tại nhưng không có TTL (zombie) -> gắn lại để tránh khóa vĩnh viễn.
-                stringRedisTemplate.expire(key, Duration.ofSeconds(windowSeconds));
             }
             return currentCount <= capacity;
         } catch (Exception e) {

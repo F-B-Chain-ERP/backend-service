@@ -53,6 +53,11 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
         this.objectMapper = objectMapper;
     }
 
+    /** Path public của kênh bán hàng: không cần snapshot quyền. */
+    private static boolean isSalesPath(String uri) {
+        return uri != null && (uri.equals("/api/v1/sales") || uri.startsWith("/api/v1/sales/"));
+    }
+
     /** Xử lý xác thực cho mỗi request: parse token, kiểm tra thu hồi, set context. */
     @Override
     protected void doFilterInternal(
@@ -100,7 +105,12 @@ public class JwtAuthFilterChain extends OncePerRequestFilter {
                 return;
             }
 
+            // Kênh sales công khai, không check phân quyền: khỏi tải snapshot
+            // (tiết kiệm 1 round-trip Redis qua WAN mỗi request). Authorities vẫn
+            // lấy từ JWT claims nên @PreAuthorize không ảnh hưởng; snapshot sẽ
+            // lazy-load khi requirePermission/requireAccess được gọi (sales không gọi).
             PermissionSnapshot snapshot = principalType == PrincipalType.ACCOUNT
+                    && !isSalesPath(request.getRequestURI())
                     ? permissionService.getSnapshot(principalId) : null;
             CustomUserDetails userDetails = CustomUserDetails.fromClaims(claims, snapshot);
             UsernamePasswordAuthenticationToken authentication =

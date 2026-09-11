@@ -14,6 +14,7 @@ import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.StockOutService;
+import com.erp.backend_service.util.CodeGenerator;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.MaterialStockBalance;
@@ -41,7 +42,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -69,7 +70,6 @@ public class StockOutServiceImpl implements StockOutService {
      * Đích do hệ thống tự sinh (chuyển kho/điều chỉnh), cấm tạo tay qua API xuất.
      */
     private static final List<String> SYSTEM_DESTINATION_TYPES = List.of("TRANSFER_OUT", "ADJUSTMENT");
-    private static final DateTimeFormatter CODE_MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final StockOutRepository stockOutRepository;
     private final StockOutItemRepository stockOutItemRepository;
@@ -318,29 +318,11 @@ public class StockOutServiceImpl implements StockOutService {
     }
 
     private String generateStockOutCodeUnique() {
-        for (int attempt = 0; attempt < 5; attempt++) {
-            String code = generateStockOutCode();
-            boolean exists = stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(code, PageRequest.of(0, 1)).getContent().stream().anyMatch(s -> s.getCode().equals(code));
-            if (!exists) {
-                return code;
-            }
-        }
-        return "SO-" + LocalDate.now().format(CODE_MONTH_FMT) + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-    }
-
-    private String generateStockOutCode() {
-        String prefix = "SO-" + LocalDate.now().format(CODE_MONTH_FMT) + "-";
-        Page<StockOut> last = stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1));
-        int next = 1;
-        if (!last.isEmpty()) {
-            String code = last.getContent().get(0).getCode();
-            try {
-                next = Integer.parseInt(code.substring(prefix.length())) + 1;
-            } catch (RuntimeException e) {
-                next = 1;
-            }
-        }
-        return prefix + String.format("%04d", next);
+        return CodeGenerator.nextMonthlySequence(
+                "SO-",
+                prefix -> stockOutRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1))
+                        .getContent().stream().findFirst().map(StockOut::getCode),
+                stockOutRepository::existsByCode);
     }
 
     private StockOut findById(UUID id) {

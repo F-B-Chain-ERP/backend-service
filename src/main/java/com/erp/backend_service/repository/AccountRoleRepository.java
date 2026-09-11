@@ -55,12 +55,6 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, UUID> 
     boolean existsByScopeId(UUID scopeId);
 
     /**
-     * Lấy danh sách tài khoản (không trùng) đang giữ một phạm vi, dùng để làm mới
-     * snapshot quyền khi phạm vi thay đổi (tránh 403 do snapshot stale).
-     */
-    List<UUID> findDistinctAccountIdByScopeId(UUID scopeId);
-
-    /**
      * Lấy danh sách tài khoản (không trùng) đang được gán effective một trong các
      * vai trò chỉ định, dùng để làm mới snapshot quyền khi quyền/vai trò thay đổi.
      */

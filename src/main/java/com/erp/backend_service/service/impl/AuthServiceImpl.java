@@ -6,6 +6,7 @@ import com.erp.backend_service.mapper.AuthMapper;
 import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.CustomerRepository;
 import com.erp.backend_service.security.CustomUserDetails;
+import com.erp.backend_service.util.CodeGenerator;
 import com.erp.backend_service.security.CustomUserDetailsService;
 import com.erp.backend_service.security.JwtProvider;
 import com.erp.backend_service.security.SecurityUtils;
@@ -595,9 +596,9 @@ public class AuthServiceImpl implements AuthService {
         return customerRepository.findByUsernameOrPhoneOrEmail(identifier).map(Customer::getId).orElse(null);
     }
 
-    /** Sinh mã khách hàng duy nhất. */
+    /** Sinh mã khách hàng duy nhất (dùng chung {@link CodeGenerator}). */
     private String generateCustomerCode() {
-        return "CUS-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        return CodeGenerator.customerCode();
     }
 
     /** Gửi email chào mừng cho khách hàng vừa đăng ký (nếu có email). */

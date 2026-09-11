@@ -21,6 +21,9 @@ public interface StockOutRepository extends JpaRepository<StockOut, UUID> {
     /** Lấy phiếu xuất có mã lớn nhất theo tiền tố cho trước (dùng sinh mã SO-yyyyMM-XXXX). */
     Page<StockOut> findFirstByCodeStartingWithOrderByCodeDesc(String prefix, Pageable pageable);
 
+    /** Kiểm tra mã phiếu xuất đã tồn tại chưa (chống trùng khi sinh mã song song). */
+    boolean existsByCode(String code);
+
     /** Lock bi quan header để chống double-POST concurrent. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select so from StockOut so where so.id = :id")

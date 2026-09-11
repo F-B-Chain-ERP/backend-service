@@ -6,6 +6,7 @@ import com.erp.backend_service.mapper.CustomerMapper;
 import com.erp.backend_service.repository.CustomerRepository;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.CustomerService;
+import com.erp.backend_service.util.CodeGenerator;
 import com.erp.backend_service.service.RefreshTokenService;
 import com.erp.core.domain.Customer;
 import com.erp.core.dto.auth.CreateCustomerRequest;
@@ -201,8 +202,8 @@ public class CustomerServiceImpl implements CustomerService {
         }
     }
 
-    /** Sinh mã khách hàng duy nhất. */
+    /** Sinh mã khách hàng duy nhất (dùng chung {@link CodeGenerator}). */
     private String generateCustomerCode() {
-        return "CUS-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        return CodeGenerator.customerCode();
     }
 }

@@ -14,9 +14,6 @@ import com.erp.core.dto.request.menu.UpdateProductVariantRequest;
 import com.erp.core.dto.response.menu.ProductVariantResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +45,6 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "productVariants", key = "#productId")
     public List<ProductVariantResponse> getVariantsByProductId(UUID productId) {
         log.info("Get variant by product id");
         ensureProductExists(productId);
@@ -60,12 +56,6 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "productVariants", key = "#productId"),
-            @CacheEvict(value = "productDetail", key = "#productId"),
-            @CacheEvict(value = "salesProductDetail", key = "#productId"),
-            @CacheEvict(value = "salesProducts", allEntries = true)
-    })
     public ProductVariantResponse create(UUID productId, CreateProductVariantRequest request) {
         log.info("Create product variant");
         ensureProductExists(productId);
@@ -90,12 +80,6 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "productVariants", key = "#productId"),
-            @CacheEvict(value = "productDetail", key = "#productId"),
-            @CacheEvict(value = "salesProductDetail", key = "#productId"),
-            @CacheEvict(value = "salesProducts", allEntries = true)
-    })
     public ProductVariantResponse update(UUID productId, UUID variantId, UpdateProductVariantRequest request) {
         log.info("Update product variant");
         ensureProductExists(productId);
@@ -130,12 +114,6 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "productVariants", key = "#productId"),
-            @CacheEvict(value = "productDetail", key = "#productId"),
-            @CacheEvict(value = "salesProductDetail", key = "#productId"),
-            @CacheEvict(value = "salesProducts", allEntries = true)
-    })
     public void delete(UUID productId, UUID variantId) {
         log.info("Delete product variant");
         ensureProductExists(productId);
@@ -153,12 +131,6 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "productVariants", key = "#productId"),
-            @CacheEvict(value = "productDetail", key = "#productId"),
-            @CacheEvict(value = "salesProductDetail", key = "#productId"),
-            @CacheEvict(value = "salesProducts", allEntries = true)
-    })
     public List<ProductVariantResponse> syncVariants(UUID productId, SyncProductVariantsRequest request) {
         log.info("Sync variants");
         ensureProductExists(productId);
@@ -186,29 +158,20 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // 1. Xóa các biến thể đã có nhưng không còn nằm trong request gửi lên.
-        // Gom 1 lần, flush 1 lần cuối (trước đây flush từng dòng -> N round-trip).
-        // Không đổi DB, chỉ đổi cách ghi để tận dụng hibernate.jdbc.batch_size=100.
-        List<ProductVariant> toDelete = new ArrayList<>();
+        // 1. Xóa các biến thể đã có nhưng không còn nằm trong request gửi lên
         for (ProductVariant existing : currentVariants) {
             if (existing.getId() != null && !incomingIds.contains(existing.getId())) {
-                toDelete.add(existing);
-            }
-        }
-        if (!toDelete.isEmpty()) {
-            try {
-                productVariantRepository.deleteAll(toDelete);
-            } catch (DataIntegrityViolationException e) {
-                throw new BaseException(ErrorCode.MENU_400_VARIANT_IN_USE,
-                        "Biến thể đang được sử dụng, không thể xóa bỏ khỏi danh sách.");
+                try {
+                    productVariantRepository.delete(existing);
+                    productVariantRepository.flush();
+                } catch (DataIntegrityViolationException e) {
+                    throw new BaseException(ErrorCode.MENU_400_VARIANT_IN_USE,
+                            "Biến thể " + existing.getVariantName() + " đang được sử dụng, không thể xóa bỏ khỏi danh sách.");
+                }
             }
         }
 
-        // 2. Thêm mới hoặc cập nhật từng item.
-        // Giữ save() từng entity (không đổi signature repo), nhưng chỉ flush 1 lần cuối
-        // để Hibernate gộp JDBC batch (batch_size=100). Thu thập kết quả để trả về,
-        // bỏ SELECT lại toàn bộ lần 2.
-        List<ProductVariant> managed = new ArrayList<>(incomingItems.size());
+        // 2. Thêm mới hoặc cập nhật từng item
         for (SyncProductVariantsRequest.VariantItemRequest item : incomingItems) {
             String normalizedCode = item.variantCode().trim().toUpperCase();
             if (item.id() != null && currentMap.containsKey(item.id())) {
@@ -220,8 +183,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 existing.setPriceDelta(item.priceDelta());
                 existing.setDisplayOrder(item.displayOrder() != null ? item.displayOrder() : 0);
                 existing.setStatus(item.status() != null ? item.status().trim().toUpperCase() : "ACTIVE");
-                ProductVariant savedExisting = productVariantRepository.save(existing);
-                managed.add(savedExisting != null ? savedExisting : existing);
+                productVariantRepository.save(existing);
             } else {
                 // Create
                 ProductVariant newVariant = new ProductVariant();
@@ -232,16 +194,14 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 newVariant.setPriceDelta(item.priceDelta());
                 newVariant.setDisplayOrder(item.displayOrder() != null ? item.displayOrder() : 0);
                 newVariant.setStatus(item.status() != null ? item.status().trim().toUpperCase() : "ACTIVE");
-                ProductVariant savedNew = productVariantRepository.save(newVariant);
-                managed.add(savedNew != null ? savedNew : newVariant);
+                productVariantRepository.save(newVariant);
             }
         }
 
-        // 1 flush duy nhất cho cả xóa + thêm/sửa.
         productVariantRepository.flush();
 
-        managed.sort(Comparator.comparingInt(ProductVariant::getDisplayOrder));
-        return managed.stream()
+        List<ProductVariant> updatedList = productVariantRepository.findByProductIdOrderByDisplayOrderAsc(productId);
+        return updatedList.stream()
                 .map(productMapper::toVariantResponse)
                 .toList();
     }

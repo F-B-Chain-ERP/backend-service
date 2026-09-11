@@ -61,9 +61,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     /**
      * Biến thể không COUNT(*) của {@link #findActiveForSales} cho kênh bán hàng.
-     * FE store tải 1 cục (pageSize=100, không pager) nên không cần totalElements;
-     * dùng Slice để Spring Data bỏ query COUNT, tiết kiệm 1 full-scan mỗi request.
-     * Không đổi DB, chỉ đổi cách đọc.
+     * Store tải 1 cục, không pager theo total nên không cần totalElements;
+     * Slice giúp Spring Data bỏ query COUNT, bớt 1 full-scan mỗi request.
      */
     @Query("""
                 SELECT p

@@ -100,9 +100,16 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional(readOnly = true)
     public List<WarehouseResponse> listAll(String status) {
-        List<Warehouse> list = StringUtils.hasText(status)
-                ? warehouseRepository.findByStatus(status.trim().toUpperCase())
-                : warehouseRepository.findAll(Sort.by("name").ascending());
+        String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
+        // Dropdown dùng ở mọi form kho: user chi nhánh chỉ thấy kho CN đang làm
+        // (+ kho CENTRAL), khớp với enforce ở đường ghi để khỏi "thấy mà không làm được".
+        // ALL_SYSTEM giữ nguyên toàn bộ. Chưa chọn CN thì chặn như list() phân trang.
+        UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(null);
+        List<Warehouse> list = effectiveBranchId == null
+                ? (normalizedStatus != null
+                        ? warehouseRepository.findByStatus(normalizedStatus)
+                        : warehouseRepository.findAll(Sort.by("name").ascending()))
+                : warehouseRepository.findVisibleForBranch(effectiveBranchId, normalizedStatus);
 
         Map<UUID, String> branchNames = resolveBranchNames(list);
         return list.stream().map(w -> warehouseMapper.toResponse(w, branchNames)).toList();

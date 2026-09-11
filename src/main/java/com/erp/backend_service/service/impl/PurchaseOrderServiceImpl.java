@@ -48,7 +48,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+import com.erp.backend_service.util.CodeGenerator;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -76,7 +76,6 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private static final String STATUS_PARTIALLY_RECEIVED = "PARTIALLY_RECEIVED";
     private static final String STATUS_RECEIVED = "RECEIVED";
     private static final String STATUS_CANCELLED = "CANCELLED";
-    private static final DateTimeFormatter PO_CODE_MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
@@ -201,7 +200,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_EXPECTED_DATE);
         }
 
-        String poCode = StringUtils.hasText(request.poCode()) ? request.poCode() : generatePoCode();
+        // Mã đơn do hệ thống tự sinh, không nhận tay để tránh mã rác/trùng
+        // (DB từng lọt mã "TEST-FULL" do nhập tay). Update cũng không cho đổi mã.
+        String poCode = generatePoCode();
         if (purchaseOrderRepository.existsByPoCode(poCode)) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
         }
@@ -592,19 +593,12 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     private String generatePoCode() {
-        String prefix = "PO-" + LocalDate.now().format(PO_CODE_MONTH_FMT) + "-";
-        Page<PurchaseOrder> last = purchaseOrderRepository.findFirstByPoCodeStartingWithOrderByPoCodeDesc(
-                prefix, PageRequest.of(0, 1));
-        int next = 1;
-        if (!last.isEmpty()) {
-            String code = last.getContent().get(0).getPoCode();
-            try {
-                next = Integer.parseInt(code.substring(prefix.length())) + 1;
-            } catch (RuntimeException e) {
-                next = 1;
-            }
-        }
-        return prefix + String.format("%04d", next);
+        return CodeGenerator.nextMonthlySequence(
+                "PO-",
+                prefix -> purchaseOrderRepository
+                        .findFirstByPoCodeStartingWithOrderByPoCodeDesc(prefix, PageRequest.of(0, 1))
+                        .getContent().stream().findFirst().map(PurchaseOrder::getPoCode),
+                purchaseOrderRepository::existsByPoCode);
     }
 
     private PurchaseOrderResponse toResponseWithNames(PurchaseOrder po, List<PurchaseOrderItem> items) {

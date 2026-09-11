@@ -20,9 +20,6 @@ import com.erp.core.dto.response.menu.ProductSalesResponse;
 import com.erp.core.dto.response.menu.ProductVariantResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -40,10 +37,6 @@ import java.util.stream.Collectors;
 public class ProductServiceImpl implements ProductService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
-
-    /** Chặn size để tránh OOM khi client truyền size=Integer.MAX_VALUE. Không đổi DB. */
-    private static final int MAX_ADMIN_SIZE = 100;
-    private static final int MAX_SALES_SIZE = 100;
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
@@ -75,9 +68,6 @@ public class ProductServiceImpl implements ProductService {
             String sortDirection
     ) {
         log.info("Get-list product with sort: {} {}", sortBy, sortDirection);
-        page = Math.max(page, 0);
-        size = Math.min(Math.max(size, 1), MAX_ADMIN_SIZE);
-        search = normalizeSearch(search);
         String sortField = "createdAt";
         if ("basePrice".equalsIgnoreCase(sortBy) || "price".equalsIgnoreCase(sortBy)) {
             sortField = "basePrice";
@@ -124,8 +114,6 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Cacheable(value = "salesProducts",
-            key = "#page + '.' + #size + '.' + #search + '.' + #categoryId + '.' + #isFeatured + '.' + #isBestSeller + '.' + #sortBy")
     public PageResponse<ProductSalesResponse> listForSales(
             int page,
             int size,
@@ -135,9 +123,12 @@ public class ProductServiceImpl implements ProductService {
             Boolean isBestSeller,
             String sortBy
     ) {
+        // Chặn size để client không lôi cả bảng bằng size=Integer.MAX_VALUE (OOM).
         page = Math.max(page, 0);
-        size = Math.min(Math.max(size, 1), MAX_SALES_SIZE);
-        search = normalizeSearch(search);
+        size = Math.min(Math.max(size, 1), 100);
+        if (search != null && search.trim().isEmpty()) {
+            search = null;
+        }
         log.info("Get-list product for sale: page={}, size={}, search={}, categoryId={}, isFeatured={}, isBestSeller={}, sortBy={}",
                 page, size, search, categoryId, isFeatured, isBestSeller, sortBy);
 
@@ -156,8 +147,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        // Dùng Slice để bỏ query COUNT(*) (store không dùng total để pager).
-        // totalElements/totalPages dưới đây là ước lượng đủ cho FE store tải 1 cục.
+        // Slice thay vì Page: store không pager theo total nên bỏ query COUNT(*).
         Slice<Product> sliceResult = productRepository.findActiveForSalesSlice(search, categoryId, isFeatured, isBestSeller, pageable);
         List<Product> products = sliceResult.getContent();
 
@@ -185,7 +175,6 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Cacheable(value = "productDetail", key = "#id")
     public ProductDetailResponse get(UUID id) {
         log.info("Get-product by id");
         Product product = findById(id);
@@ -203,7 +192,6 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Cacheable(value = "salesProductDetail", key = "#id")
     public ProductDetailResponse getDetailForSales(UUID id) {
         log.info("Get-product by id for sale");
         Product product = findById(id);
@@ -234,11 +222,6 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "salesProducts", allEntries = true),
-            @CacheEvict(value = "salesProductDetail", allEntries = true),
-            @CacheEvict(value = "productDetail", allEntries = true)
-    })
     public CreateProductResponse create(CreateProductRequest request) {
         log.info("Create product");
         // 1. Validate category
@@ -279,12 +262,6 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "salesProducts", allEntries = true),
-            @CacheEvict(value = "salesProductDetail", allEntries = true),
-            @CacheEvict(value = "productDetail", key = "#id"),
-            @CacheEvict(value = "productVariants", key = "#id")
-    })
     public ProductResponse update(UUID id, UpdateProductRequest request) {
         log.info("Update product");
         Product product = findById(id);
@@ -345,12 +322,6 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "salesProducts", allEntries = true),
-            @CacheEvict(value = "salesProductDetail", allEntries = true),
-            @CacheEvict(value = "productDetail", key = "#id"),
-            @CacheEvict(value = "productVariants", key = "#id")
-    })
     public void delete(UUID id) {
         log.info("Delete product");
         Product product = findById(id);
@@ -365,16 +336,6 @@ public class ProductServiceImpl implements ProductService {
     private Product findById(UUID id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
-    }
-
-    /**
-     * Chuẩn hóa search: trim + rỗng thành null để query nhánh static,
-     * giảm planning cost của predicate OR IS NULL. Không đổi DB.
-     */
-    private String normalizeSearch(String search) {
-        if (search == null) return null;
-        String trimmed = search.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String trimOrNull(String value) {

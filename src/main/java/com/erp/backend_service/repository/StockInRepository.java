@@ -21,6 +21,9 @@ public interface StockInRepository extends JpaRepository<StockIn, UUID> {
     /** Lấy phiếu nhập có mã lớn nhất theo tiền tố cho trước (dùng sinh mã SI-yyyyMM-XXXX). */
     Page<StockIn> findFirstByCodeStartingWithOrderByCodeDesc(String prefix, Pageable pageable);
 
+    /** Kiểm tra mã phiếu nhập đã tồn tại chưa (chống trùng khi sinh mã song song). */
+    boolean existsByCode(String code);
+
     /** Lock bi quan header để chống double-POST concurrent. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select si from StockIn si where si.id = :id")

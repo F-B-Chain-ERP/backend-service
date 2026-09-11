@@ -28,6 +28,23 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
     List<Warehouse> findByStatus(String status);
 
     /**
+     * Dropdown cho user chi nhánh: kho thuộc CN đang làm việc + kho CENTRAL
+     * (để chuyển/nhập từ kho tổng), ẩn kho chưa gán chi nhánh, kết hợp lọc trạng thái.
+     */
+    @Query("""
+        SELECT w
+        FROM Warehouse w
+        WHERE (:status IS NULL OR w.status = :status)
+          AND w.branchId IS NOT NULL
+          AND (w.branchId = :branchId OR w.warehouseType = 'CENTRAL')
+        ORDER BY w.name ASC
+    """)
+    List<Warehouse> findVisibleForBranch(
+            @Param("branchId") UUID branchId,
+            @Param("status") String status
+    );
+
+    /**
      * Tìm kiếm phân trang theo mã/tên kho, chi nhánh, loại kho và trạng thái.
      */
     @Query("""

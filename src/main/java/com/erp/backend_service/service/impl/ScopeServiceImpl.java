@@ -5,7 +5,6 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.repository.ScopeRepository;
-import com.erp.backend_service.service.PermissionService;
 import com.erp.backend_service.service.ScopeService;
 import com.erp.core.domain.Branch;
 import com.erp.core.domain.Scope;
@@ -15,7 +14,6 @@ import com.erp.core.dto.request.scope.CreateScopeRequest;
 import com.erp.core.dto.request.scope.UpdateScopeRequest;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,16 +34,12 @@ public class ScopeServiceImpl implements ScopeService {
     private final ScopeRepository scopeRepository;
     private final BranchRepository branchRepository;
     private final AccountRoleRepository accountRoleRepository;
-    // @Lazy để tránh vòng tròn ScopeService <-> PermissionService
-    // (PermissionService.isAllowed dùng scopeService.covers).
-    private final PermissionService permissionService;
 
     public ScopeServiceImpl(ScopeRepository scopeRepository, BranchRepository branchRepository,
-            AccountRoleRepository accountRoleRepository, @Lazy PermissionService permissionService) {
+            AccountRoleRepository accountRoleRepository) {
         this.scopeRepository = scopeRepository;
         this.branchRepository = branchRepository;
         this.accountRoleRepository = accountRoleRepository;
-        this.permissionService = permissionService;
     }
 
     /** {@inheritDoc} */
@@ -126,12 +120,8 @@ public class ScopeServiceImpl implements ScopeService {
 
         applyRequest(scope, targetType, targetBranchId,
                 request.status() != null ? request.status() : scope.getStatus());
-        ScopeAdminResponse response = toResponse(saveSafely(scope), resolveBranchNames(
+        return toResponse(saveSafely(scope), resolveBranchNames(
                 scope.getBranchId() != null ? List.of(scope.getBranchId()) : List.of()));
-        // Scope nằm trong snapshot quyền đã cache (TTL 15p): không evict thì các
-        // tài khoản giữ scope này bị check sai chi nhánh tới 15 phút (403 oan / lọt).
-        permissionService.evictSnapshots(accountRoleRepository.findDistinctAccountIdByScopeId(id));
-        return response;
     }
 
     /** {@inheritDoc} */

@@ -16,6 +16,7 @@ import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.StockInService;
+import com.erp.backend_service.util.CodeGenerator;
 import com.erp.core.domain.Account;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.MaterialStockBalance;
@@ -45,7 +46,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -79,7 +80,6 @@ public class StockInServiceImpl implements StockInService {
      * Nguồn do hệ thống tự sinh (chuyển kho/điều chỉnh), cấm tạo tay qua API nhập.
      */
     private static final List<String> SYSTEM_SOURCE_TYPES = List.of("TRANSFER_IN", "ADJUSTMENT");
-    private static final DateTimeFormatter CODE_MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final StockInRepository stockInRepository;
     private final StockInItemRepository stockInItemRepository;
@@ -433,29 +433,11 @@ public class StockInServiceImpl implements StockInService {
     }
 
     private String generateStockInCodeUnique() {
-        for (int attempt = 0; attempt < 5; attempt++) {
-            String code = generateStockInCode();
-            if (stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(code, PageRequest.of(0, 1)).isEmpty()
-                    || stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(code, PageRequest.of(0, 1)).getContent().stream().noneMatch(s -> s.getCode().equals(code))) {
-                return code;
-            }
-        }
-        return "SI-" + LocalDate.now().format(CODE_MONTH_FMT) + "-" + java.util.UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-    }
-
-    private String generateStockInCode() {
-        String prefix = "SI-" + LocalDate.now().format(CODE_MONTH_FMT) + "-";
-        Page<StockIn> last = stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1));
-        int next = 1;
-        if (!last.isEmpty()) {
-            String code = last.getContent().get(0).getCode();
-            try {
-                next = Integer.parseInt(code.substring(prefix.length())) + 1;
-            } catch (RuntimeException e) {
-                next = 1;
-            }
-        }
-        return prefix + String.format("%04d", next);
+        return CodeGenerator.nextMonthlySequence(
+                "SI-",
+                prefix -> stockInRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix, PageRequest.of(0, 1))
+                        .getContent().stream().findFirst().map(StockIn::getCode),
+                stockInRepository::existsByCode);
     }
 
     private StockIn findById(UUID id) {

@@ -32,3 +32,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Python / Test Suite ###
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+backend-service/test-suite/k6/users_pool.json
+test-suite/k6/users_pool.json

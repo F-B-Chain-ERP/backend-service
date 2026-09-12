@@ -90,6 +90,9 @@ case "$ACTION" in
     race)
         run_k6 "05_race_condition_stock.js"
         ;;
+    drill)
+        run_k6 "06_enterprise_drill.js"
+        ;;
     all)
         echo -e "\n=== BƯỚC 1: NẠP DỮ LIỆU LỚN ==="
         run_python "seeder" "generate_large_data.py"

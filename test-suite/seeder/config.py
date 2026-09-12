@@ -15,7 +15,13 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
 
 # Mặc định mật khẩu chung cho toàn bộ tài khoản test để dễ mô phỏng k6:
-DEFAULT_PASSWORD = os.getenv("TEST_USER_PASSWORD", "Password@123")
+DEFAULT_PASSWORD = os.getenv("TEST_USER_PASSWORD", "123456789")
+
+# Đường dẫn tự động xuất users_pool.json sang thư mục k6
+USERS_POOL_OUTPUT_PATH = os.getenv(
+    "USERS_POOL_OUTPUT_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "k6", "users_pool.json")
+)
 
 # Kích thước Batch Insert (dùng psycopg2.extras.execute_values)
 BATCH_SIZE = int(os.getenv("SEED_BATCH_SIZE", "2000"))

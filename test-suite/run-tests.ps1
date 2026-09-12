@@ -176,6 +176,9 @@ switch ($Action.ToLower()) {
     "race" {
         Execute-K6-Script "05_race_condition_stock.js"
     }
+    "drill" {
+        Execute-K6-Script "06_enterprise_drill.js"
+    }
     "all" {
         Execute-Python-Script "seeder" "generate_large_data.py"
         Execute-Python-Script "security" "test_rate_limit.py"
@@ -184,10 +187,10 @@ switch ($Action.ToLower()) {
         Execute-Python-Script "security" "test_sqli_fuzzing.py"
         Execute-K6-Script "01_baseline_load.js"
         Execute-K6-Script "05_race_condition_stock.js"
-        Execute-K6-Script "02_stress_test.js"
+        Execute-K6-Script "06_enterprise_drill.js"
     }
     Default {
         Write-Host "Action khong hop le: '$Action'." -ForegroundColor Red
-        Write-Host "Cac action hop le: security, baseline, stress, spike, race, seeder, sync-server, all" -ForegroundColor Yellow
+        Write-Host "Cac action hop le: security, baseline, stress, spike, race, drill, seeder, sync-server, all" -ForegroundColor Yellow
     }
 }

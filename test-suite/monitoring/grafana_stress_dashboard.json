@@ -13,7 +13,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 100,
-      "title": "TẦNG 1: HIỆU NĂNG ỨNG DỤNG (SPRING BOOT ACTUATOR)",
+      "title": "TẦNG 1: HIỆU NĂNG ỨNG DỤNG & HTTP SIGNALS (SPRING BOOT ACTUATOR)",
       "type": "row"
     },
     {
@@ -21,19 +21,48 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 },
           "unit": "reqps"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*200.*|.*2xx.*" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": ".*429.*" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "super-light-orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": ".*5..*" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "id": 1,
-      "title": "Throughput (Request Rate / Sec by HTTP Status)",
+      "title": "Throughput Bóc Tách Theo HTTP Status (200 vs 429 vs 5xx)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(http_server_requests_seconds_count[1m])) by (status)",
-          "legendFormat": "HTTP {{status}}",
+          "expr": "sum(rate(http_server_requests_seconds_count{status=\"200\"}[1m]))",
+          "legendFormat": "HTTP 200 OK (Thành công)",
           "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=\"429\"}[1m]))",
+          "legendFormat": "HTTP 429 (Rate Limited)",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..(?!29)\"}[1m])) or sum(rate(http_server_requests_seconds_count{status=~\"400|401|403|404\"}[1m]))",
+          "legendFormat": "HTTP 4xx (Client Errors)",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[1m]))",
+          "legendFormat": "HTTP 5xx (Server Errors)",
+          "refId": "D"
         }
       ]
     },
@@ -48,7 +77,7 @@
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "id": 2,
-      "title": "Độ trễ phản hồi (Response Latency P50, P95, P99)",
+      "title": "Độ Trễ Phản Hồi Toàn Hệ Thống (Latency P50, P90, P95, P99)",
       "type": "timeseries",
       "targets": [
         {
@@ -57,14 +86,19 @@
           "refId": "A"
         },
         {
+          "expr": "histogram_quantile(0.90, sum(rate(http_server_requests_seconds_bucket[1m])) by (le))",
+          "legendFormat": "P90 (90th percentile)",
+          "refId": "B"
+        },
+        {
           "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[1m])) by (le))",
           "legendFormat": "P95 (95th percentile)",
-          "refId": "B"
+          "refId": "C"
         },
         {
           "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[1m])) by (le))",
           "legendFormat": "P99 (99th percentile)",
-          "refId": "C"
+          "refId": "D"
         }
       ]
     },
@@ -74,30 +108,162 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "drawStyle": "line" },
-          "unit": "none"
+          "unit": "s"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 9 },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 9 },
       "id": 3,
-      "title": "Database Connection Pool (HikariCP Saturation)",
+      "title": "Độ Trễ P95 Chi Tiết Từng Endpoint Nghiệp Vụ (Latency Breakdown)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[1m])) by (le, uri))",
+          "legendFormat": "URI: {{uri}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          },
+          "unit": "percent",
+          "max": 100,
+          "min": 0
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
+      "id": 4,
+      "title": "Tỷ Lệ Request Bị Lỗi (Error / Rate Limit %)",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "(sum(rate(http_server_requests_seconds_count{status=~\"429|5..\"}[1m])) / (sum(rate(http_server_requests_seconds_count[1m])) > 0)) * 100",
+          "legendFormat": "Error / 429 Rate %",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101,
+      "title": "TẦNG 2: CONNECTION POOL & POSTGRESQL DATABASE (ĐIỂM NGHẼN HIKARICP)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 85 }
+            ]
+          },
+          "unit": "percent",
+          "max": 100,
+          "min": 0
+        }
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 18 },
+      "id": 5,
+      "title": "HikariCP Pool Saturation %",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "(hikaricp_connections_active / (hikaricp_connections_max > 0)) * 100",
+          "legendFormat": "Độ bão hòa Pool",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear" },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Pending Queue (Đang xếp hàng chờ)" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 7, "w": 10, "x": 6, "y": 18 },
+      "id": 6,
+      "title": "HikariCP Connections: Active vs Pending Queue vs Idle",
       "type": "timeseries",
       "targets": [
         {
           "expr": "hikaricp_connections_active",
-          "legendFormat": "Active Connections (Đang xử lý)",
+          "legendFormat": "Active (Đang xử lý query)",
           "refId": "A"
         },
         {
           "expr": "hikaricp_connections_pending",
-          "legendFormat": "Pending Connections (Đang xếp hàng chờ)",
+          "legendFormat": "Pending Queue (Đang xếp hàng chờ)",
           "refId": "B"
         },
         {
           "expr": "hikaricp_connections_idle",
-          "legendFormat": "Idle Connections (Rảnh rỗi)",
+          "legendFormat": "Idle (Rảnh rỗi)",
           "refId": "C"
+        },
+        {
+          "expr": "hikaricp_connections_max",
+          "legendFormat": "Max Configured Pool Size",
+          "refId": "D"
         }
       ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 18 },
+      "id": 7,
+      "title": "PostgreSQL Active Connections & Deadlocks",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "pg_stat_activity_count",
+          "legendFormat": "Postgres Active Connections",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(pg_stat_database_deadlocks[1m])",
+          "legendFormat": "Deadlocks / sec",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 102,
+      "title": "TẦNG 3: JVM RUNTIME, GC PAUSES & TOMCAT THREADS",
+      "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -108,9 +274,9 @@
           "unit": "bytes"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 9 },
-      "id": 4,
-      "title": "JVM Heap Memory & GC Status",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 26 },
+      "id": 8,
+      "title": "JVM Heap Memory Usage",
       "type": "timeseries",
       "targets": [
         {
@@ -126,35 +292,23 @@
       ]
     },
     {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
-      "id": 101,
-      "title": "TẦNG 2: POSTGRESQL & REDIS METRICS",
-      "type": "row"
-    },
-    {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line" },
-          "unit": "short"
+          "custom": { "drawStyle": "bars" },
+          "unit": "s"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 17 },
-      "id": 5,
-      "title": "PostgreSQL Active Connections & Deadlocks",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 26 },
+      "id": 9,
+      "title": "JVM GC Pause Times (Độ Trễ Dừng Garbage Collection)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "pg_stat_activity_count",
-          "legendFormat": "Active Connections",
+          "expr": "jvm_gc_pause_seconds_max",
+          "legendFormat": "GC Pause Max (s)",
           "refId": "A"
-        },
-        {
-          "expr": "rate(pg_stat_database_deadlocks[1m])",
-          "legendFormat": "Deadlocks / sec",
-          "refId": "B"
         }
       ]
     },
@@ -164,32 +318,53 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "drawStyle": "line" },
-          "unit": "bytes"
+          "unit": "none"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 17 },
-      "id": 6,
-      "title": "Redis Memory Used & Ops Throughput",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 26 },
+      "id": 10,
+      "title": "Tomcat Threads (Busy Threads vs Total)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "redis_memory_used_bytes",
-          "legendFormat": "Memory Used",
+          "expr": "tomcat_threads_busy_threads",
+          "legendFormat": "Busy Worker Threads",
           "refId": "A"
         },
+        {
+          "expr": "tomcat_threads_current_threads",
+          "legendFormat": "Current Allocated Threads",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "id": 103,
+      "title": "TẦNG 4: REDIS CACHE & TẢI PHẦN CỨNG MÁY CHỦ VPS",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line" },
+          "unit": "ops"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 34 },
+      "id": 11,
+      "title": "Redis Cache Commands Throughput & Memory",
+      "type": "timeseries",
+      "targets": [
         {
           "expr": "rate(redis_commands_processed_total[1m])",
           "legendFormat": "Commands Ops / sec",
-          "refId": "B"
+          "refId": "A"
         }
       ]
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
-      "id": 102,
-      "title": "TẦNG 3: HẠ TẦNG MÁY CHỦ VPS (NODE EXPORTER)",
-      "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -202,14 +377,14 @@
           "min": 0
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 25 },
-      "id": 7,
-      "title": "Host CPU Utilization (%)",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 34 },
+      "id": 12,
+      "title": "Host VPS CPU Utilization (%)",
       "type": "timeseries",
       "targets": [
         {
           "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
-          "legendFormat": "CPU Usage %",
+          "legendFormat": "Total CPU Load %",
           "refId": "A"
         }
       ]
@@ -225,9 +400,9 @@
           "min": 0
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 25 },
-      "id": 8,
-      "title": "Host RAM Utilization (%)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 34 },
+      "id": 13,
+      "title": "Host VPS RAM Utilization (%)",
       "type": "timeseries",
       "targets": [
         {
@@ -241,7 +416,7 @@
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["erp-utt", "stress-test", "sre"],
+  "tags": ["erp-utt", "stress-test", "sre", "observability"],
   "time": {
     "from": "now-15m",
     "to": "now"
@@ -250,7 +425,7 @@
     "refresh_intervals": ["5s", "10s", "30s", "1m"]
   },
   "timezone": "browser",
-  "title": "ERP UTT - Stress Testing & Capacity Observability Dashboard",
+  "title": "ERP UTT - Enterprise Observability & Stress Testing Dashboard",
   "uid": "erp-stress-test-live",
-  "version": 1
+  "version": 2
 }

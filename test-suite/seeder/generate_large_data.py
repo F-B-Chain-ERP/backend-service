@@ -25,6 +25,7 @@ from config import (
     DB_USER,
     DEFAULT_PASSWORD,
     SCALE_CONFIG,
+    USERS_POOL_OUTPUT_PATH,
 )
 
 
@@ -103,6 +104,27 @@ def seed_branches(cursor, count: int):
     return branch_ids
 
 
+def seed_branch_hours(cursor, branch_ids):
+    print("▶ 2b. Đang tạo giờ mở cửa (branch_hours) cho các chi nhánh...")
+    now = datetime.now()
+    hours = []
+    for b_id in branch_ids:
+        for day in range(1, 8):  # Thứ 2 (1) đến CN (7)
+            cursor.execute("SELECT id FROM branch_hours WHERE branch_id = %s AND day_of_week = %s;", (b_id, day))
+            if not cursor.fetchone():
+                h_id = str(uuid.uuid4())
+                hours.append((h_id, b_id, day, "07:00:00", "22:30:00", False, now, now, "seeder", "seeder"))
+    if hours:
+        query = """
+        INSERT INTO branch_hours (id, branch_id, day_of_week, open_time, close_time, is_closed, created_at, updated_at, created_by, updated_by)
+        VALUES %s ON CONFLICT DO NOTHING;
+        """
+        execute_values(cursor, query, hours)
+        print(f"   Đã thêm {len(hours)} bản ghi giờ mở cửa.")
+    else:
+        print("   Đã có đủ giờ mở cửa.")
+
+
 def seed_scopes(cursor, branch_ids):
     print("▶ 3. Đang tạo scopes (ALL_SYSTEM, STORE, WAREHOUSE)...")
     now = datetime.now()
@@ -140,14 +162,16 @@ def seed_scopes(cursor, branch_ids):
 
 
 def seed_roles(cursor):
-    print("▶ 4. Kiểm tra các vai trò (roles)...")
+    print("▶ 4. Kiểm tra các vai trò (roles) và gán quyền...")
     now = datetime.now()
     standard_roles = [
+        ("ADMIN", "Quản trị viên tối cao", "SYSTEM"),
         ("ROLE_ADMIN", "Quản trị viên tối cao", "SYSTEM"),
         ("ROLE_MANAGER", "Quản lý chi nhánh", "CUSTOM"),
         ("ROLE_CASHIER", "Thu ngân POS", "CUSTOM"),
         ("ROLE_WAREHOUSE", "Thủ kho", "CUSTOM"),
         ("ROLE_BARISTA", "Nhân viên pha chế", "CUSTOM"),
+        ("ROLE_USER", "Người dùng hệ thống", "CUSTOM"),
     ]
     for code, name, r_type in standard_roles:
         cursor.execute("SELECT id FROM role WHERE code = %s;", (code,))
@@ -158,71 +182,182 @@ def seed_roles(cursor):
             """, (str(uuid.uuid4()), code, name, r_type, now, now))
 
     cursor.execute("SELECT id, code FROM role WHERE status = 'ACTIVE';")
-    return {code: r_id for r_id, code in cursor.fetchall()}
+    role_map = {code: r_id for r_id, code in cursor.fetchall()}
+
+    cursor.execute("SELECT id, code, module FROM permission WHERE status = 'ACTIVE';")
+    all_perms = cursor.fetchall()
+
+    role_perms = []
+    # ADMIN / ROLE_ADMIN có full quyền
+    for r_key in ["ADMIN", "ROLE_ADMIN"]:
+        r_id = role_map.get(r_key)
+        if r_id:
+            for p_id, _, _ in all_perms:
+                role_perms.append((r_id, p_id))
+
+    # ROLE_MANAGER: module MENU, CUSTOMER, POS, INV, PROC, PROMOTION, SYS
+    mgr_id = role_map.get("ROLE_MANAGER")
+    if mgr_id:
+        for p_id, _, mod in all_perms:
+            if mod in ("MENU", "CUSTOMER", "POS", "INV", "PROC", "PROMOTION", "SYS"):
+                role_perms.append((mgr_id, p_id))
+
+    # ROLE_CASHIER: module MENU, CUSTOMER, POS
+    cashier_id = role_map.get("ROLE_CASHIER")
+    if cashier_id:
+        for p_id, _, mod in all_perms:
+            if mod in ("MENU", "CUSTOMER", "POS"):
+                role_perms.append((cashier_id, p_id))
+
+    # ROLE_WAREHOUSE: module INV, PROC, MENU
+    wh_id = role_map.get("ROLE_WAREHOUSE")
+    if wh_id:
+        for p_id, _, mod in all_perms:
+            if mod in ("INV", "PROC", "MENU"):
+                role_perms.append((wh_id, p_id))
+
+    if role_perms:
+        perm_query = """
+        INSERT INTO role_permission (role_id, permission_id)
+        VALUES %s ON CONFLICT DO NOTHING;
+        """
+        execute_values(cursor, perm_query, role_perms)
+        print(f"   Đã gán {len(role_perms)} quyền cho các vai trò chuẩn.")
+
+    return role_map
 
 
 def seed_accounts(cursor, count: int, branch_ids, role_map, scopes, hashed_password):
-    print(f"▶ 5. Đang tạo {count} tài khoản người dùng (account & role assignment)...")
+    print(f"▶ 5. Đang chuẩn hóa tài khoản thật và tạo tài khoản đa chi nhánh...")
     now = datetime.now()
-    accounts = []
-    assignments = []
-    test_user_credentials = []
-
-    # Map scopes
     all_sys_scope = next((s[0] for s in scopes if s[1] == "ALL_SYSTEM"), None)
     store_scopes = {s[2]: s[0] for s in scopes if s[1] == "STORE"}
+    wh_scopes = {s[2]: s[0] for s in scopes if s[1] == "WAREHOUSE"}
 
+    # 1. Đồng bộ 10 tài khoản thật bạn cung cấp (password: 123456789)
+    real_accounts = [
+        {"username": "admin1", "role": "ADMIN", "full_name": "Admin 1"},
+        {"username": "admin2", "role": "ADMIN", "full_name": "Admin 2"},
+        {"username": "admin3", "role": "ADMIN", "full_name": "Admin 3"},
+        {"username": "admin4", "role": "ADMIN", "full_name": "Admin 4"},
+        {"username": "hoangdinhdung", "role": "ADMIN", "full_name": "Hoang Dinh Dung"},
+        {"username": "hoangdinhdung20205", "role": "ROLE_MANAGER", "full_name": "Hoang Dinh Dung Manager"},
+        {"username": "staff01", "role": "ROLE_CASHIER", "full_name": "Staff 01 Cashier"},
+        {"username": "user01", "role": "ROLE_USER", "full_name": "User 01"},
+        {"username": "test", "role": "ROLE_USER", "full_name": "Test User"},
+        {"username": "abc", "role": "ROLE_USER", "full_name": "Abc User"},
+    ]
+
+    for item in real_accounts:
+        uname = item["username"]
+        role_code = item["role"]
+        role_id = role_map.get(role_code) or role_map.get(f"ROLE_{role_code}") or role_map.get("ADMIN")
+        cursor.execute("SELECT id, primary_branch_id FROM account WHERE username = %s;", (uname,))
+        row = cursor.fetchone()
+        if row:
+            acc_id = row[0]
+            cursor.execute("""
+                UPDATE account 
+                SET password = %s, failed_login_attempts = 0, locked_until = NULL, status = 'ACTIVE'
+                WHERE id = %s;
+            """, (hashed_password, acc_id))
+        else:
+            acc_id = str(uuid.uuid4())
+            primary_b = branch_ids[0] if branch_ids else None
+            cursor.execute("""
+                INSERT INTO account (
+                    id, username, password, full_name, email, phone,
+                    status, auth_provider, has_local_password, primary_branch_id,
+                    failed_login_attempts, locked_until, system_protected,
+                    created_at, updated_at, created_by, updated_by
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    'ACTIVE', 'LOCAL', true, %s,
+                    0, NULL, false,
+                    NOW(), NOW(), 'seeder', 'seeder'
+                );
+            """, (acc_id, uname, hashed_password, item["full_name"], f"{uname}@erp.utt.edu.vn", "0901234567", primary_b))
+
+        if role_id and all_sys_scope:
+            cursor.execute("""
+                INSERT INTO account_role_assignment (
+                    id, account_id, role_id, scope_id, status, assigned_at,
+                    created_at, created_by, updated_at, updated_by
+                ) VALUES (
+                    gen_random_uuid(), %s, %s, %s, 'ACTIVE', NOW(),
+                    NOW(), 'seeder', NOW(), 'seeder'
+                ) ON CONFLICT (account_id, role_id, scope_id) DO NOTHING;
+            """, (acc_id, role_id, all_sys_scope))
+
+    print(f"   Đã đồng bộ 10 tài khoản thật với mật khẩu '{DEFAULT_PASSWORD}'.")
+
+    # 2. Tạo nhân viên chuyên trách theo từng chi nhánh
     cursor.execute("SELECT username FROM account;")
     existing_users = {r[0] for r in cursor.fetchall()}
 
-    for i in range(1, count + 1):
-        username = f"test_user_{i:04d}"
-        if username in existing_users:
+    new_accounts = []
+    new_assignments = []
+
+    for b_idx, b_id in enumerate(branch_ids, start=1):
+        store_sc = store_scopes.get(b_id, all_sys_scope)
+        wh_sc = wh_scopes.get(b_id, all_sys_scope)
+
+        staff_roles = [
+            (f"mgr_br_{b_idx:02d}", "ROLE_MANAGER", "Quản lý", store_sc),
+            (f"cashier_br_{b_idx:02d}_1", "ROLE_CASHIER", "Thu ngân 1", store_sc),
+            (f"cashier_br_{b_idx:02d}_2", "ROLE_CASHIER", "Thu ngân 2", store_sc),
+            (f"cashier_br_{b_idx:02d}_3", "ROLE_CASHIER", "Thu ngân 3", store_sc),
+            (f"cashier_br_{b_idx:02d}_4", "ROLE_CASHIER", "Thu ngân 4", store_sc),
+            (f"wh_br_{b_idx:02d}_1", "ROLE_WAREHOUSE", "Thủ kho 1", wh_sc),
+            (f"wh_br_{b_idx:02d}_2", "ROLE_WAREHOUSE", "Thủ kho 2", wh_sc),
+            (f"barista_br_{b_idx:02d}_1", "ROLE_BARISTA", "Pha chế 1", store_sc),
+            (f"barista_br_{b_idx:02d}_2", "ROLE_BARISTA", "Pha chế 2", store_sc),
+            (f"barista_br_{b_idx:02d}_3", "ROLE_BARISTA", "Pha chế 3", store_sc),
+        ]
+
+        for uname, r_code, title, sc_id in staff_roles:
+            if uname in existing_users:
+                continue
+            acc_id = str(uuid.uuid4())
+            email = f"{uname}@pinedrink.vn"
+            full_name = f"{title} Chi Nhánh {b_idx}"
+            phone = f"08{random.randint(10000000, 99999999)}"
+
+            new_accounts.append((
+                acc_id, uname, hashed_password, full_name, email, phone, None,
+                "ACTIVE", now, "LOCAL", None, True, b_id, 0, None, False,
+                now, now, "seeder", "seeder"
+            ))
+
+            r_id = role_map.get(r_code)
+            if r_id and sc_id:
+                new_assignments.append((
+                    str(uuid.uuid4()), acc_id, r_id, sc_id, "ACTIVE", now, None,
+                    "seeder", now, "seeder", now, "seeder"
+                ))
+
+    # Nếu cần bổ sung thêm tài khoản phụ để đạt target count
+    current_total = len(existing_users) + len(new_accounts)
+    for i in range(current_total + 1, count + 1):
+        uname = f"test_user_{i:04d}"
+        if uname in existing_users:
             continue
         acc_id = str(uuid.uuid4())
-        branch_id = random.choice(branch_ids) if branch_ids else None
-        email = f"user_{i:04d}@test.erp.vn"
-        full_name = f"Nhân viên Test {i}"
-        phone = f"08{random.randint(10000000, 99999999)}"
-
-        accounts.append((
-            acc_id, username, hashed_password, full_name, email, phone, None,
-            "ACTIVE", now, "LOCAL", None, True, branch_id, 0, None, False,
-            now, now, "seeder", "seeder"
+        b_id = random.choice(branch_ids) if branch_ids else None
+        store_sc = store_scopes.get(b_id, all_sys_scope)
+        new_accounts.append((
+            acc_id, uname, hashed_password, f"Nhân viên Test {i}", f"user_{i:04d}@test.erp.vn",
+            f"08{random.randint(10000000, 99999999)}", None, "ACTIVE", now, "LOCAL", None, True,
+            b_id, 0, None, False, now, now, "seeder", "seeder"
         ))
-
-        # Phân vai trò: 5% Admin, 20% Manager, 50% Cashier, 25% Barista
-        rand_val = random.random()
-        if rand_val < 0.05:
-            role_code = "ROLE_ADMIN"
-            scope_id = all_sys_scope
-        elif rand_val < 0.25:
-            role_code = "ROLE_MANAGER"
-            scope_id = store_scopes.get(branch_id, all_sys_scope)
-        elif rand_val < 0.75:
-            role_code = "ROLE_CASHIER"
-            scope_id = store_scopes.get(branch_id, all_sys_scope)
-        else:
-            role_code = "ROLE_BARISTA"
-            scope_id = store_scopes.get(branch_id, all_sys_scope)
-
-        role_id = role_map.get(role_code)
-        if role_id and scope_id:
-            assign_id = str(uuid.uuid4())
-            assignments.append((
-                assign_id, acc_id, role_id, scope_id, "ACTIVE", now, None,
+        r_id = role_map.get("ROLE_CASHIER")
+        if r_id and store_sc:
+            new_assignments.append((
+                str(uuid.uuid4()), acc_id, r_id, store_sc, "ACTIVE", now, None,
                 "seeder", now, "seeder", now, "seeder"
             ))
 
-        test_user_credentials.append({
-            "username": username,
-            "email": email,
-            "password": DEFAULT_PASSWORD,
-            "role": role_code,
-            "branch_id": str(branch_id) if branch_id else None
-        })
-
-    if accounts:
+    if new_accounts:
         query_acc = """
         INSERT INTO account (
             id, username, password, full_name, email, phone, avatar_url,
@@ -231,8 +366,8 @@ def seed_accounts(cursor, count: int, branch_ids, role_map, scopes, hashed_passw
             created_at, updated_at, created_by, updated_by
         ) VALUES %s ON CONFLICT (username) DO NOTHING;
         """
-        for i in range(0, len(accounts), BATCH_SIZE):
-            execute_values(cursor, query_acc, accounts[i:i + BATCH_SIZE])
+        for i in range(0, len(new_accounts), BATCH_SIZE):
+            execute_values(cursor, query_acc, new_accounts[i:i + BATCH_SIZE])
 
         query_assign = """
         INSERT INTO account_role_assignment (
@@ -240,17 +375,43 @@ def seed_accounts(cursor, count: int, branch_ids, role_map, scopes, hashed_passw
             assigned_by, created_at, created_by, updated_at, updated_by
         ) VALUES %s ON CONFLICT DO NOTHING;
         """
-        for i in range(0, len(assignments), BATCH_SIZE):
-            execute_values(cursor, query_assign, assignments[i:i + BATCH_SIZE])
+        for i in range(0, len(new_assignments), BATCH_SIZE):
+            execute_values(cursor, query_assign, new_assignments[i:i + BATCH_SIZE])
 
-        print(f"   Đã thêm {len(accounts)} accounts và {len(assignments)} phân quyền.")
+        print(f"   Đã thêm {len(new_accounts)} accounts chi nhánh và {len(new_assignments)} phân quyền.")
 
-    # Xuất file json pool user để k6 dùng load test
-    pool_path = os.path.join(os.path.dirname(__file__), "..", "k6", "users_pool.json")
-    os.makedirs(os.path.dirname(pool_path), exist_ok=True)
-    with open(pool_path, "w", encoding="utf-8") as f:
-        json.dump(test_user_credentials[:1000], f, indent=2, ensure_ascii=False)
-    print(f"   Đã xuất {len(test_user_credentials[:1000])} thông tin user test ra file '{pool_path}'.")
+    # 3. Xuất file users_pool.json chứa toàn bộ tài khoản thực tế cho k6
+    cursor.execute("""
+        SELECT a.username, a.email, a.primary_branch_id, b.code as branch_code, r.code as role_code
+        FROM account a
+        LEFT JOIN branch b ON a.primary_branch_id = b.id
+        LEFT JOIN account_role_assignment ara ON a.id = ara.account_id AND ara.status = 'ACTIVE'
+        LEFT JOIN role r ON ara.role_id = r.id
+        WHERE a.status = 'ACTIVE'
+        ORDER BY a.username;
+    """)
+    rows = cursor.fetchall()
+
+    export_pool = []
+    seen = set()
+    for uname, email, b_id, b_code, r_code in rows:
+        if uname in seen:
+            continue
+        seen.add(uname)
+        export_pool.append({
+            "usernameOrEmail": uname,
+            "username": uname,
+            "password": DEFAULT_PASSWORD,
+            "role": r_code or "ROLE_USER",
+            "type": "ACCOUNT",
+            "branch_id": str(b_id) if b_id else None,
+            "branch_code": b_code or "DEFAULT"
+        })
+
+    os.makedirs(os.path.dirname(USERS_POOL_OUTPUT_PATH), exist_ok=True)
+    with open(USERS_POOL_OUTPUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(export_pool, f, indent=2, ensure_ascii=False)
+    print(f"   Đã xuất {len(export_pool)} tài khoản thực tế ra file '{USERS_POOL_OUTPUT_PATH}'.")
 
     cursor.execute("SELECT id FROM account;")
     return [r[0] for r in cursor.fetchall()]
@@ -671,8 +832,9 @@ def main():
         # 1. Mã hóa mật khẩu test
         hashed_pwd = generate_bcrypt_hash(DEFAULT_PASSWORD)
 
-        # 2. Seed Branches
+        # 2. Seed Branches & Operating Hours
         branch_ids = seed_branches(cursor, SCALE_CONFIG["BRANCH_COUNT"])
+        seed_branch_hours(cursor, branch_ids)
         conn.commit()
 
         # 3. Seed Scopes

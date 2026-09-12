@@ -100,41 +100,58 @@ export function authenticateUser(userObj) {
 }
 
 /**
- * Lấy toàn bộ danh sách Token đã đăng nhập trước cho các tài khoản trong pool.
+ * Lấy danh sách Token đã đăng nhập trước cho các tài khoản trong pool.
  * Được gọi một lần duy nhất trong hàm setup() của k6.
  */
-export function getAllAuthenticatedTokens() {
-    console.log(`[SETUP] Bắt đầu lấy JWT Token cho ${USERS_POOL.length} tài khoản trong DB...`);
+export function getAllAuthenticatedTokens(maxCount = 100) {
+    const targetPool = USERS_POOL.slice(0, maxCount);
+    console.log(`[SETUP] Bắt đầu lấy JWT Token cho ${targetPool.length} tài khoản trong DB...`);
     const tokens = [];
 
-    for (let i = 0; i < USERS_POOL.length; i++) {
-        const u = USERS_POOL[i];
+    for (let i = 0; i < targetPool.length; i++) {
+        const u = targetPool[i];
         const token = authenticateUser(u);
         if (token) {
             tokens.push({
-                username: u.usernameOrEmail,
-                role: u.role,
+                username: u.usernameOrEmail || u.username,
+                role: u.role || 'ROLE_USER',
+                branchId: u.branch_id || null,
+                branchCode: u.branch_code || null,
                 token: token
             });
-            console.log(`  ✔ Login thành công tài khoản: '${u.usernameOrEmail}'`);
+            if (i < 10 || (i + 1) % 25 === 0 || i === targetPool.length - 1) {
+                console.log(`  ✔ [${i + 1}/${targetPool.length}] Login: '${u.usernameOrEmail || u.username}' (${u.role || 'USER'})`);
+            }
         }
     }
 
-    console.log(`[SETUP] Hoàn tất: Lấy được ${tokens.length}/${USERS_POOL.length} Token xác thực.`);
+    console.log(`[SETUP] Hoàn tất: Thu thập được ${tokens.length}/${targetPool.length} Token xác thực.`);
     return tokens;
 }
 
 /**
- * Tạo headers chuẩn kèm Token xác thực
+ * Lọc danh sách token theo vai trò
  */
-export function getAuthHeaders(token) {
+export function filterTokensByRole(tokens, roleSubstring) {
+    const filtered = tokens.filter(t => t.role && t.role.toUpperCase().includes(roleSubstring.toUpperCase()));
+    return filtered.length > 0 ? filtered : tokens; // Fallback to all if none found
+}
+
+/**
+ * Tạo headers chuẩn kèm Token xác thực và mã chi nhánh (X-Branch-Id)
+ */
+export function getAuthHeaders(token, branchId = null) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'X-Forwarded-For': getRandomClientIp(),
+        'User-Agent': 'k6-load-tester/1.0'
+    };
+    if (branchId) {
+        headers['X-Branch-Id'] = branchId;
+    }
     return {
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'X-Forwarded-For': getRandomClientIp(),
-            'User-Agent': 'k6-load-tester/1.0'
-        },
+        headers: headers,
         timeout: '15s'
     };
 }

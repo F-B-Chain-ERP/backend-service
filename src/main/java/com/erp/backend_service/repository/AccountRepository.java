@@ -1,6 +1,7 @@
 package com.erp.backend_service.repository;
 
 import com.erp.core.domain.Account;
+import com.erp.core.enums.EntityStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -74,9 +75,54 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
                                 and (ar.expiresAt is null or ar.expiresAt > :now)))
             """)
     Page<Account> searchByBranches(@Param("search") String search,
-                                   @Param("branchIds") Collection<UUID> branchIds,
-                                   @Param("now") Instant now,
-                                   Pageable pageable);
+                                    @Param("branchIds") Collection<UUID> branchIds,
+                                    @Param("now") Instant now,
+                                    Pageable pageable);
+
+    /**
+     * Biến thể của {@link #search} có thêm lọc trạng thái + mở rộng search sang phone.
+     * Code-only (không đổi schema): dùng khi FE lọc status/branch phía server.
+     */
+    @Query("""
+            select a from Account a
+            where (:search is null or :search = ''
+                   or lower(a.username) like lower(concat('%', :search, '%'))
+                   or lower(a.fullName) like lower(concat('%', :search, '%'))
+                   or lower(a.email) like lower(concat('%', :search, '%'))
+                   or lower(a.phone) like lower(concat('%', :search, '%')))
+              and (:branchId is null or a.primaryBranchId = :branchId)
+              and (:status is null or a.status = :status)
+            """)
+    Page<Account> searchWithFilters(@Param("search") String search,
+                                    @Param("branchId") UUID branchId,
+                                    @Param("status") EntityStatus status,
+                                    Pageable pageable);
+
+    /**
+     * Biến thể của {@link #searchByBranches} có thêm lọc trạng thái.
+     * Code-only (không đổi schema).
+     */
+    @Query("""
+            select a from Account a
+            where (:search is null or :search = ''
+                   or lower(a.username) like lower(concat('%', :search, '%'))
+                   or lower(a.fullName) like lower(concat('%', :search, '%'))
+                   or lower(a.email) like lower(concat('%', :search, '%'))
+                   or lower(a.phone) like lower(concat('%', :search, '%')))
+              and (:status is null or a.status = :status)
+              and (a.primaryBranchId in :branchIds
+                   or exists (select 1 from AccountRole ar, Scope s
+                              where ar.accountId = a.id and ar.scopeId = s.id
+                                and s.branchId in :branchIds
+                                and ar.status = com.erp.core.enums.EntityStatus.ACTIVE
+                                and s.status = com.erp.core.enums.EntityStatus.ACTIVE
+                                and (ar.expiresAt is null or ar.expiresAt > :now)))
+            """)
+    Page<Account> searchByBranchesWithFilters(@Param("search") String search,
+                                              @Param("branchIds") Collection<UUID> branchIds,
+                                              @Param("status") EntityStatus status,
+                                              @Param("now") Instant now,
+                                              Pageable pageable);
 }
 
 

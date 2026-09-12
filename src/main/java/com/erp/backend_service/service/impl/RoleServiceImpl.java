@@ -58,6 +58,7 @@ import java.util.UUID;
 
 @Service
 public class RoleServiceImpl implements RoleService {
+    private static final int MAX_PAGE_SIZE = 100;
     private final AccountRepository accountRepository;
     private final RoleRepository roleRepository;
     private final AccountRoleRepository accountRoleRepository;
@@ -254,7 +255,8 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public PageResponse<RoleResponse> getAll(int page, int size, String search) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Role> rolePage;
 
         if (search != null && !search.trim().isEmpty()) {

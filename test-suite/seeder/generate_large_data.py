@@ -94,7 +94,7 @@ def seed_branches(cursor, count: int):
             timezone, supports_pickup, supports_delivery, average_preparation_minutes,
             status, created_at, updated_at, created_by, updated_by
         ) VALUES %s
-        ON CONFLICT (code) DO NOTHING;
+        ON CONFLICT DO NOTHING;
         """
         execute_values(cursor, query, branches)
         print(f"   Đã thêm mới {len(branches)} chi nhánh.")
@@ -364,7 +364,7 @@ def seed_accounts(cursor, count: int, branch_ids, role_map, scopes, hashed_passw
             status, last_login_at, auth_provider, provider_id, has_local_password,
             primary_branch_id, failed_login_attempts, locked_until, system_protected,
             created_at, updated_at, created_by, updated_by
-        ) VALUES %s ON CONFLICT (username) DO NOTHING;
+        ) VALUES %s ON CONFLICT DO NOTHING;
         """
         for i in range(0, len(new_accounts), BATCH_SIZE):
             execute_values(cursor, query_acc, new_accounts[i:i + BATCH_SIZE])
@@ -508,7 +508,7 @@ def seed_catalog(cursor, cat_count: int, prod_count: int, mat_count: int):
         INSERT INTO material (
             id, category_id, code, name, base_unit_id, min_stock_alert,
             shelf_life_days, is_perishable, status, created_at, updated_at, created_by, updated_by
-        ) VALUES %s ON CONFLICT (code) DO NOTHING;
+        ) VALUES %s ON CONFLICT DO NOTHING;
         """
         for i in range(0, len(materials), BATCH_SIZE):
             execute_values(cursor, mat_query, materials[i:i + BATCH_SIZE])
@@ -556,7 +556,7 @@ def seed_catalog(cursor, cat_count: int, prod_count: int, mat_count: int):
             id, category_id, code, name, description, image_url, base_price,
             preparation_minutes, is_featured, is_best_seller, is_combo,
             available_ice_levels, available_sugar_levels, status, created_at, updated_at, created_by, updated_by
-        ) VALUES %s ON CONFLICT (code) DO NOTHING;
+        ) VALUES %s ON CONFLICT DO NOTHING;
         """
         for i in range(0, len(products), BATCH_SIZE):
             execute_values(cursor, prod_query, products[i:i + BATCH_SIZE])
@@ -565,21 +565,26 @@ def seed_catalog(cursor, cat_count: int, prod_count: int, mat_count: int):
         INSERT INTO product_variant (
             id, product_id, variant_code, variant_name, size_label, price_delta,
             display_order, status, created_at, updated_at, created_by, updated_by
-        ) VALUES %s ON CONFLICT (product_id, variant_code) DO NOTHING;
+        ) VALUES %s ON CONFLICT DO NOTHING;
         """
         for i in range(0, len(variants), BATCH_SIZE):
             execute_values(cursor, var_query, variants[i:i + BATCH_SIZE])
 
         print(f"   Đã thêm {len(products)} products và {len(variants)} product_variants.")
 
-    cursor.execute("SELECT id, product_id, variant_code FROM product_variant WHERE status = 'ACTIVE';")
+    cursor.execute("""
+        SELECT pv.id, pv.product_id, pv.variant_code, pv.variant_name, p.code, p.name
+        FROM product_variant pv
+        JOIN product p ON pv.product_id = p.id
+        WHERE pv.status = 'ACTIVE';
+    """)
     variant_records = cursor.fetchall()
 
     return material_ids, list(existing_prods.values()), variant_records, base_weight_id
 
 
 def seed_warehouses_and_stock(cursor, branch_ids, material_ids, wh_count: int, target_stock_count: int):
-    print(f"▶ 7. Đang tạo {wh_count} kho (warehouse) và {target_stock_count} số dư tồn kho (stock_balance)...")
+    print(f"▶ 7. Đang tạo {wh_count} kho (warehouse) và {target_stock_count} số dư tồn kho (material_stock_balance)...")
     now = datetime.now()
 
     cursor.execute("SELECT id, code, branch_id FROM warehouse;")
@@ -593,16 +598,17 @@ def seed_warehouses_and_stock(cursor, branch_ids, material_ids, wh_count: int, t
         wh_id = str(uuid.uuid4())
         branch_id = random.choice(branch_ids) if branch_ids else None
         name = f"Kho Chi Nhánh #{i}"
+        wh_type = "BRANCH" if branch_id else "CENTRAL"
         warehouses.append((
-            wh_id, branch_id, code, name, "Kho lưu trữ và phân phối nguyên liệu",
-            f"Địa chỉ kho {i}", "ACTIVE", now, now, "seeder", "seeder"
+            wh_id, code, name, wh_type, branch_id, f"Địa chỉ kho {i}",
+            "ACTIVE", now, now, "seeder", "seeder"
         ))
         existing_wh[code] = (wh_id, branch_id)
 
     if warehouses:
         wh_query = """
-        INSERT INTO warehouse (id, branch_id, code, name, description, address, status, created_at, updated_at, created_by, updated_by)
-        VALUES %s ON CONFLICT (code) DO NOTHING;
+        INSERT INTO warehouse (id, code, name, warehouse_type, branch_id, address, status, created_at, updated_at, created_by, updated_by)
+        VALUES %s ON CONFLICT DO NOTHING;
         """
         execute_values(cursor, wh_query, warehouses)
         print(f"   Đã thêm {len(warehouses)} kho mới.")
@@ -610,11 +616,10 @@ def seed_warehouses_and_stock(cursor, branch_ids, material_ids, wh_count: int, t
     wh_list = [v[0] for v in existing_wh.values()]
 
     # Stock Balances
-    cursor.execute("SELECT warehouse_id, material_id FROM stock_balance;")
+    cursor.execute("SELECT warehouse_id, material_id FROM material_stock_balance;")
     existing_balances = {(r[0], r[1]) for r in cursor.fetchall()}
     stock_balances = []
 
-    created_count = 0
     for wh_id in wh_list:
         sample_mats = random.sample(material_ids, min(len(material_ids), target_stock_count // max(1, len(wh_list))))
         for m_id in sample_mats:
@@ -623,21 +628,20 @@ def seed_warehouses_and_stock(cursor, branch_ids, material_ids, wh_count: int, t
             sb_id = str(uuid.uuid4())
             qty = round(random.uniform(500.0, 50000.0), 3)
             stock_balances.append((
-                sb_id, wh_id, m_id, qty, 0.0, 0.0, now, "ACTIVE", now, now, "seeder", "seeder"
+                sb_id, wh_id, m_id, qty, 0.0, now, "seeder", now, "seeder"
             ))
             existing_balances.add((wh_id, m_id))
-            created_count += 1
 
     if stock_balances:
         sb_query = """
-        INSERT INTO stock_balance (
-            id, warehouse_id, material_id, quantity, allocated_quantity,
-            pending_in_quantity, last_counted_at, status, created_at, updated_at, created_by, updated_by
-        ) VALUES %s ON CONFLICT (warehouse_id, material_id) DO NOTHING;
+        INSERT INTO material_stock_balance (
+            id, warehouse_id, material_id, quantity_on_hand, quantity_reserved,
+            created_at, created_by, updated_at, updated_by
+        ) VALUES %s ON CONFLICT DO NOTHING;
         """
         for i in range(0, len(stock_balances), BATCH_SIZE):
             execute_values(cursor, sb_query, stock_balances[i:i + BATCH_SIZE])
-        print(f"   Đã nạp {len(stock_balances)} bản ghi tồn kho (stock_balance).")
+        print(f"   Đã nạp {len(stock_balances)} bản ghi tồn kho (material_stock_balance).")
 
     return wh_list
 
@@ -671,7 +675,7 @@ def seed_customers_and_orders(cursor, branch_ids, variants, cust_count: int, ord
             id, customer_code, username, full_name, phone, email, avatar_url,
             auth_provider, provider_id, has_local_password, email_verified,
             date_of_birth, gender, status, last_login_at, created_at, created_by, updated_at, updated_by
-        ) VALUES %s ON CONFLICT (customer_code) DO NOTHING;
+        ) VALUES %s ON CONFLICT DO NOTHING;
         """
         for i in range(0, len(customers), BATCH_SIZE):
             execute_values(cursor, c_query, customers[i:i + BATCH_SIZE])
@@ -691,7 +695,6 @@ def seed_customers_and_orders(cursor, branch_ids, variants, cust_count: int, ord
         statuses = ["COMPLETED", "COMPLETED", "COMPLETED", "PREPARING", "PENDING", "CANCELLED"]
         pay_methods = ["CASH", "VNPAY", "MOMO", "BANK_TRANSFER"]
 
-        # Timestamp rải đều trong 30 ngày qua
         start_date = now - timedelta(days=30)
 
         for i in range(1, needed_orders + 1):
@@ -707,21 +710,21 @@ def seed_customers_and_orders(cursor, branch_ids, variants, cust_count: int, ord
 
             order_date = start_date + timedelta(seconds=random.randint(0, 30 * 86400))
 
-            # Items trong đơn
             item_count = random.randint(1, 4)
             subtotal = 0.0
             order_variants = random.sample(variants, min(len(variants), item_count))
 
             for v in order_variants:
                 item_id = str(uuid.uuid4())
-                var_id, prod_id, _ = v
+                var_id, prod_id, var_code, var_name, p_code, p_name = v
                 qty = random.randint(1, 3)
                 price = float(random.randint(30, 60) * 1000)
                 total_p = qty * price
                 subtotal += total_p
                 order_items.append((
-                    item_id, o_id, prod_id, var_id, qty, "NORMAL", "NORMAL",
-                    price, total_p, 0.0, "ACTIVE", order_date, "seeder", order_date, "seeder"
+                    item_id, "ACTIVE", o_id, prod_id, var_id, p_code, p_name, var_name,
+                    qty, "NORMAL", "NORMAL", None, price, total_p, 0.0,
+                    order_date, "seeder", order_date, "seeder"
                 ))
 
             orders.append((
@@ -755,17 +758,19 @@ def _insert_order_batch(cursor, orders, items):
         delivery_fee, total_amount, total_cogs_amount, pickup_time, delivery_address, note,
         confirmed_at, prepared_at, ready_at, delivering_at, delivered_at, completed_at,
         cancelled_at, rejected_at, cancel_reason, created_at, created_by, updated_at, updated_by
-    ) VALUES %s ON CONFLICT (order_code) DO NOTHING;
+    ) VALUES %s ON CONFLICT DO NOTHING;
     """
     execute_values(cursor, order_query, orders)
 
-    item_query = """
-    INSERT INTO order_item (
-        id, order_id, product_id, variant_id, quantity, sugar_level, ice_level,
-        unit_price, total_price, cogs_amount, status, created_at, created_by, updated_at, updated_by
-    ) VALUES %s ON CONFLICT DO NOTHING;
-    """
-    execute_values(cursor, item_query, items)
+    if items:
+        item_query = """
+        INSERT INTO order_item (
+            id, status, order_id, product_id, variant_id, product_code, product_name, variant_name,
+            quantity, sugar_level, ice_level, note, unit_price, total_price, unit_cogs_amount,
+            created_at, created_by, updated_at, updated_by
+        ) VALUES %s ON CONFLICT DO NOTHING;
+        """
+        execute_values(cursor, item_query, items)
 
 
 def seed_audit_logs(cursor, count: int, branch_ids, account_ids):

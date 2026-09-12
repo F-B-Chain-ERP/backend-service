@@ -134,8 +134,12 @@ public enum ErrorCode {
     MENU_400_VARIANT_IN_USE(400, "MENU_400_VARIANT_IN_USE", "Biến thể đang được liên kết trong công thức định lượng (BOM) hoặc đơn hàng, không thể xóa."),
     MENU_404_BOM_ITEM_NOT_FOUND(404, "MENU_404_BOM_ITEM_NOT_FOUND", "Không tìm thấy dòng nguyên vật liệu trong công thức."),
     MENU_409_BOM_MATERIAL_DUPLICATED(409, "MENU_409_BOM_MATERIAL_DUPLICATED", "Nguyên vật liệu này đã có trong công thức định lượng của biến thể."),
-    MENU_400_BOM_ITEMS_EMPTY(400, "MENU_400_BOM_ITEMS_EMPTY", "Công thức định lượng phải có ít nhất một nguyên liệu.");
-
+    MENU_400_BOM_ITEMS_EMPTY(400, "MENU_400_BOM_ITEMS_EMPTY", "Công thức định lượng phải có ít nhất một nguyên liệu."),
+    MENU_404_UNIT_NOT_FOUND(404, "MENU_404_UNIT_NOT_FOUND", "Không tìm thấy đơn vị tính."),
+    MENU_400_BOM_INVALID_QUANTITY(400, "MENU_400_BOM_INVALID_QUANTITY", "Định lượng nguyên vật liệu không hợp lệ."),
+    MENU_400_BOM_INVALID_WASTAGE(400, "MENU_400_BOM_INVALID_WASTAGE", "Tỷ lệ hao hụt không hợp lệ."),
+    MENU_400_BOM_UNIT_MISMATCH(400, "MENU_400_BOM_UNIT_MISMATCH", "Đơn vị BOM phải trùng đơn vị cơ sở của nguyên vật liệu."),
+    MENU_400_BOM_MATERIAL_INACTIVE(400, "MENU_400_BOM_MATERIAL_INACTIVE", "Không được thêm nguyên vật liệu đang ngừng hoạt động vào BOM.");
 
 
     private final int statusCode;

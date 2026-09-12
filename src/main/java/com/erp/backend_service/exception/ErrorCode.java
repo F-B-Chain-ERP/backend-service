@@ -146,7 +146,21 @@ public enum ErrorCode {
     INVALID_PRICE(400, "MENU_400_INVALID_PRICE", "Giá trị giảm giá voucher không hợp lệ."),
     USAGE_LIMIT_EXCEEDED(400, "MENU_400_USAGE_LIMIT_EXCEEDED", "Voucher đã đạt giới hạn sử dụng."),
     VOUCHER_EXPIRED(400, "MENU_400_VOUCHER_EXPIRED", "Voucher đã hết hạn hoặc chưa đến hạn sử dụng."),
-    VOUCHER_NOT_APPLICABLE(400, "MENU_400_VOUCHER_NOT_APPLICABLE", "Voucher không áp dụng được.");
+    VOUCHER_NOT_APPLICABLE(400, "MENU_400_VOUCHER_NOT_APPLICABLE", "Voucher không áp dụng được."),
+    MENU_404_TOPPING_NOT_FOUND(404, "MENU_404_TOPPING_NOT_FOUND", "Không tìm thấy topping."),
+    MENU_409_TOPPING_CODE_EXISTED(409, "MENU_409_TOPPING_CODE_EXISTED", "Mã topping đã tồn tại."),
+    MENU_409_TOPPING_IN_USE(409, "MENU_409_TOPPING_IN_USE", "Topping đang được gán cho sản phẩm, không thể xóa. Vui lòng chuyển sang INACTIVE."),
+    MENU_400_INVALID_TOPPING_DATA(400, "MENU_400_INVALID_TOPPING_DATA", "Dữ liệu topping không hợp lệ (materialId và materialQuantity phải đi kèm nhau)."),
+    MENU_404_PRODUCT_TOPPING_NOT_FOUND(404, "MENU_404_PRODUCT_TOPPING_NOT_FOUND", "Không tìm thấy cấu hình topping của sản phẩm."),
+    MENU_409_PRODUCT_TOPPING_EXISTED(409, "MENU_409_PRODUCT_TOPPING_EXISTED", "Sản phẩm đã được gán topping này."),
+    MENU_400_INVALID_MAX_QUANTITY(400, "MENU_400_INVALID_MAX_QUANTITY", "Số lượng tối đa topping không hợp lệ (phải >= 1)."),
+    MENU_409_PRODUCT_INACTIVE(409, "MENU_409_PRODUCT_INACTIVE", "Sản phẩm đang ngừng hoạt động, không thể thêm/sửa cấu hình topping."),
+    MENU_400_NOT_COMBO_PRODUCT(400, "MENU_400_NOT_COMBO_PRODUCT", "Sản phẩm không phải Combo (isCombo = false)."),
+    MENU_400_COMBO_EMPTY_ITEMS(400, "MENU_400_COMBO_EMPTY_ITEMS", "Combo phải có ít nhất một thành phần."),
+    MENU_400_COMBO_INVALID_QUANTITY(400, "MENU_400_COMBO_INVALID_QUANTITY", "Số lượng thành phần Combo không hợp lệ (phải >= 1)."),
+    MENU_409_COMBO_DUPLICATE_VARIANT(409, "MENU_409_COMBO_DUPLICATE_VARIANT", "Biến thể đã tồn tại trong Combo."),
+    MENU_404_BRANCH_TOPPING_NOT_FOUND(404, "MENU_404_BRANCH_TOPPING_NOT_FOUND", "Không tìm thấy cấu hình topping chi nhánh."),
+    MENU_403_OUT_OF_SCOPE(403, "MENU_403_OUT_OF_SCOPE", "Bạn không có quyền truy cập dữ liệu chi nhánh này.");
 
 
     private final int statusCode;

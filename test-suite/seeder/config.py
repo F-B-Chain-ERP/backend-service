@@ -8,8 +8,8 @@ import os
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "erp_dev")
-DB_USER = os.getenv("DB_USERNAME", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+DB_USER = os.getenv("DB_USERNAME", "erp_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "erp123456@")
 
 # Base URL của Backend Service (để xuất file test pool)
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")

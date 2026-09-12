@@ -17,8 +17,8 @@ TARGET="${2:-http://localhost:8080}"
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-erp_dev}"
-DB_USER="${DB_USERNAME:-postgres}"
-DB_PASS="${DB_PASSWORD:-postgres}"
+DB_USER="${DB_USERNAME:-erp_user}"
+DB_PASS="${DB_PASSWORD:-erp123456@}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -33,13 +33,16 @@ run_k6() {
     echo -e "\n▶ Đang chạy k6 script: $script_file..."
     if command -v k6 &> /dev/null; then
         k6 run -e BASE_URL="$TARGET" "$SCRIPT_DIR/k6/$script_file"
-    else
+    elif command -v docker &> /dev/null; then
         echo "   k6 chưa cài đặt native, tự động dùng Docker image grafana/k6..."
         docker run --rm -i \
             --network host \
             -v "$SCRIPT_DIR/k6:/scripts" \
             -e "BASE_URL=$TARGET" \
             grafana/k6 run "/scripts/$script_file"
+    else
+        echo -e "\n[LỖI] Chưa cài đặt k6 hoặc docker để chạy load test."
+        exit 1
     fi
 }
 
@@ -47,14 +50,20 @@ run_python() {
     local subdir="$1"
     local script_file="$2"
     echo -e "\n▶ Đang chạy Python script: $script_file..."
-    if command -v python3 &> /dev/null; then
-        (cd "$SCRIPT_DIR/$subdir" && pip3 install -q -r requirements.txt && BASE_URL="$TARGET" DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_NAME="$DB_NAME" DB_USERNAME="$DB_USER" DB_PASSWORD="$DB_PASS" python3 "$script_file")
-    else
-        echo "   Python3 chưa cài đặt, tự động dùng Docker python:3.12-slim..."
+    
+    # Kiểm tra nếu máy host có cả python3 VÀ pip
+    if command -v python3 &> /dev/null && (command -v pip3 &> /dev/null || python3 -m pip --version &> /dev/null); then
+        local pip_cmd="pip3"
+        if ! command -v pip3 &> /dev/null; then
+            pip_cmd="python3 -m pip"
+        fi
+        (cd "$SCRIPT_DIR/$subdir" && ($pip_cmd install -q --break-system-packages -r requirements.txt 2>/dev/null || $pip_cmd install -q -r requirements.txt) && BASE_URL="$TARGET" DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_NAME="$DB_NAME" DB_USERNAME="$DB_USER" DB_PASSWORD="$DB_PASS" python3 "$script_file")
+    elif command -v docker &> /dev/null; then
+        echo "   Host chưa có pip3, tự động chuyển sang chạy qua Docker container python:3.12-slim..."
         docker run --rm -i \
             --network host \
-            -v "$SCRIPT_DIR/$subdir:/app" \
-            -w /app \
+            -v "$SCRIPT_DIR:/workspace/test-suite" \
+            -w "/workspace/test-suite/$subdir" \
             -e "BASE_URL=$TARGET" \
             -e "DB_HOST=$DB_HOST" \
             -e "DB_PORT=$DB_PORT" \
@@ -63,6 +72,10 @@ run_python() {
             -e "DB_PASSWORD=$DB_PASS" \
             python:3.12-slim \
             sh -c "pip install -q -r requirements.txt && python $script_file"
+    else
+        echo -e "\n[LỖI] Máy chủ chưa có pip3 hoặc docker để chạy Python script."
+        echo "Vui lòng cài đặt pip3: sudo apt update && sudo apt install -y python3-pip"
+        exit 1
     fi
 }
 

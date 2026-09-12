@@ -9,8 +9,8 @@ param (
     [string]$DbHost = "163.61.72.183",
     [int]$DbPort = 5432,
     [string]$DbName = "erp_dev",
-    [string]$DbUser = "postgres",
-    [string]$DbPass = "postgres",
+    [string]$DbUser = "erp_user",
+    [string]$DbPass = "erp123456@",
     [string]$ServerIp = "163.61.72.183",
     [string]$ServerUser = "root"
 )

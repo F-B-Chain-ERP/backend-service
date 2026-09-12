@@ -139,7 +139,14 @@ public enum ErrorCode {
     MENU_400_BOM_INVALID_QUANTITY(400, "MENU_400_BOM_INVALID_QUANTITY", "Định lượng nguyên vật liệu không hợp lệ."),
     MENU_400_BOM_INVALID_WASTAGE(400, "MENU_400_BOM_INVALID_WASTAGE", "Tỷ lệ hao hụt không hợp lệ."),
     MENU_400_BOM_UNIT_MISMATCH(400, "MENU_400_BOM_UNIT_MISMATCH", "Đơn vị BOM phải trùng đơn vị cơ sở của nguyên vật liệu."),
-    MENU_400_BOM_MATERIAL_INACTIVE(400, "MENU_400_BOM_MATERIAL_INACTIVE", "Không được thêm nguyên vật liệu đang ngừng hoạt động vào BOM.");
+    MENU_400_BOM_MATERIAL_INACTIVE(400, "MENU_400_BOM_MATERIAL_INACTIVE", "Không được thêm nguyên vật liệu đang ngừng hoạt động vào BOM."),
+    VOUCHER_CODE_EXISTED(409, "MENU_409_VOUCHER_CODE_EXISTED", "Mã voucher đã tồn tại."),
+    VOUCHER_NOT_FOUND(404, "MENU_404_VOUCHER_NOT_FOUND", "Không tìm thấy voucher."),
+    INVALID_DATE(400, "MENU_400_INVALID_DATE", "Thời gian hiệu lực voucher không hợp lệ."),
+    INVALID_PRICE(400, "MENU_400_INVALID_PRICE", "Giá trị giảm giá voucher không hợp lệ."),
+    USAGE_LIMIT_EXCEEDED(400, "MENU_400_USAGE_LIMIT_EXCEEDED", "Voucher đã đạt giới hạn sử dụng."),
+    VOUCHER_EXPIRED(400, "MENU_400_VOUCHER_EXPIRED", "Voucher đã hết hạn hoặc chưa đến hạn sử dụng."),
+    VOUCHER_NOT_APPLICABLE(400, "MENU_400_VOUCHER_NOT_APPLICABLE", "Voucher không áp dụng được.");
 
 
     private final int statusCode;

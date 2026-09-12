@@ -92,8 +92,19 @@ public class BomServiceImpl implements BomService {
         Material material = materialRepository.findById(request.materialId())
                 .orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
 
+        if (!"ACTIVE".equalsIgnoreCase(material.getStatus())) {
+            throw new BaseException(ErrorCode.MENU_400_BOM_MATERIAL_INACTIVE);
+        }
+
         Unit unit = unitRepository.findById(request.unitId())
-                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND));
+
+        if (!material.getBaseUnitId().equals(request.unitId())) {
+            throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
+        }
+
+        validateQuantity(request.quantity());
+        validateWastage(request.wastagePercent());
 
         BigDecimal wastage = request.wastagePercent() != null ? request.wastagePercent() : BigDecimal.ZERO;
 
@@ -140,7 +151,10 @@ public class BomServiceImpl implements BomService {
                 .orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
 
         Unit unit = unitRepository.findById(request.unitId())
-                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND));
+
+        validateQuantity(request.quantity());
+        validateWastage(request.wastagePercent());
 
         // Nếu thay đổi materialId, kiểm tra tính duy nhất
         if (!item.getMaterialId().equals(request.materialId())) {
@@ -194,19 +208,39 @@ public class BomServiceImpl implements BomService {
                 ? request.items()
                 : Collections.emptyList();
 
-        // Kiểm tra tính duy nhất của materialId trong request
+        // 1. Load existing items TRƯỚC validation
+        List<ProductRecipeItem> currentItems = productRecipeItemRepository.findByVariantId(variantId);
+        Map<UUID, ProductRecipeItem> materialToItemMap = currentItems.stream()
+                .collect(Collectors.toMap(ProductRecipeItem::getMaterialId, it -> it, (a, b) -> a));
+
+        // 2. Validate TOÀN BỘ request items
         Set<UUID> seenMaterials = new HashSet<>();
         for (BulkSyncBomRequest.SyncBomItemEntry entry : incomingEntries) {
             if (!seenMaterials.add(entry.materialId())) {
                 throw new BaseException(ErrorCode.MENU_409_BOM_MATERIAL_DUPLICATED,
                         "Nguyên vật liệu ID " + entry.materialId() + " bị trùng lặp trong danh sách gửi lên.");
             }
+
+            Material material = materialRepository.findById(entry.materialId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
+
+            if (!"ACTIVE".equalsIgnoreCase(material.getStatus())
+                    && !materialToItemMap.containsKey(entry.materialId())) {
+                throw new BaseException(ErrorCode.MENU_400_BOM_MATERIAL_INACTIVE);
+            }
+
+            Unit unit = unitRepository.findById(entry.unitId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND));
+
+            if (!material.getBaseUnitId().equals(entry.unitId())) {
+                throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
+            }
+
+            validateQuantity(entry.quantity());
+            validateWastage(entry.wastagePercent());
         }
 
-        // Lấy tất cả items hiện có của variant
-        List<ProductRecipeItem> currentItems = productRecipeItemRepository.findByVariantId(variantId);
-        Map<UUID, ProductRecipeItem> materialToItemMap = currentItems.stream()
-                .collect(Collectors.toMap(ProductRecipeItem::getMaterialId, it -> it, (a, b) -> a));
+        // 3. Validate thành công → mutate DB
 
         // Xóa mềm các item đang ACTIVE nhưng không còn trong incoming request
         for (ProductRecipeItem existing : currentItems) {
@@ -218,11 +252,6 @@ public class BomServiceImpl implements BomService {
 
         // Thêm mới hoặc cập nhật / tái kích hoạt
         for (BulkSyncBomRequest.SyncBomItemEntry entry : incomingEntries) {
-            materialRepository.findById(entry.materialId())
-                    .orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
-            unitRepository.findById(entry.unitId())
-                    .orElseThrow(() -> new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND));
-
             BigDecimal wastage = entry.wastagePercent() != null ? entry.wastagePercent() : BigDecimal.ZERO;
 
             if (materialToItemMap.containsKey(entry.materialId())) {
@@ -308,5 +337,22 @@ public class BomServiceImpl implements BomService {
         return unitRepository.findAllById(unitIds).stream()
                 .filter(u -> u.getId() != null)
                 .collect(Collectors.toMap(Unit::getId, u -> u, (a, b) -> a));
+    }
+
+    private void validateQuantity(BigDecimal quantity) {
+        if (quantity == null
+                || quantity.compareTo(BigDecimal.ZERO) <= 0
+                || quantity.scale() > 3) {
+            throw new BaseException(ErrorCode.MENU_400_BOM_INVALID_QUANTITY);
+        }
+    }
+
+    private void validateWastage(BigDecimal wastage) {
+        if (wastage == null
+                || wastage.compareTo(BigDecimal.ZERO) < 0
+                || wastage.compareTo(new BigDecimal("100")) > 0
+                || wastage.scale() > 2) {
+            throw new BaseException(ErrorCode.MENU_400_BOM_INVALID_WASTAGE);
+        }
     }
 }

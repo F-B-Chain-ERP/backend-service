@@ -131,7 +131,10 @@ public enum ErrorCode {
     MENU_500_STORAGE_UPLOAD_FAILED(500, "MENU_500_STORAGE_UPLOAD_FAILED", "Không thể tải ảnh lên máy chủ lưu trữ."),
     MENU_404_VARIANT_NOT_FOUND(404, "MENU_404_VARIANT_NOT_FOUND", "Không tìm thấy biến thể sản phẩm."),
     MENU_409_VARIANT_CODE_EXISTED(409, "MENU_409_VARIANT_CODE_EXISTED", "Mã biến thể đã tồn tại trong sản phẩm này."),
-    MENU_400_VARIANT_IN_USE(400, "MENU_400_VARIANT_IN_USE", "Biến thể đang được liên kết trong công thức định lượng (BOM) hoặc đơn hàng, không thể xóa.");
+    MENU_400_VARIANT_IN_USE(400, "MENU_400_VARIANT_IN_USE", "Biến thể đang được liên kết trong công thức định lượng (BOM) hoặc đơn hàng, không thể xóa."),
+    MENU_404_BOM_ITEM_NOT_FOUND(404, "MENU_404_BOM_ITEM_NOT_FOUND", "Không tìm thấy dòng nguyên vật liệu trong công thức."),
+    MENU_409_BOM_MATERIAL_DUPLICATED(409, "MENU_409_BOM_MATERIAL_DUPLICATED", "Nguyên vật liệu này đã có trong công thức định lượng của biến thể."),
+    MENU_400_BOM_ITEMS_EMPTY(400, "MENU_400_BOM_ITEMS_EMPTY", "Công thức định lượng phải có ít nhất một nguyên liệu.");
 
 
 

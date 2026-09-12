@@ -7,7 +7,7 @@
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, getRandomUser, authenticate, getAuthHeaders } from './config.js';
+import { BASE_URL, authenticateUser, getAuthHeaders } from './config.js';
 
 export const options = {
     scenarios: {
@@ -20,19 +20,26 @@ export const options = {
     },
     thresholds: {
         'http_req_duration': ['p(95)<3000'],
-        // Khi tranh chấp khóa dòng (Row-level lock), chấp nhận lỗi nghiệp vụ 400/409,
-        // nhưng TUYỆT ĐỐI không để xảy ra lỗi sập 500 hoặc 504 Deadlock timeout.
         'http_req_failed': ['rate<0.50'],
     },
 };
 
 export function setup() {
     console.log(`[RACE CONDITION] Chuẩn bị kiểm thử tranh chấp đồng thời tại: ${BASE_URL}`);
-    const u = getRandomUser();
-    const token = authenticate(u.username, u.password);
+
+    // Thử đăng nhập bằng các tài khoản admin trong danh sách 10 user của DB
+    let token = null;
+    const adminCandidates = ['admin1', 'admin2', 'admin3', 'admin4', 'hoangdinhdung', 'hoangdinhdung20205'];
+    for (const username of adminCandidates) {
+        token = authenticateUser({ usernameOrEmail: username, password: '123456789' });
+        if (token) {
+            console.log(`[SETUP] Đăng nhập thành công tài khoản quản trị: '${username}'`);
+            break;
+        }
+    }
 
     if (!token) {
-        console.error('[ERROR] Không lấy được token quản trị để setup!');
+        console.error('[ERROR] Không lấy được token xác thực từ danh sách tài khoản!');
         return { token: null, warehouseId: null, materialId: null };
     }
 
@@ -40,12 +47,13 @@ export function setup() {
     let warehouseId = null;
     let materialId = null;
 
-    // Lấy 1 bản ghi tồn kho mẫu
+    // 1. Lấy 1 bản ghi tồn kho mẫu có sẵn
     const resStock = http.get(`${BASE_URL}/api/v1/inv/stocks?page=0&size=1`, headers);
     if (resStock.status === 200) {
         try {
             const body = JSON.parse(resStock.body);
-            const item = body.data?.content?.[0] || body.data?.[0];
+            const list = body.data?.content || body.data?.items || body.data || [];
+            const item = list[0];
             if (item) {
                 warehouseId = item.warehouseId;
                 materialId = item.materialId;
@@ -55,29 +63,54 @@ export function setup() {
         }
     }
 
-    console.log(`[SETUP] Target Warehouse: ${warehouseId}, Target Material: ${materialId}`);
+    // 2. Nếu chưa có tồn kho, tìm warehouse và material bất kỳ
+    if (!warehouseId) {
+        const resWh = http.get(`${BASE_URL}/api/v1/warehouses?page=0&size=1`, headers);
+        if (resWh.status === 200) {
+            try {
+                const body = JSON.parse(resWh.body);
+                const list = body.data?.content || body.data || [];
+                if (list[0]) warehouseId = list[0].id;
+            } catch (e) {}
+        }
+    }
+
+    if (!materialId) {
+        const resMat = http.get(`${BASE_URL}/api/v1/proc/materials?page=0&size=1`, headers);
+        if (resMat.status === 200) {
+            try {
+                const body = JSON.parse(resMat.body);
+                const list = body.data?.content || body.data || [];
+                if (list[0]) materialId = list[0].id;
+            } catch (e) {}
+        }
+    }
+
+    console.log(`[SETUP] Sẵn sàng: Warehouse=${warehouseId}, Material=${materialId}`);
     return { token, warehouseId, materialId };
 }
 
 export default function (data) {
-    if (!data.token) {
+    if (!data.token || !data.warehouseId || !data.materialId) {
         sleep(1);
         return;
     }
 
     const headers = getAuthHeaders(data.token);
+    const today = new Date().toISOString().split('T')[0];
 
-    // Giả lập 50 luồng cùng gửi yêu cầu tạo phiếu xuất kho cho cùng 1 nguyên liệu
+    // Payload chuẩn theo CreateStockOutRequest DTO
     const payload = JSON.stringify({
-        code: `SO_RACE_${__VU}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        warehouseId: data.warehouseId || '00000000-0000-0000-0000-000000000001',
-        destinationType: 'PRODUCTION',
-        reason: 'Xuất kho thử tải đồng thời k6 race condition',
+        warehouseId: data.warehouseId,
+        destinationType: 'STORE',
+        outDate: today,
+        note: `VU ${__VU} race condition stock test`,
         items: [
             {
-                materialId: data.materialId || '00000000-0000-0000-0000-000000000001',
-                quantity: 1.5,
-                note: `VU ${__VU} batch item`
+                materialId: data.materialId,
+                quantity: 1.0,
+                unitPrice: 15000.0,
+                batchNo: `BATCH_${__VU}`
             }
         ]
     });

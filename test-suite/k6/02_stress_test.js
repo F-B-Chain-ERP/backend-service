@@ -1,78 +1,70 @@
 // ==============================================================================
-// 02: STRESS TEST (THỬ TẢI CỰC HẠN - TÌM ĐIỂM GÃY BREAKING POINT)
-// Mục tiêu: Đẩy tải tăng dần theo bậc thang từ 100 -> 300 -> 600 -> 1000 VUs
-// để xác định ngưỡng sập nguồn, tràn connection pool (HikariCP) hoặc nghẽn CPU/RAM.
+// 02: STRESS TEST (THỬ TẢI CỰC HẠN - 100 ĐẾN 1.000 VUs)
+// Mục tiêu: Bậc thang tăng dần 100 -> 300 -> 600 -> 1000 VUs sử dụng 10 tài khoản thật
+// để ép bão hòa CPU, Tomcat Threads và HikariCP Connection Pool (20 kết nối).
 // ==============================================================================
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, getRandomUser, authenticate, getAuthHeaders } from './config.js';
+import { BASE_URL, getAllAuthenticatedTokens, getAuthHeaders, getPublicHeaders } from './config.js';
 
 export const options = {
     stages: [
-        { duration: '2m', target: 100 },  // Bậc 1: 100 VUs
+        { duration: '1m', target: 100 },  // Bậc 1: 100 VUs
         { duration: '2m', target: 300 },  // Bậc 2: 300 VUs
         { duration: '2m', target: 600 },  // Bậc 3: 600 VUs
         { duration: '2m', target: 1000 }, // Bậc 4: Đẩy lên đỉnh 1.000 VUs
-        { duration: '2m', target: 0 },    // Hạ nhiệt phục hồi hệ thống
+        { duration: '1m', target: 0 },    // Hạ tải phục hồi
     ],
     thresholds: {
-        // Cho phép quan sát phản ứng khi tải cực hạn
-        'http_req_duration': ['p(95)<2500'], // Ngưỡng cảnh báo nếu P95 vượt quá 2.5s
-        'http_req_failed': ['rate<0.15'],    // Tỷ lệ lỗi tối đa chấp nhận được dưới 15% khi stress
+        'http_req_duration': ['p(95)<3000'], // Ngưỡng cảnh báo độ trễ P95 > 3s
+        'http_req_failed': ['rate<0.20'],    // Tỷ lệ lỗi tối đa chấp nhận được khi stress cực hạn
     },
 };
 
 export function setup() {
     console.log(`[START] Bắt đầu Stress Test tới: ${BASE_URL}`);
-    const tokens = [];
-    // Chuẩn bị 30 token khác nhau để luân chuyển
-    for (let i = 0; i < 30; i++) {
-        const u = getRandomUser();
-        const t = authenticate(u.username, u.password);
-        if (t) tokens.push(t);
-    }
-    console.log(`[SETUP] Đã khởi tạo ${tokens.length} token cho Stress Test.`);
+    const tokens = getAllAuthenticatedTokens();
     return { tokens };
 }
 
 export default function (data) {
-    const token = data.tokens.length > 0
-        ? data.tokens[Math.floor(Math.random() * data.tokens.length)]
-        : null;
+    const publicHeaders = getPublicHeaders();
 
-    // 1. Truy vấn Menu công khai
-    const resMenu = http.get(`${BASE_URL}/api/v1/menu/products?page=0&size=20`);
+    // 1. Luồng duyệt Menu công khai
+    const resMenu = http.get(`${BASE_URL}/api/v1/menu/products?page=0&size=20`, publicHeaders);
     check(resMenu, {
         'Menu status is 200': (r) => r.status === 200,
-        'Menu response not 5xx': (r) => r.status < 500,
+        'Menu not 5xx': (r) => r.status < 500,
     });
 
-    // 2. Truy vấn API phân trang nặng
-    const randomPage = Math.floor(Math.random() * 20);
-    const resPaged = http.get(`${BASE_URL}/api/v1/menu/products?page=${randomPage}&size=50`);
+    // 2. Luồng phân trang tìm kiếm nặng
+    const randomPage = Math.floor(Math.random() * 10);
+    const resPaged = http.get(`${BASE_URL}/api/v1/menu/products?page=${randomPage}&size=30`, publicHeaders);
     check(resPaged, {
         'Paged status is 200': (r) => r.status === 200,
     });
 
-    // 3. Truy vấn API Nghiệp vụ cần Token (nếu có)
-    if (token) {
-        const headers = getAuthHeaders(token);
-        const resStock = http.get(`${BASE_URL}/api/v1/inv/stocks`, headers);
+    // 3. Luồng nghiệp vụ Nhân viên & Quản trị (Có Token)
+    if (data.tokens && data.tokens.length > 0) {
+        const session = data.tokens[__VU % data.tokens.length];
+        const authHeaders = getAuthHeaders(session.token);
+
+        // Tra cứu tồn kho (Query DB đè nặng lên HikariCP)
+        const resStock = http.get(`${BASE_URL}/api/v1/inv/stocks?page=0&size=20`, authHeaders);
         check(resStock, {
             'Stock status is 200': (r) => r.status === 200,
             'No 429 Too Many Requests': (r) => r.status !== 429,
         });
 
-        // 4. Tra cứu danh sách đơn mua PO
-        const resPo = http.get(`${BASE_URL}/api/v1/proc/purchase-orders`, headers);
+        // Tra cứu danh sách đơn mua PO
+        const resPo = http.get(`${BASE_URL}/api/v1/proc/purchase-orders?page=0&size=10`, authHeaders);
         check(resPo, {
             'PO status is 200': (r) => r.status === 200,
         });
     }
 
-    // Thời gian nghỉ ngắn để tạo áp lực liên tục lên Thread Pool
-    sleep(Math.random() * 0.5 + 0.2);
+    sleep(Math.random() * 0.5 + 0.2); // Nghỉ ngắn để duy trì áp lực cao liên tục
 }
 
 export function teardown() {

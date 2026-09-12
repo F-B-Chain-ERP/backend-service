@@ -16,8 +16,8 @@ import jwt
 import requests
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
-TEST_USERNAME = os.getenv("TEST_USERNAME", "test_user_0001")
-TEST_PASSWORD = os.getenv("TEST_PASSWORD", "Password@123")
+TEST_USERNAME = os.getenv("TEST_USERNAME", "admin1")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "123456789")
 
 
 def log_pass(msg):
@@ -35,12 +35,13 @@ def log_info(msg):
 def get_legit_token():
     try:
         r = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
-            "username": TEST_USERNAME,
-            "password": TEST_PASSWORD
+            "usernameOrEmail": TEST_USERNAME,
+            "password": TEST_PASSWORD,
+            "type": "ACCOUNT"
         }, timeout=5)
         if r.status_code == 200:
             data = r.json()
-            return data.get("data", {}).get("access_token") or data.get("access_token")
+            return data.get("data", {}).get("accessToken") or data.get("data", {}).get("access_token") or data.get("accessToken")
     except Exception as e:
         print(f"Không thể lấy token hợp lệ: {e}")
     return None

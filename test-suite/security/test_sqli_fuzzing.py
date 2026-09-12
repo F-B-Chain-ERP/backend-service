@@ -48,7 +48,7 @@ def test_sqli_on_login():
     for p in SQLI_PAYLOADS[:5]:
         start = time.time()
         try:
-            resp = requests.post(login_url, json={"username": p, "password": "random_password"}, timeout=6)
+            resp = requests.post(login_url, json={"usernameOrEmail": p, "password": "random_password", "type": "ACCOUNT"}, timeout=6)
             elapsed = time.time() - start
             print(f"   Payload: \033[93m{p}\033[0m -> HTTP {resp.status_code} ({elapsed:.2f}s)")
 

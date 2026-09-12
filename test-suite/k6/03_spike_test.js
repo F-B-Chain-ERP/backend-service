@@ -6,7 +6,7 @@
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, getRandomUser, authenticate, getAuthHeaders } from './config.js';
+import { BASE_URL, getAllAuthenticatedTokens, getAuthHeaders, getPublicHeaders } from './config.js';
 
 export const options = {
     stages: [
@@ -23,22 +23,19 @@ export const options = {
 
 export function setup() {
     console.log(`[SPIKE] Bắt đầu kiểm thử đột biến tải tại: ${BASE_URL}`);
-    const tokens = [];
-    for (let i = 0; i < 20; i++) {
-        const u = getRandomUser();
-        const t = authenticate(u.username, u.password);
-        if (t) tokens.push(t);
-    }
+    const tokens = getAllAuthenticatedTokens();
     return { tokens };
 }
 
 export default function (data) {
-    const token = data.tokens.length > 0
-        ? data.tokens[Math.floor(Math.random() * data.tokens.length)]
+    const token = data.tokens && data.tokens.length > 0
+        ? data.tokens[__VU % data.tokens.length].token
         : null;
 
+    const publicHeaders = getPublicHeaders();
+
     // Mô phỏng người dùng ùa vào xem danh mục khuyến mãi & đặt đồ uống
-    const resMenu = http.get(`${BASE_URL}/api/v1/menu/products?is_featured=true`);
+    const resMenu = http.get(`${BASE_URL}/api/v1/menu/products?is_featured=true`, publicHeaders);
     check(resMenu, {
         'Spike menu responds': (r) => r.status !== 0,
         'No 502/504 Bad Gateway': (r) => r.status !== 502 && r.status !== 504,

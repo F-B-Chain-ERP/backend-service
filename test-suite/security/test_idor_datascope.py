@@ -38,12 +38,13 @@ def load_test_users():
 def login(username, password):
     try:
         r = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
-            "username": username,
-            "password": password
+            "usernameOrEmail": username,
+            "password": password,
+            "type": "ACCOUNT"
         }, timeout=5)
         if r.status_code == 200:
             body = r.json()
-            return body.get("data", {}).get("access_token") or body.get("access_token")
+            return body.get("data", {}).get("accessToken") or body.get("data", {}).get("access_token") or body.get("accessToken")
     except Exception as e:
         print(f"Lỗi đăng nhập {username}: {e}")
     return None

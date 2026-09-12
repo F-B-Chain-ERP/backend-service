@@ -7,7 +7,7 @@
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, getRandomUser, authenticate, getAuthHeaders } from './config.js';
+import { BASE_URL, getAllAuthenticatedTokens, getAuthHeaders, getPublicHeaders } from './config.js';
 
 const TEST_DURATION = __ENV.SOAK_DURATION || '30m';
 
@@ -25,22 +25,19 @@ export const options = {
 
 export function setup() {
     console.log(`[SOAK] Bắt đầu Soak Test trong ${TEST_DURATION} tại: ${BASE_URL}`);
-    const tokens = [];
-    for (let i = 0; i < 20; i++) {
-        const u = getRandomUser();
-        const t = authenticate(u.username, u.password);
-        if (t) tokens.push(t);
-    }
+    const tokens = getAllAuthenticatedTokens();
     return { tokens };
 }
 
 export default function (data) {
-    const token = data.tokens.length > 0
-        ? data.tokens[Math.floor(Math.random() * data.tokens.length)]
+    const token = data.tokens && data.tokens.length > 0
+        ? data.tokens[__VU % data.tokens.length].token
         : null;
 
+    const publicHeaders = getPublicHeaders();
+
     // 1. Duyệt sản phẩm
-    http.get(`${BASE_URL}/api/v1/menu/products?page=1&size=20`);
+    http.get(`${BASE_URL}/api/v1/menu/products?page=1&size=20`, publicHeaders);
 
     // 2. Tra cứu tồn kho
     if (token) {

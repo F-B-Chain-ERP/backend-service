@@ -39,5 +39,3 @@ __pycache__/
 *$py.class
 .venv/
 venv/
-backend-service/test-suite/k6/users_pool.json
-test-suite/k6/users_pool.json

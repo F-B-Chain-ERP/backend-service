@@ -1,0 +1,12 @@
+[
+  { "usernameOrEmail": "admin1", "username": "admin1", "password": "123456789", "role": "ROLE_ADMIN", "type": "ACCOUNT" },
+  { "usernameOrEmail": "admin2", "username": "admin2", "password": "123456789", "role": "ROLE_ADMIN", "type": "ACCOUNT" },
+  { "usernameOrEmail": "admin3", "username": "admin3", "password": "123456789", "role": "ROLE_ADMIN", "type": "ACCOUNT" },
+  { "usernameOrEmail": "admin4", "username": "admin4", "password": "123456789", "role": "ROLE_ADMIN", "type": "ACCOUNT" },
+  { "usernameOrEmail": "hoangdinhdung", "username": "hoangdinhdung", "password": "123456789", "role": "ROLE_ADMIN", "type": "ACCOUNT" },
+  { "usernameOrEmail": "hoangdinhdung20205", "username": "hoangdinhdung20205", "password": "123456789", "role": "ROLE_MANAGER", "type": "ACCOUNT" },
+  { "usernameOrEmail": "staff01", "username": "staff01", "password": "123456789", "role": "ROLE_CASHIER", "type": "ACCOUNT" },
+  { "usernameOrEmail": "user01", "username": "user01", "password": "123456789", "role": "ROLE_USER", "type": "ACCOUNT" },
+  { "usernameOrEmail": "test", "username": "test", "password": "123456789", "role": "ROLE_USER", "type": "ACCOUNT" },
+  { "usernameOrEmail": "abc", "username": "abc", "password": "123456789", "role": "ROLE_USER", "type": "ACCOUNT" }
+]

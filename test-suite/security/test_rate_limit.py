@@ -13,8 +13,8 @@ import time
 import requests
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
-TEST_USERNAME = os.getenv("TEST_USERNAME", "test_user_0001")
-TEST_PASSWORD = os.getenv("TEST_PASSWORD", "Password@123")
+TEST_USERNAME = os.getenv("TEST_USERNAME", "admin1")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "123456789")
 
 
 def log_pass(msg):
@@ -75,7 +75,7 @@ def test_authenticated_rate_limit():
     print("==================================================================")
 
     login_url = f"{BASE_URL}/api/v1/auth/login"
-    login_payload = {"username": TEST_USERNAME, "password": TEST_PASSWORD}
+    login_payload = {"usernameOrEmail": TEST_USERNAME, "password": TEST_PASSWORD, "type": "ACCOUNT"}
 
     log_info(f"Đang đăng nhập với tài khoản: {TEST_USERNAME}...")
     try:
@@ -85,7 +85,7 @@ def test_authenticated_rate_limit():
             log_info("Bỏ qua test authenticated rate limit (Cần seed data tài khoản trước).")
             return
         data = r.json()
-        token = data.get("data", {}).get("access_token") or data.get("access_token")
+        token = data.get("data", {}).get("accessToken") or data.get("data", {}).get("access_token") or data.get("accessToken")
         log_pass("Lấy Access Token thành công.")
     except Exception as e:
         log_fail(f"Lỗi kết nối tới Backend: {e}")

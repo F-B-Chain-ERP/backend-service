@@ -21,3 +21,5 @@ databaseChangeLog:
       file: db/changelog/changeset/010-permission-seed.sql
   - include:
       file: db/changelog/changeset/011-inv-count-snapshot.sql
+  - include:
+      file: db/changelog/changeset/012-voucher-usage-created-at.sql

@@ -30,6 +30,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                 AND ((:status IS NULL AND p.status <> 'DELETED') OR p.status = :status)
                 AND (:isFeatured IS NULL OR p.isFeatured = :isFeatured)
                 AND (:isBestSeller IS NULL OR p.isBestSeller = :isBestSeller)
+                AND (:isCombo IS NULL OR p.isCombo = :isCombo)
             """)
     Page<Product> search(
             @Param("search") String search,
@@ -37,6 +38,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             @Param("status") String status,
             @Param("isFeatured") Boolean isFeatured,
             @Param("isBestSeller") Boolean isBestSeller,
+            @Param("isCombo") Boolean isCombo,
             Pageable pageable
     );
 

@@ -159,6 +159,7 @@ public enum ErrorCode {
     MENU_400_COMBO_EMPTY_ITEMS(400, "MENU_400_COMBO_EMPTY_ITEMS", "Combo phải có ít nhất một thành phần."),
     MENU_400_COMBO_INVALID_QUANTITY(400, "MENU_400_COMBO_INVALID_QUANTITY", "Số lượng thành phần Combo không hợp lệ (phải >= 1)."),
     MENU_409_COMBO_DUPLICATE_VARIANT(409, "MENU_409_COMBO_DUPLICATE_VARIANT", "Biến thể đã tồn tại trong Combo."),
+    MENU_409_COMBO_ITEM_EXISTS(409, "MENU_409_COMBO_ITEM_EXISTS", "Sản phẩm/biến thể đã tồn tại trong Combo."),
     MENU_404_BRANCH_TOPPING_NOT_FOUND(404, "MENU_404_BRANCH_TOPPING_NOT_FOUND", "Không tìm thấy cấu hình topping chi nhánh."),
     MENU_403_OUT_OF_SCOPE(403, "MENU_403_OUT_OF_SCOPE", "Bạn không có quyền truy cập dữ liệu chi nhánh này.");
 

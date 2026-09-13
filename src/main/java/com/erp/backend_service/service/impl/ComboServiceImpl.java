@@ -10,7 +10,10 @@ import com.erp.backend_service.service.ComboService;
 import com.erp.core.domain.ComboItem;
 import com.erp.core.domain.Product;
 import com.erp.core.domain.ProductVariant;
+import com.erp.core.dto.request.menu.AddComboItemRequest;
 import com.erp.core.dto.request.menu.BulkSyncComboItemsRequest;
+import com.erp.core.dto.request.menu.CalculateComboPriceRequest;
+import com.erp.core.dto.response.menu.CalculateComboPriceResponse;
 import com.erp.core.dto.response.menu.ComboDetailResponse;
 import com.erp.core.dto.response.menu.ComboItemResponse;
 import org.slf4j.Logger;
@@ -18,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -73,6 +77,83 @@ public class ComboServiceImpl implements ComboService {
                 .toList();
 
         return comboMapper.toComboDetailResponse(combo, itemResponses);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional
+    public ComboDetailResponse addItem(UUID comboId, AddComboItemRequest request) {
+        log.info("Thêm thành phần combo: comboId={}, variantId={}", comboId, request.variantId());
+
+        Product combo = productRepository.findById(comboId)
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+        if (!combo.isCombo()) {
+            throw new BaseException(ErrorCode.MENU_400_NOT_COMBO_PRODUCT);
+        }
+
+        if (comboItemRepository.existsByComboProductIdAndVariantIdAndStatus(comboId, request.variantId(), "ACTIVE")) {
+            throw new BaseException(ErrorCode.MENU_409_COMBO_ITEM_EXISTS);
+        }
+
+        ProductVariant variant = variantRepository.findById(request.variantId())
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND));
+        if (!"ACTIVE".equalsIgnoreCase(variant.getStatus())) {
+            throw new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                    "Biến thể '" + variant.getVariantCode() + "' đang ngừng hoạt động.");
+        }
+
+        Product variantProduct = productRepository.findById(variant.getProductId())
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+        if (!"ACTIVE".equalsIgnoreCase(variantProduct.getStatus())) {
+            throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND,
+                    "Sản phẩm gốc '" + variantProduct.getCode() + "' đang ngừng hoạt động.");
+        }
+
+        ComboItem existing = comboItemRepository.findByComboProductIdAndVariantId(comboId, request.variantId())
+                .orElse(null);
+        if (existing != null) {
+            existing.setQuantity(request.quantity());
+            existing.setSubstitutable(Boolean.TRUE.equals(request.isSubstitutable()));
+            existing.setStatus("ACTIVE");
+            comboItemRepository.save(existing);
+        } else {
+            ComboItem item = new ComboItem();
+            item.setComboProductId(comboId);
+            item.setVariantId(request.variantId());
+            item.setQuantity(request.quantity());
+            item.setSubstitutable(Boolean.TRUE.equals(request.isSubstitutable()));
+            item.setStatus("ACTIVE");
+            comboItemRepository.save(item);
+        }
+
+        comboItemRepository.flush();
+        return getDetail(comboId);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional
+    public ComboDetailResponse removeItem(UUID comboId, UUID itemId) {
+        log.info("Xóa thành phần combo: comboId={}, itemId={}", comboId, itemId);
+
+        Product combo = productRepository.findById(comboId)
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+        if (!combo.isCombo()) {
+            throw new BaseException(ErrorCode.MENU_400_NOT_COMBO_PRODUCT);
+        }
+
+        ComboItem item = comboItemRepository.findById(itemId)
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                        "Không tìm thấy thành phần Combo."));
+        if (!comboId.equals(item.getComboProductId())) {
+            throw new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                    "Thành phần không thuộc Combo này.");
+        }
+
+        item.setStatus("INACTIVE");
+        comboItemRepository.save(item);
+        comboItemRepository.flush();
+        return getDetail(comboId);
     }
 
     /** {@inheritDoc} — Atomic: validate toàn bộ → soft delete → upsert → flush. */
@@ -154,6 +235,79 @@ public class ComboServiceImpl implements ComboService {
 
         comboItemRepository.flush();
         return getDetail(comboId);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    @Transactional(readOnly = true)
+    public CalculateComboPriceResponse calculatePrice(CalculateComboPriceRequest request) {
+        log.info("Tính giá combo linh hoạt: comboId={}", request.comboProductId());
+
+        Product combo = productRepository.findById(request.comboProductId())
+                .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+        if (!combo.isCombo()) {
+            throw new BaseException(ErrorCode.MENU_400_NOT_COMBO_PRODUCT);
+        }
+
+        List<CalculateComboPriceResponse.ItemPriceDetail> details = new ArrayList<>();
+        BigDecimal totalAdjustment = BigDecimal.ZERO;
+
+        for (CalculateComboPriceRequest.ComboItemSwap swap : request.items()) {
+            ComboItem comboItem = comboItemRepository.findById(swap.originalComboItemId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                            "Không tìm thấy thành phần Combo ID: " + swap.originalComboItemId()));
+
+            if (!request.comboProductId().equals(comboItem.getComboProductId())) {
+                throw new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                        "Thành phần không thuộc Combo này.");
+            }
+
+            ProductVariant originalVariant = variantRepository.findById(comboItem.getVariantId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                            "Biến thể gốc không tồn tại."));
+            ProductVariant newVariant = variantRepository.findById(swap.newVariantId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                            "Biến thể mới không tồn tại."));
+
+            if (!"ACTIVE".equalsIgnoreCase(newVariant.getStatus())) {
+                throw new BaseException(ErrorCode.MENU_404_VARIANT_NOT_FOUND,
+                        "Biến thể '" + newVariant.getVariantCode() + "' đang ngừng hoạt động.");
+            }
+
+            Product originalProduct = productRepository.findById(originalVariant.getProductId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+            Product newProduct = productRepository.findById(newVariant.getProductId())
+                    .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
+
+            BigDecimal originalVariantPrice = originalProduct.getBasePrice().add(originalVariant.getPriceDelta());
+            BigDecimal newVariantPrice = newProduct.getBasePrice().add(newVariant.getPriceDelta());
+
+            BigDecimal originalLineTotal = originalVariantPrice.multiply(BigDecimal.valueOf(comboItem.getQuantity()));
+            BigDecimal adjustedLineTotal = newVariantPrice.multiply(BigDecimal.valueOf(swap.quantity()));
+            BigDecimal priceDifference = adjustedLineTotal.subtract(originalLineTotal);
+
+            totalAdjustment = totalAdjustment.add(priceDifference);
+
+            details.add(new CalculateComboPriceResponse.ItemPriceDetail(
+                    comboItem.getId().toString(),
+                    originalVariant.getId().toString(),
+                    newVariant.getId().toString(),
+                    originalLineTotal,
+                    adjustedLineTotal,
+                    priceDifference
+            ));
+        }
+
+        BigDecimal adjustedComboPrice = request.originalComboPrice().add(totalAdjustment);
+        if (adjustedComboPrice.compareTo(BigDecimal.ZERO) < 0) {
+            adjustedComboPrice = BigDecimal.ZERO;
+        }
+
+        return new CalculateComboPriceResponse(
+                request.originalComboPrice(),
+                adjustedComboPrice,
+                details
+        );
     }
 
     private Map<UUID, ProductVariant> loadVariants(List<ComboItem> items) {

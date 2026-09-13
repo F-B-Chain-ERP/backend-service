@@ -54,11 +54,12 @@ public class ProductController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Boolean isFeatured,
             @RequestParam(required = false) Boolean isBestSeller,
+            @RequestParam(required = false) Boolean isCombo,
             @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "DESC") String sortDirection
     ) {
         PageResponse<ProductResponse> response = productService.list(
-                page, size, search, categoryId, status, isFeatured, isBestSeller, sortBy, sortDirection
+                page, size, search, categoryId, status, isFeatured, isBestSeller, isCombo, sortBy, sortDirection
         );
         return ResponseEntity.ok(ApiResponse.success(response));
     }

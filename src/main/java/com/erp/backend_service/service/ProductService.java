@@ -23,6 +23,7 @@ public interface ProductService {
             String status,
             Boolean isFeatured,
             Boolean isBestSeller,
+            Boolean isCombo,
             String sortBy,
             String sortDirection
     );
@@ -36,7 +37,7 @@ public interface ProductService {
             Boolean isFeatured,
             Boolean isBestSeller
     ) {
-        return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null);
+        return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null, null);
     }
 
     /**

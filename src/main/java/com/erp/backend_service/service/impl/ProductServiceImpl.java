@@ -64,6 +64,7 @@ public class ProductServiceImpl implements ProductService {
             String status,
             Boolean isFeatured,
             Boolean isBestSeller,
+            Boolean isCombo,
             String sortBy,
             String sortDirection
     ) {
@@ -76,7 +77,7 @@ public class ProductServiceImpl implements ProductService {
         }
         Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
-        Page<Product> pageResult = productRepository.search(search, categoryId, status, isFeatured, isBestSeller, pageable);
+        Page<Product> pageResult = productRepository.search(search, categoryId, status, isFeatured, isBestSeller, isCombo, pageable);
         List<Product> products = pageResult.getContent();
 
         // Tránh lỗi N+1: Gom toàn bộ categoryId duy nhất, bulk-fetch bằng một câu query duy nhất
@@ -110,7 +111,7 @@ public class ProductServiceImpl implements ProductService {
             Boolean isFeatured,
             Boolean isBestSeller
     ) {
-        return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null);
+        return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null, null);
     }
 
     @Override

@@ -141,7 +141,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Map<String, String>>> handlingValidation(MethodArgumentNotValidException exception) {
         Map<String, String> errors = new HashMap<>();
         exception.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
+            String fieldName = (error instanceof FieldError fe)
+                    ? fe.getField()
+                    : error.getObjectName();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });
@@ -190,10 +192,23 @@ public class GlobalExceptionHandler {
     /** Xử lý JSON body sai định dạng hoặc thiếu body (400). */
     @ExceptionHandler(value = HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handlingUnreadableBody(HttpMessageNotReadableException exception) {
+        String detail = "Request body is missing or malformed";
+        Throwable cause = exception.getCause();
+        // Trường hợp nhập chữ thay vì số / sai UUID: chỉ rõ field để FE hiện toast đúng.
+        if (cause instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException ife) {
+            String field = ife.getPath().isEmpty()
+                    ? ""
+                    : ife.getPath().get(ife.getPath().size() - 1).getFieldName();
+            Object value = ife.getValue();
+            String expected = ife.getTargetType() != null ? ife.getTargetType().getSimpleName() : "hợp lệ";
+            detail = field.isEmpty()
+                    ? "Giá trị '" + value + "' không hợp lệ, yêu cầu kiểu " + expected
+                    : "Trường '" + field + "' phải là " + expected + ", giá trị '" + value + "' không hợp lệ";
+        }
         ApiResponse<Void> apiResponse = ApiResponse.error(
                 HttpStatus.BAD_REQUEST.value(),
                 "ERR_VALIDATION",
-                "Request body is missing or malformed"
+                detail
         );
         return ResponseEntity.badRequest().body(apiResponse);
     }

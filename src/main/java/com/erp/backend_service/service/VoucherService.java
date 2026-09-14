@@ -7,7 +7,6 @@ import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.VoucherApplyResponse;
 import com.erp.core.dto.response.menu.VoucherDetailResponse;
 import com.erp.core.dto.response.menu.VoucherResponse;
-import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -16,9 +15,7 @@ import java.util.UUID;
  */
 public interface VoucherService {
 
-    PageResponse<VoucherResponse> list(int page, int size, String search, String status, String discountType,
-                                       Instant startFrom, Instant startTo, Instant endFrom, Instant endTo,
-                                       UUID branchId);
+    PageResponse<VoucherResponse> list(int page, int size, String search, String status);
 
     VoucherDetailResponse get(UUID id);
 

@@ -43,8 +43,8 @@ public interface StockInRepository extends JpaRepository<StockIn, UUID> {
               and (:warehouseId is null or si.warehouseId = :warehouseId)
               and (:allowedWarehouseIds is null or si.warehouseId in :allowedWarehouseIds)
               and (:sourceType is null or si.sourceType = :sourceType)
-              and (:fromDate is null or si.inDate >= :fromDate)
-              and (:toDate is null or si.inDate <= :toDate)
+              and si.inDate >= :fromDate
+              and si.inDate <= :toDate
             """)
     Page<StockIn> search(@Param("search") String search,
                          @Param("status") String status,

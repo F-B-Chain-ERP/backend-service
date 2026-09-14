@@ -9,13 +9,18 @@ import com.erp.core.domain.*;
 import com.erp.core.dto.request.menu.AddBomItemRequest;
 import com.erp.core.dto.request.menu.BulkSyncBomRequest;
 import com.erp.core.dto.request.menu.UpdateBomItemRequest;
+import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.BomResponse;
 import com.erp.core.dto.response.menu.ProductBomOverviewResponse;
 import com.erp.core.dto.response.menu.ProductRecipeItemResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -28,6 +33,8 @@ import java.util.stream.Collectors;
 public class BomServiceImpl implements BomService {
 
     private static final Logger log = LoggerFactory.getLogger(BomServiceImpl.class);
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final ProductRecipeItemRepository productRecipeItemRepository;
     private final ProductVariantRepository productVariantRepository;
@@ -99,6 +106,10 @@ public class BomServiceImpl implements BomService {
         Unit unit = unitRepository.findById(request.unitId())
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND));
 
+        if (!"ACTIVE".equalsIgnoreCase(unit.getStatus())) {
+            throw new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND);
+        }
+
         if (!material.getBaseUnitId().equals(request.unitId())) {
             throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
         }
@@ -150,8 +161,20 @@ public class BomServiceImpl implements BomService {
         Material material = materialRepository.findById(request.materialId())
                 .orElseThrow(() -> new BaseException(ErrorCode.MATERIAL_NOT_FOUND));
 
+        if (!"ACTIVE".equalsIgnoreCase(material.getStatus())) {
+            throw new BaseException(ErrorCode.MENU_400_BOM_MATERIAL_INACTIVE);
+        }
+
         Unit unit = unitRepository.findById(request.unitId())
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND));
+
+        if (!"ACTIVE".equalsIgnoreCase(unit.getStatus())) {
+            throw new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND);
+        }
+
+        if (!material.getBaseUnitId().equals(request.unitId())) {
+            throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
+        }
 
         validateQuantity(request.quantity());
         validateWastage(request.wastagePercent());
@@ -232,6 +255,10 @@ public class BomServiceImpl implements BomService {
             Unit unit = unitRepository.findById(entry.unitId())
                     .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND));
 
+            if (!"ACTIVE".equalsIgnoreCase(unit.getStatus())) {
+                throw new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND);
+            }
+
             if (!material.getBaseUnitId().equals(entry.unitId())) {
                 throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
             }
@@ -279,45 +306,93 @@ public class BomServiceImpl implements BomService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProductBomOverviewResponse> getBomOverview(String search) {
-        log.info("Lấy danh sách tổng quan BOM, từ khóa: {}", search);
-        List<Product> products = productRepository.findAll();
-        Map<UUID, Category> categoryMap = categoryRepository.findAll().stream()
-                .filter(c -> c.getId() != null)
-                .collect(Collectors.toMap(Category::getId, c -> c, (a, b) -> a));
+    public PageResponse<ProductBomOverviewResponse> getBomOverview(
+            int page,
+            int size,
+            String search,
+            UUID categoryId,
+            String bomStatus) {
+        log.info("Lấy danh sách tổng quan BOM, page: {}, search: {}, categoryId: {}, bomStatus: {}",
+                page, search, categoryId, bomStatus);
 
-        String normalizedSearch = search != null ? search.trim().toLowerCase() : null;
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(safePage, safeSize);
 
-        List<ProductBomOverviewResponse> result = new ArrayList<>();
-        for (Product p : products) {
-            if ("DELETED".equalsIgnoreCase(p.getStatus())) {
-                continue;
-            }
-            List<ProductVariant> variants = productVariantRepository.findByProductIdOrderByDisplayOrderAsc(p.getId());
-            Category cat = p.getCategoryId() != null ? categoryMap.get(p.getCategoryId()) : null;
-            String categoryName = cat != null ? cat.getName() : "";
+        // 1 query: phân trang biến thể + filt theo search/category/bomStatus
+        Page<ProductVariant> variantPage = productVariantRepository.searchForBomOverview(
+                StringUtils.hasText(search) ? search.trim() : null,
+                categoryId,
+                StringUtils.hasText(bomStatus) ? bomStatus.trim().toUpperCase() : null,
+                pageable);
 
-            for (ProductVariant v : variants) {
-                if ("DELETED".equalsIgnoreCase(v.getStatus())) {
-                    continue;
-                }
-
-                // Lọc theo từ khóa tìm kiếm nếu có
-                if (normalizedSearch != null && !normalizedSearch.isEmpty()) {
-                    boolean matchProductCode = p.getCode() != null && p.getCode().toLowerCase().contains(normalizedSearch);
-                    boolean matchProductName = p.getName() != null && p.getName().toLowerCase().contains(normalizedSearch);
-                    boolean matchVariantName = v.getVariantName() != null && v.getVariantName().toLowerCase().contains(normalizedSearch);
-                    if (!matchProductCode && !matchProductName && !matchVariantName) {
-                        continue;
-                    }
-                }
-
-                long activeCount = productRecipeItemRepository.countByVariantIdAndStatus(v.getId(), "ACTIVE");
-                result.add(bomMapper.toOverviewResponse(v, p, categoryName, (int) activeCount));
-            }
+        List<ProductVariant> variants = variantPage.getContent();
+        if (variants.isEmpty()) {
+            return new PageResponse<>(
+                    variantPage.getNumber(),
+                    variantPage.getSize(),
+                    variantPage.getTotalElements(),
+                    variantPage.getTotalPages(),
+                    List.of());
         }
 
-        return result;
+        Set<UUID> variantIds = variants.stream().map(ProductVariant::getId).collect(Collectors.toSet());
+        Set<UUID> productIds = variants.stream().map(ProductVariant::getProductId).collect(Collectors.toSet());
+
+        // 1 query: load sản phẩm (tên, mã, basePrice, categoryId)
+        Map<UUID, Product> productMap = productRepository.findAllById(productIds).stream()
+                .filter(p -> p.getId() != null)
+                .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+
+        // 1 query bulk: đếm số NVL ACTIVE theo nhóm biến thể
+        Map<UUID, Integer> itemCountMap = countActiveItemsByVariant(variantIds);
+
+        // 1 query: load tên danh mục
+        Set<UUID> categoryIds = productMap.values().stream()
+                .map(Product::getCategoryId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, Category> categoryMap = categoryIds.isEmpty()
+                ? Collections.emptyMap()
+                : categoryRepository.findAllById(categoryIds).stream()
+                        .filter(c -> c.getId() != null)
+                        .collect(Collectors.toMap(Category::getId, c -> c, (a, b) -> a));
+
+        // Map kết quả
+        List<ProductBomOverviewResponse> content = new ArrayList<>(variants.size());
+        for (ProductVariant v : variants) {
+            Product p = productMap.get(v.getProductId());
+            if (p == null) {
+                continue;
+            }
+            String categoryName = p.getCategoryId() != null && categoryMap.containsKey(p.getCategoryId())
+                    ? categoryMap.get(p.getCategoryId()).getName()
+                    : "";
+            int itemCount = itemCountMap.getOrDefault(v.getId(), 0);
+            content.add(bomMapper.toOverviewResponse(v, p, categoryName, itemCount));
+        }
+
+        return new PageResponse<>(
+                variantPage.getNumber(),
+                variantPage.getSize(),
+                variantPage.getTotalElements(),
+                variantPage.getTotalPages(),
+                content);
+    }
+
+    private Map<UUID, Integer> countActiveItemsByVariant(Set<UUID> variantIds) {
+        if (variantIds == null || variantIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<UUID, Integer> countMap = new HashMap<>();
+        for (Object[] row : productRecipeItemRepository.countByVariantIdsAndStatus(variantIds, "ACTIVE")) {
+            if (row.length >= 2
+                    && row[0] instanceof UUID variantId
+                    && row[1] instanceof Number count) {
+                countMap.put(variantId, count.intValue());
+            }
+        }
+        return countMap;
     }
 
     private ProductVariant ensureVariantExists(UUID variantId) {

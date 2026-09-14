@@ -2,10 +2,13 @@ package com.erp.backend_service.repository;
 
 import com.erp.core.domain.ProductRecipeItem;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Repository
@@ -37,6 +40,11 @@ public interface ProductRecipeItemRepository extends JpaRepository<ProductRecipe
     boolean existsByVariantIdAndMaterialIdAndStatus(UUID variantId, UUID materialId, String status);
 
     /**
+     * Kiểm tra nguyên vật liệu có được tham chiếu trong bất kỳ công thức định lượng (BOM) nào không.
+     */
+    boolean existsByMaterialId(UUID materialId);
+
+    /**
      * Kiểm tra xem nguyên vật liệu đã có trong công thức của biến thể khác dòng ID hiện tại.
      */
     boolean existsByVariantIdAndMaterialIdAndIdNotAndStatus(UUID variantId, UUID materialId, UUID id, String status);
@@ -50,4 +58,19 @@ public interface ProductRecipeItemRepository extends JpaRepository<ProductRecipe
      * Xóa các dòng công thức theo variantId.
      */
     void deleteByVariantId(UUID variantId);
+
+    /**
+     * Đếm số dòng công thức ACTIVE theo từng biến thể (một query cho nhiều variant, tránh N+1).
+     * Trả về mảng [variantId (UUID), count (Long)].
+     */
+    @Query("""
+                SELECT r.variantId, COUNT(r)
+                FROM ProductRecipeItem r
+                WHERE r.variantId IN :variantIds AND r.status = :status
+                GROUP BY r.variantId
+            """)
+    List<Object[]> countByVariantIdsAndStatus(
+            @Param("variantIds") Set<UUID> variantIds,
+            @Param("status") String status
+    );
 }

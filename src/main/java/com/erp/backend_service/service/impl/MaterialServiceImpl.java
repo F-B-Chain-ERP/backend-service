@@ -6,6 +6,7 @@ import com.erp.backend_service.mapper.MaterialMapper;
 import com.erp.backend_service.repository.CategoryRepository;
 import com.erp.backend_service.repository.MaterialRepository;
 import com.erp.backend_service.repository.MaterialStockBalanceRepository;
+import com.erp.backend_service.repository.ProductRecipeItemRepository;
 import com.erp.backend_service.repository.PurchaseOrderItemRepository;
 import com.erp.backend_service.repository.StockCountItemRepository;
 import com.erp.backend_service.repository.StockInItemRepository;
@@ -47,6 +48,7 @@ public class MaterialServiceImpl implements MaterialService {
     private final StockTransferItemRepository stockTransferItemRepository;
     private final StockCountItemRepository stockCountItemRepository;
     private final MaterialStockBalanceRepository balanceRepository;
+    private final ProductRecipeItemRepository productRecipeItemRepository;
     private final MaterialMapper materialMapper;
 
     public MaterialServiceImpl(MaterialRepository materialRepository,
@@ -58,6 +60,7 @@ public class MaterialServiceImpl implements MaterialService {
                                StockTransferItemRepository stockTransferItemRepository,
                                StockCountItemRepository stockCountItemRepository,
                                MaterialStockBalanceRepository balanceRepository,
+                               ProductRecipeItemRepository productRecipeItemRepository,
                                MaterialMapper materialMapper) {
         this.materialRepository = materialRepository;
         this.categoryRepository = categoryRepository;
@@ -68,6 +71,7 @@ public class MaterialServiceImpl implements MaterialService {
         this.stockTransferItemRepository = stockTransferItemRepository;
         this.stockCountItemRepository = stockCountItemRepository;
         this.balanceRepository = balanceRepository;
+        this.productRecipeItemRepository = productRecipeItemRepository;
         this.materialMapper = materialMapper;
     }
 
@@ -202,6 +206,7 @@ public class MaterialServiceImpl implements MaterialService {
                 || stockOutItemRepository.existsByMaterialId(id)
                 || stockTransferItemRepository.existsByMaterialId(id)
                 || stockCountItemRepository.existsByMaterialId(id)
+                || productRecipeItemRepository.existsByMaterialId(id)
                 || balanceRepository.existsByMaterialId(id)) {
             throw new BaseException(ErrorCode.INV_400_MATERIAL_IN_USE);
         }

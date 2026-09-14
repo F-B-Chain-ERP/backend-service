@@ -49,6 +49,8 @@ import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Triển khai {@link AccountService}: quản lý tài khoản nội bộ do admin thực hiện
@@ -59,7 +61,8 @@ import java.util.UUID;
 @Transactional
 public class AccountServiceImpl implements AccountService {
 
-    private static final int MAX_PAGE_SIZE = 100;
+    // Màn account cố định 10 dòng/trang: kẹp size tối đa 10 để không ai xin quá tay.
+    private static final int MAX_PAGE_SIZE = 10;
     private final AccountRepository accountRepository;
     private final BranchRepository branchRepository;
     private final ScopeRepository scopeRepository;
@@ -209,7 +212,47 @@ public class AccountServiceImpl implements AccountService {
                 accountPage.getSize(),
                 accountPage.getTotalElements(),
                 accountPage.getTotalPages(),
-                accountPage.getContent().stream().map(this::toResponseWithBranches).toList()
+                toResponsesWithBranches(accountPage.getContent())
+        );
+    }
+
+    /** {@inheritDoc} — overload lọc branch/status phía server (không đổi DB). */
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<AccountResponse> listAccounts(int page, int size, String search, UUID branchId, EntityStatus status) {
+        // Không có filter mở rộng -> dùng đường cũ để giữ nguyên hành vi.
+        if (branchId == null && status == null) {
+            return listAccounts(page, size, search);
+        }
+        assertInternalAdmin();
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
+        String keyword = StringUtils.hasText(search) ? search.trim() : null;
+
+        Page<Account> accountPage;
+        if (dataScopeHelper.isAllSystem()) {
+            accountPage = accountRepository.searchWithFilters(keyword, branchId, status, pageable);
+        } else {
+            List<UUID> scopeBranches = dataScopeHelper.getAllowedBranchIds();
+            if (scopeBranches.isEmpty()) {
+                return new PageResponse<>(page, safeSize, 0, 0, List.of());
+            }
+            // Chặn bypass: branch xin ngoài scope của mình -> trả rỗng.
+            List<UUID> effectiveBranches = branchId != null
+                    ? (scopeBranches.contains(branchId) ? List.of(branchId) : List.of())
+                    : scopeBranches;
+            if (effectiveBranches.isEmpty()) {
+                return new PageResponse<>(page, safeSize, 0, 0, List.of());
+            }
+            accountPage = accountRepository.searchByBranchesWithFilters(
+                    keyword, effectiveBranches, status, Instant.now(), pageable);
+        }
+        return new PageResponse<>(
+                accountPage.getNumber(),
+                accountPage.getSize(),
+                accountPage.getTotalElements(),
+                accountPage.getTotalPages(),
+                toResponsesWithBranches(accountPage.getContent())
         );
     }
 
@@ -397,47 +440,87 @@ public class AccountServiceImpl implements AccountService {
         }
     }
 
-    /** Gộp chi nhánh chính và các chi nhánh xuất hiện trong scope được gán cho tài khoản. */
+    /** Enrich 1 tài khoản (get/create/update): tái dùng đường batch để chỉ còn 1 code path. */
     private AccountResponse toResponseWithBranches(Account account) {
-        Set<UUID> branchIds = new LinkedHashSet<>();
-        if (account.getPrimaryBranchId() != null) {
-            branchIds.add(account.getPrimaryBranchId());
-        }
+        return toResponsesWithBranches(List.of(account)).get(0);
+    }
 
-        List<AccountRole> assignments = accountRoleRepository.findEffectiveByAccountIdIn(
-                List.of(account.getId()), EntityStatus.ACTIVE, Instant.now());
-        if (!assignments.isEmpty()) {
-            Map<UUID, Scope> scopes = scopeRepository.findAllById(
-                    assignments.stream().map(AccountRole::getScopeId).distinct().toList())
-                    .stream().collect(java.util.stream.Collectors.toMap(Scope::getId, s -> s));
-            assignments.stream()
+    /**
+     * Fix 1: enrich HÀNG LOẠT cho cả trang thay vì N+1 từng account.
+     * Chỉ 4 câu query cho toàn page (assignments + scopes + branches + roles),
+     * rồi ráp in-memory. Không đổi DB, chỉ đổi cách gọi repository.
+     */
+    private List<AccountResponse> toResponsesWithBranches(List<Account> accounts) {
+        if (accounts == null || accounts.isEmpty()) {
+            return List.of();
+        }
+        Instant now = Instant.now();
+        List<UUID> accountIds = accounts.stream().map(Account::getId).toList();
+
+        List<AccountRole> allAssignments = accountRoleRepository.findEffectiveByAccountIdIn(
+                accountIds, EntityStatus.ACTIVE, now);
+        Map<UUID, List<AccountRole>> assignmentsByAccount = allAssignments.stream()
+                .collect(Collectors.groupingBy(AccountRole::getAccountId));
+
+        Map<UUID, Scope> scopesById = scopeRepository.findAllById(
+                        allAssignments.stream().map(AccountRole::getScopeId).distinct().toList())
+                .stream().collect(Collectors.toMap(Scope::getId, Function.identity(), (a, b) -> a));
+
+        Set<UUID> branchIds = new LinkedHashSet<>();
+        for (Account acc : accounts) {
+            if (acc.getPrimaryBranchId() != null) {
+                branchIds.add(acc.getPrimaryBranchId());
+            }
+        }
+        allAssignments.stream()
+                .map(AccountRole::getScopeId)
+                .map(scopesById::get)
+                .filter(java.util.Objects::nonNull)
+                .filter(s -> s.getStatus() == EntityStatus.ACTIVE && s.getBranchId() != null)
+                .map(Scope::getBranchId)
+                .forEach(branchIds::add);
+
+        Map<UUID, Branch> branchesById = branchRepository.findAllById(branchIds).stream()
+                .collect(Collectors.toMap(Branch::getId, Function.identity(), (a, b) -> a));
+
+        List<UUID> roleIds = allAssignments.stream().map(AccountRole::getRoleId).distinct().toList();
+        Map<UUID, Role> rolesById = roleRepository.findAllById(roleIds).stream()
+                .collect(Collectors.toMap(Role::getId, Function.identity(), (a, b) -> a));
+
+        List<AccountResponse> result = new java.util.ArrayList<>(accounts.size());
+        for (Account account : accounts) {
+            List<AccountRole> mine = assignmentsByAccount.getOrDefault(account.getId(), List.of());
+
+            Set<UUID> myBranchIds = new LinkedHashSet<>();
+            if (account.getPrimaryBranchId() != null) {
+                myBranchIds.add(account.getPrimaryBranchId());
+            }
+            mine.stream()
                     .map(AccountRole::getScopeId)
-                    .map(scopes::get)
+                    .map(scopesById::get)
                     .filter(java.util.Objects::nonNull)
                     .filter(s -> s.getStatus() == EntityStatus.ACTIVE && s.getBranchId() != null)
                     .map(Scope::getBranchId)
-                    .forEach(branchIds::add);
-        }
+                    .forEach(myBranchIds::add);
 
-        Map<UUID, Branch> branches = branchRepository.findAllById(branchIds).stream()
-                .collect(java.util.stream.Collectors.toMap(Branch::getId, b -> b));
-        List<AssignedBranchResponse> assignedBranches = branchIds.stream()
-                .map(branches::get)
-                .filter(java.util.Objects::nonNull)
-                .filter(b -> "ACTIVE".equals(b.getStatus()))
-                .map(b -> new AssignedBranchResponse(b.getId(), b.getCode(), b.getName()))
-                .toList();
-        List<UUID> roleIds = assignments.stream().map(AccountRole::getRoleId).distinct().toList();
-        Map<UUID, Role> rolesById = roleRepository.findAllById(roleIds).stream()
-                .collect(java.util.stream.Collectors.toMap(Role::getId, r -> r));
-        List<UUID> activeRoleIds = roleIds.stream()
-                .map(rolesById::get)
-                .filter(java.util.Objects::nonNull)
-                .filter(r -> r.getStatus() == EntityStatus.ACTIVE)
-                .map(Role::getId)
-                .toList();
-        List<String> roles = activeRoleIds.stream().map(rolesById::get).map(Role::getName).toList();
-        return accountMapper.toResponse(account, assignedBranches, activeRoleIds, roles);
+            List<AssignedBranchResponse> assignedBranches = myBranchIds.stream()
+                    .map(branchesById::get)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(b -> "ACTIVE".equals(b.getStatus()))
+                    .map(b -> new AssignedBranchResponse(b.getId(), b.getCode(), b.getName()))
+                    .toList();
+
+            List<UUID> myRoleIds = mine.stream().map(AccountRole::getRoleId).distinct().toList();
+            List<UUID> activeRoleIds = myRoleIds.stream()
+                    .map(rolesById::get)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(r -> r.getStatus() == EntityStatus.ACTIVE)
+                    .map(Role::getId)
+                    .toList();
+            List<String> roles = activeRoleIds.stream().map(rolesById::get).map(Role::getName).toList();
+            result.add(accountMapper.toResponse(account, assignedBranches, activeRoleIds, roles));
+        }
+        return result;
     }
 
     /** Lấy tài khoản theo id, ném lỗi nếu không tồn tại. */

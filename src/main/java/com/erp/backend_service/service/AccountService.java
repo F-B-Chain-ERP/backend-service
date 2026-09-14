@@ -5,6 +5,7 @@ import com.erp.core.dto.auth.CreateAccountRequest;
 import com.erp.core.dto.auth.ResetPasswordRequest;
 import com.erp.core.dto.auth.UpdateAccountRequest;
 import com.erp.core.dto.response.PageResponse;
+import com.erp.core.enums.EntityStatus;
 
 import java.util.UUID;
 
@@ -39,6 +40,12 @@ public interface AccountService {
      * @return trang kết quả tài khoản
      */
     PageResponse<AccountResponse> listAccounts(int page, int size, String search);
+
+    /**
+     * Overload có thêm lọc chi nhánh / trạng thái phía server (code-only, không đổi DB).
+     * Khi cả 2 filter đều null thì tương đương {@link #listAccounts(int, int, String)}.
+     */
+    PageResponse<AccountResponse> listAccounts(int page, int size, String search, UUID branchId, EntityStatus status);
 
     /**
      * Cập nhật thông tin tài khoản (chỉ áp dụng các trường khác null).

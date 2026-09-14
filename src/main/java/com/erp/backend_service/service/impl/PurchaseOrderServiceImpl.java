@@ -475,6 +475,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             if (item == null) {
                 throw new BaseException(ErrorCode.PROC_400_PO_INVALID_ITEM);
             }
+            // Phòng thủ khi Bean Validation bị bypass (gọi service trực tiếp): chặn số âm/0.
+            if (r.receivedQuantity() == null || r.receivedQuantity().signum() <= 0) {
+                throw new BaseException(ErrorCode.INVALID_QUANTITY);
+            }
             BigDecimal remaining = item.getQuantity().subtract(item.getReceivedQuantity());
             if (r.receivedQuantity().compareTo(remaining) > 0) {
                 throw new BaseException(ErrorCode.PROC_400_PO_RECEIVED_EXCEED);

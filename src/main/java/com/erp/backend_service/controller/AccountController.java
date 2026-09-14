@@ -7,6 +7,7 @@ import com.erp.core.dto.auth.ResetPasswordRequest;
 import com.erp.core.dto.auth.UpdateAccountRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
+import com.erp.core.enums.EntityStatus;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -49,14 +50,16 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(accountService.getAccount(id)));
     }
 
-    /** Lấy danh sách tài khoản phân trang, hỗ trợ tìm kiếm. */
+    /** Lấy danh sách tài khoản phân trang, hỗ trợ tìm kiếm + lọc branch/status phía server. */
     @GetMapping
     @PreAuthorize("hasAuthority('sys:account:view')")
     public ResponseEntity<ApiResponse<PageResponse<AccountResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(ApiResponse.success(accountService.listAccounts(page, size, search)));
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID branchId,
+            @RequestParam(required = false) EntityStatus status) {
+        return ResponseEntity.ok(ApiResponse.success(accountService.listAccounts(page, size, search, branchId, status)));
     }
 
     /** Cập nhật thông tin tài khoản. */

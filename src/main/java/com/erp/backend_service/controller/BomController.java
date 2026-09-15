@@ -5,6 +5,7 @@ import com.erp.core.dto.request.menu.AddBomItemRequest;
 import com.erp.core.dto.request.menu.BulkSyncBomRequest;
 import com.erp.core.dto.request.menu.UpdateBomItemRequest;
 import com.erp.core.dto.response.ApiResponse;
+import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.BomResponse;
 import com.erp.core.dto.response.menu.ProductBomOverviewResponse;
 import com.erp.core.dto.response.menu.ProductRecipeItemResponse;
@@ -101,10 +102,15 @@ public class BomController {
      */
     @GetMapping("/bom/overview")
     @PreAuthorize("hasAuthority('menu:bom:view')")
-    public ResponseEntity<ApiResponse<List<ProductBomOverviewResponse>>> getBomOverview(
-            @RequestParam(required = false) String search
+    public ResponseEntity<ApiResponse<PageResponse<ProductBomOverviewResponse>>> getBomOverview(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) String bomStatus
     ) {
-        List<ProductBomOverviewResponse> list = bomService.getBomOverview(search);
-        return ResponseEntity.ok(ApiResponse.success(list, "Lấy danh sách tổng quan định lượng thành công"));
+        PageResponse<ProductBomOverviewResponse> response =
+                bomService.getBomOverview(page, size, search, categoryId, bomStatus);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách tổng quan định lượng thành công"));
     }
 }

@@ -24,4 +24,18 @@ public class BranchToppingAvailabilityMapper {
                 bta.getStatus()
         );
     }
+
+    public BranchToppingAvailabilityResponse toResponseAvailableByDefault(Topping topping) {
+        return new BranchToppingAvailabilityResponse(
+                null,
+                null,
+                topping.getId() != null ? topping.getId().toString() : null,
+                topping.getCode(),
+                topping.getName(),
+                topping.getPrice(),
+                topping.getGroupName(),
+                true,
+                "ACTIVE"
+        );
+    }
 }

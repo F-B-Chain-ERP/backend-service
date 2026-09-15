@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +17,16 @@ import java.util.UUID;
 public interface BranchToppingAvailabilityRepository extends JpaRepository<BranchToppingAvailability, UUID> {
 
     Optional<BranchToppingAvailability> findByBranchIdAndToppingId(UUID branchId, UUID toppingId);
+
+    @Query("""
+        SELECT bta FROM BranchToppingAvailability bta
+        WHERE bta.branchId = :branchId
+        AND bta.toppingId IN :toppingIds
+    """)
+    List<BranchToppingAvailability> findByBranchIdAndToppingIds(
+            @Param("branchId") UUID branchId,
+            @Param("toppingIds") Collection<UUID> toppingIds
+    );
 
     @Query("""
         SELECT bta FROM BranchToppingAvailability bta

@@ -6,6 +6,7 @@ import com.erp.core.dto.request.menu.UpdateBomItemRequest;
 import com.erp.core.dto.response.menu.BomResponse;
 import com.erp.core.dto.response.menu.ProductBomOverviewResponse;
 import com.erp.core.dto.response.menu.ProductRecipeItemResponse;
+import com.erp.core.dto.response.PageResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -43,5 +44,11 @@ public interface BomService {
     /**
      * Lấy danh sách tổng quan các biến thể kèm thông tin BOM phục vụ hiển thị màn hình danh sách BOM.
      */
-    List<ProductBomOverviewResponse> getBomOverview(String search);
+    PageResponse<ProductBomOverviewResponse> getBomOverview(
+            int page,
+            int size,
+            String search,
+            UUID categoryId,
+            String bomStatus
+    );
 }

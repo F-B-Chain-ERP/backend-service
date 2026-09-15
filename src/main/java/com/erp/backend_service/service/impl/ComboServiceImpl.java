@@ -109,6 +109,10 @@ public class ComboServiceImpl implements ComboService {
                     "Sản phẩm gốc '" + variantProduct.getCode() + "' đang ngừng hoạt động.");
         }
 
+        if (comboId.equals(variant.getProductId())) {
+            throw new BaseException(ErrorCode.MENU_400_COMBO_SELF_REFERENCE);
+        }
+
         ComboItem existing = comboItemRepository.findByComboProductIdAndVariantId(comboId, request.variantId())
                 .orElse(null);
         if (existing != null) {
@@ -196,6 +200,11 @@ public class ComboServiceImpl implements ComboService {
                 throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND,
                         "Sản phẩm gốc '" + variantProduct.getCode() + "' của biến thể '"
                                 + variant.getVariantCode() + "' đang ngừng hoạt động.");
+            }
+
+            if (comboId.equals(variant.getProductId())) {
+                throw new BaseException(ErrorCode.MENU_400_COMBO_SELF_REFERENCE,
+                        "Sản phẩm '" + variantProduct.getCode() + "' là chính Combo này.");
             }
 
             if (entry.quantity() == null || entry.quantity() < 1) {

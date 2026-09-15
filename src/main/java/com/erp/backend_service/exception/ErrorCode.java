@@ -90,8 +90,10 @@ public enum ErrorCode {
                             "Nguyên vật liệu đã phát sinh dữ liệu và không thể xóa. Vui lòng chuyển sang INACTIVE."),
     INV_404_WAREHOUSE_NOT_FOUND(404, "INV_404_WAREHOUSE_NOT_FOUND", "Không tìm thấy kho hàng."),
     INV_409_WAREHOUSE_CODE_EXISTED(409, "INV_409_WAREHOUSE_CODE_EXISTED", "Mã kho đã tồn tại."),
-    INV_400_WAREHOUSE_IN_USE(400, "INV_400_WAREHOUSE_IN_USE",
-                             "Kho đã phát sinh dữ liệu (đơn mua hàng/tồn kho) và không thể xóa. Vui lòng chuyển sang INACTIVE."),
+    INV_400_WAREHOUSE_IN_USE(400, "INV_400_WAREHOUSE_IN_USE", "Kho đã phát sinh dữ liệu (đơn mua hàng/tồn kho) và không thể xóa. Vui lòng chuyển sang INACTIVE."),
+    INV_400_WAREHOUSE_INVALID_TYPE(400, "INV_400_WAREHOUSE_INVALID_TYPE", "Loại kho không hợp lệ. Chỉ chấp nhận CENTRAL, MAIN hoặc BRANCH."),
+    INV_400_WAREHOUSE_CENTRAL_NO_BRANCH(400, "INV_400_WAREHOUSE_CENTRAL_NO_BRANCH", "Kho loại CENTRAL không được gắn chi nhánh."),
+    INV_400_WAREHOUSE_BRANCH_REQUIRED(400, "INV_400_WAREHOUSE_BRANCH_REQUIRED", "Kho loại MAIN/BRANCH phải thuộc một chi nhánh đang hoạt động."),
     INV_400_WAREHOUSE_INVALID_STATUS(400, "INV_400_WAREHOUSE_INVALID_STATUS", "Trạng thái kho không hợp lệ."),
     INV_404_BRANCH_NOT_FOUND(404, "INV_404_BRANCH_NOT_FOUND", "Không tìm thấy chi nhánh."),
     INV_400_BRANCH_INACTIVE(400, "INV_400_BRANCH_INACTIVE", "Chi nhánh đang ngừng hoạt động."),
@@ -194,6 +196,7 @@ public enum ErrorCode {
     MENU_400_NOT_COMBO_PRODUCT(400, "MENU_400_NOT_COMBO_PRODUCT", "Sản phẩm không phải Combo (isCombo = false)."),
     MENU_400_COMBO_EMPTY_ITEMS(400, "MENU_400_COMBO_EMPTY_ITEMS", "Combo phải có ít nhất một thành phần."),
     MENU_400_COMBO_INVALID_QUANTITY(400, "MENU_400_COMBO_INVALID_QUANTITY", "Số lượng thành phần Combo không hợp lệ (phải >= 1)."),
+    MENU_400_COMBO_SELF_REFERENCE(400, "MENU_400_COMBO_SELF_REFERENCE", "Không thể thêm Combo vào chính nó."),
     MENU_409_COMBO_DUPLICATE_VARIANT(409, "MENU_409_COMBO_DUPLICATE_VARIANT", "Biến thể đã tồn tại trong Combo."),
     MENU_409_COMBO_ITEM_EXISTS(409, "MENU_409_COMBO_ITEM_EXISTS", "Sản phẩm/biến thể đã tồn tại trong Combo."),
     MENU_404_BRANCH_TOPPING_NOT_FOUND(404, "MENU_404_BRANCH_TOPPING_NOT_FOUND", "Không tìm thấy cấu hình topping chi nhánh."),
@@ -211,7 +214,8 @@ public enum ErrorCode {
     ORDER_400_INVALID_PRICE(400, "ORDER_400_INVALID_PRICE", "Giá trị tiền/chi phí không hợp lệ."),
     ORDER_400_DELIVERY_FAILED(400, "ORDER_400_DELIVERY_FAILED", "Không thể cập nhật kết quả giao hàng."),
     ORDER_400_UNPAID(400, "ORDER_400_UNPAID", "Đơn hàng chưa thanh toán."),
-    ORDER_403_OUT_OF_SCOPE(403, "ORDER_403_OUT_OF_SCOPE", "Tài khoản truy cập đơn/giao hàng ngoài phạm vi.");
+    ORDER_403_OUT_OF_SCOPE(403, "ORDER_403_OUT_OF_SCOPE", "Tài khoản truy cập đơn/giao hàng ngoài phạm vi."),
+    MENU_404_BRANCH_PRODUCT_NOT_FOUND(404, "MENU_404_BRANCH_PRODUCT_NOT_FOUND", "Không tìm thấy cấu hình sản phẩm chi nhánh.");
 
 
     private final int statusCode;

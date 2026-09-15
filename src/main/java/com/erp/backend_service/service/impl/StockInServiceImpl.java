@@ -124,12 +124,15 @@ public class StockInServiceImpl implements StockInService {
         validateFilterValues(status, sourceType);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
+        LocalDate effectiveFromDate = fromDate != null ? fromDate : LocalDate.of(1, 1, 1);
+        LocalDate effectiveToDate = toDate != null ? toDate : LocalDate.of(9999, 12, 31);
+
         Collection<UUID> allowedWarehouseIds = dataScopeHelper.getAllowedWarehouseIds(warehouseId);
         if (allowedWarehouseIds != null && allowedWarehouseIds.isEmpty()) {
             return new PageResponse<>(page, safeSize, 0L, 0, List.of());
         }
 
-        Page<StockIn> pageResult = stockInRepository.search(StringUtils.hasText(search) ? search.trim() : null, status, warehouseId, allowedWarehouseIds, sourceType, fromDate, toDate, pageable);
+        Page<StockIn> pageResult = stockInRepository.search(StringUtils.hasText(search) ? search.trim() : null, status, warehouseId, allowedWarehouseIds, sourceType, effectiveFromDate, effectiveToDate, pageable);
 
         List<StockIn> stockIns = pageResult.getContent();
 

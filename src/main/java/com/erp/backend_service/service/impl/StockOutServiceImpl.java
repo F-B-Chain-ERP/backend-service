@@ -110,12 +110,15 @@ public class StockOutServiceImpl implements StockOutService {
         validateFilterValues(status, destinationType);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
+        LocalDate effectiveFromDate = fromDate != null ? fromDate : LocalDate.of(1, 1, 1);
+        LocalDate effectiveToDate = toDate != null ? toDate : LocalDate.of(9999, 12, 31);
+
         Collection<UUID> allowedWarehouseIds = dataScopeHelper.getAllowedWarehouseIds(warehouseId);
         if (allowedWarehouseIds != null && allowedWarehouseIds.isEmpty()) {
             return new PageResponse<>(page, safeSize, 0L, 0, List.of());
         }
 
-        Page<StockOut> pageResult = stockOutRepository.search(StringUtils.hasText(search) ? search.trim() : null, status, warehouseId, allowedWarehouseIds, destinationType, fromDate, toDate, pageable);
+        Page<StockOut> pageResult = stockOutRepository.search(StringUtils.hasText(search) ? search.trim() : null, status, warehouseId, allowedWarehouseIds, destinationType, effectiveFromDate, effectiveToDate, pageable);
 
         List<StockOut> stockOuts = pageResult.getContent();
 

@@ -43,8 +43,8 @@ public interface StockOutRepository extends JpaRepository<StockOut, UUID> {
               and (:warehouseId is null or so.warehouseId = :warehouseId)
               and (:allowedWarehouseIds is null or so.warehouseId in :allowedWarehouseIds)
               and (:destinationType is null or so.destinationType = :destinationType)
-              and (:fromDate is null or so.outDate >= :fromDate)
-              and (:toDate is null or so.outDate <= :toDate)
+              and so.outDate >= :fromDate
+              and so.outDate <= :toDate
             """)
     Page<StockOut> search(@Param("search") String search,
                           @Param("status") String status,

@@ -93,6 +93,7 @@ class BomServiceImplTest {
         material.setId(materialId);
         material.setCode("MAT-MILK-01");
         material.setName("Sữa đặc");
+        material.setBaseUnitId(unitId);
 
         unit = new Unit();
         unit.setId(unitId);
@@ -280,5 +281,71 @@ class BomServiceImplTest {
         assertEquals("ACTIVE", item2.getStatus());
         assertEquals(new BigDecimal("40.0"), item2.getQuantity());
         assertNotNull(response);
+    }
+
+    @Test
+    @DisplayName("Cập nhật dòng BOM với NVL ngừng hoạt động -> Báo lỗi 400 Material Inactive")
+    void testUpdateItem_InactiveMaterial_ThrowsException() {
+        UUID itemId = UUID.randomUUID();
+        ProductRecipeItem item = new ProductRecipeItem();
+        item.setId(itemId);
+        item.setVariantId(variantId);
+        item.setMaterialId(materialId);
+        item.setStatus("ACTIVE");
+
+        material.setStatus("INACTIVE");
+        material.setBaseUnitId(unitId);
+
+        when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(variant));
+        when(productRecipeItemRepository.findByIdAndVariantId(itemId, variantId)).thenReturn(Optional.of(item));
+        when(materialRepository.findById(materialId)).thenReturn(Optional.of(material));
+
+        UpdateBomItemRequest request = new UpdateBomItemRequest(
+                materialId,
+                new BigDecimal("30.0"),
+                unitId,
+                new BigDecimal("2.0")
+        );
+
+        BaseException ex = assertThrows(BaseException.class,
+                () -> bomService.updateItem(variantId, itemId, request));
+        assertEquals(ErrorCode.MENU_400_BOM_MATERIAL_INACTIVE, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("Cập nhật dòng BOM với ĐVT không trùng đơn vị cơ sở -> Báo lỗi 400 Unit Mismatch")
+    void testUpdateItem_UnitMismatch_ThrowsException() {
+        UUID itemId = UUID.randomUUID();
+        ProductRecipeItem item = new ProductRecipeItem();
+        item.setId(itemId);
+        item.setVariantId(variantId);
+        item.setMaterialId(materialId);
+        item.setStatus("ACTIVE");
+
+        material.setStatus("ACTIVE");
+        UUID baseUnitId = UUID.randomUUID();
+        material.setBaseUnitId(baseUnitId);
+
+        Unit baseUnit = new Unit();
+        baseUnit.setId(baseUnitId);
+        baseUnit.setCode("CAI");
+        baseUnit.setName("Cái");
+        baseUnit.setStatus("ACTIVE");
+
+        when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(variant));
+        when(productRecipeItemRepository.findByIdAndVariantId(itemId, variantId)).thenReturn(Optional.of(item));
+        when(materialRepository.findById(materialId)).thenReturn(Optional.of(material));
+        when(unitRepository.findById(unitId)).thenReturn(Optional.of(unit));
+
+        UpdateBomItemRequest request = new UpdateBomItemRequest(
+                materialId,
+                new BigDecimal("30.0"),
+                unitId,
+                new BigDecimal("2.0")
+        );
+
+        BaseException ex = assertThrows(BaseException.class,
+                () -> bomService.updateItem(variantId, itemId, request));
+        assertEquals(ErrorCode.MENU_400_BOM_UNIT_MISMATCH, ex.getErrorCode());
     }
 }

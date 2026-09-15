@@ -57,15 +57,31 @@ public class BranchToppingAvailabilityServiceImpl implements BranchToppingAvaila
 
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize);
-        Page<BranchToppingAvailability> result = repository.search(branchId, search, status, pageable);
 
-        Map<UUID, Topping> toppingMap = loadToppings(result.getContent());
-        List<BranchToppingAvailabilityResponse> items = result.getContent().stream()
-                .map(bta -> mapper.toResponse(bta, toppingMap.get(bta.getToppingId())))
+        // Query toàn bộ topping ACTIVE rồi overlay availability (giống luồng product)
+        Page<Topping> toppings = toppingRepository.search(search, null, "ACTIVE", pageable);
+
+        Set<UUID> toppingIds = toppings.getContent().stream()
+                .map(Topping::getId)
+                .collect(Collectors.toSet());
+
+        Map<UUID, BranchToppingAvailability> availabilityMap = repository
+                .findByBranchIdAndToppingIds(branchId, toppingIds)
+                .stream()
+                .collect(Collectors.toMap(BranchToppingAvailability::getToppingId, bta -> bta, (a, b) -> a));
+
+        List<BranchToppingAvailabilityResponse> items = toppings.getContent().stream()
+                .map(topping -> {
+                    BranchToppingAvailability bta = availabilityMap.get(topping.getId());
+                    if (bta != null) {
+                        return mapper.toResponse(bta, topping);
+                    }
+                    return mapper.toResponseAvailableByDefault(topping);
+                })
                 .toList();
 
-        return new PageResponse<>(result.getNumber(), result.getSize(),
-                result.getTotalElements(), result.getTotalPages(), items);
+        return new PageResponse<>(toppings.getNumber(), toppings.getSize(),
+                toppings.getTotalElements(), toppings.getTotalPages(), items);
     }
 
     @Override
@@ -97,11 +113,5 @@ public class BranchToppingAvailabilityServiceImpl implements BranchToppingAvaila
         }
 
         return mapper.toResponse(repository.save(bta), topping);
-    }
-
-    private Map<UUID, Topping> loadToppings(List<BranchToppingAvailability> btas) {
-        Set<UUID> ids = btas.stream().map(BranchToppingAvailability::getToppingId).collect(Collectors.toSet());
-        return toppingRepository.findAllById(ids).stream()
-                .collect(Collectors.toMap(Topping::getId, t -> t, (a, b) -> a));
     }
 }

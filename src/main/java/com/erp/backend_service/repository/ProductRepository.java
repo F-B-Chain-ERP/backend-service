@@ -84,4 +84,19 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             @Param("isBestSeller") Boolean isBestSeller,
             Pageable pageable
     );
+
+    @Query("""
+                SELECT p
+                FROM Product p
+                WHERE p.status = 'ACTIVE'
+                AND (:search IS NULL OR :search = ''
+                    OR LOWER(p.code) LIKE CONCAT('%', LOWER(:search), '%')
+                    OR LOWER(p.name) LIKE CONCAT('%', LOWER(:search), '%'))
+                AND (:categoryId IS NULL OR p.categoryId = :categoryId)
+            """)
+    Page<Product> findActiveForAvailability(
+            @Param("search") String search,
+            @Param("categoryId") UUID categoryId,
+            Pageable pageable
+    );
 }

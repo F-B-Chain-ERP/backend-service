@@ -289,9 +289,14 @@ VALUES
 -- =========================================================
 -- POS
 -- =========================================================
+(gen_random_uuid(), 'pos:cart:view', 'View Cart', 'POS', 'View own cart', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'pos:cart:create', 'Create Cart Item', 'POS', 'Add item to own cart', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'pos:cart:update', 'Update Cart Item', 'POS', 'Update own cart item', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'pos:cart:delete', 'Delete Cart Item', 'POS', 'Delete own cart item', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'pos:order:create', 'Create Order', 'POS', 'Create order', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'pos:order:view', 'View Order', 'POS', 'View order', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'pos:order:update', 'Update Order', 'POS', 'Update order', 'ACTIVE', NOW(), NOW()),
+(gen_random_uuid(), 'pos:order:cancel', 'Cancel Order', 'POS', 'Cancel order', 'ACTIVE', NOW(), NOW()),
 (gen_random_uuid(), 'pos:order:delete', 'Delete Order', 'POS', 'Delete order', 'ACTIVE', NOW(), NOW()),
 
 (gen_random_uuid(), 'pos:delivery:create', 'Create Delivery', 'POS', 'Create order delivery', 'ACTIVE', NOW(), NOW()),

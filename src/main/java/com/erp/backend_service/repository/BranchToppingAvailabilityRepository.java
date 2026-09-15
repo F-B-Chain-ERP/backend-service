@@ -44,4 +44,6 @@ public interface BranchToppingAvailabilityRepository extends JpaRepository<Branc
             @Param("status") String status,
             Pageable pageable
     );
+    Optional<BranchToppingAvailability> findByBranchIdAndToppingIdAndStatus(UUID branchId, UUID toppingId,
+                                                                              String status);
 }

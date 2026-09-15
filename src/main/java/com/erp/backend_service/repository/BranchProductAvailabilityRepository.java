@@ -46,4 +46,6 @@ public interface BranchProductAvailabilityRepository extends JpaRepository<Branc
             @Param("branchId") UUID branchId,
             @Param("productIds") Collection<UUID> productIds
     );
+    Optional<BranchProductAvailability> findByBranchIdAndProductIdAndStatus(UUID branchId, UUID productId,
+                                                                            String status);
 }

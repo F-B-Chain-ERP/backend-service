@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 /** Truy vấn dữ liệu voucher. */
 @Repository
 public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
+    Optional<Voucher> findByCodeIgnoreCaseAndStatus(String code, String status);
 
     /** Kiểm tra mã voucher đã tồn tại hay chưa (dùng cho tạo). */
     boolean existsByCode(String code);

@@ -18,4 +18,5 @@ public interface ProductToppingRepository extends JpaRepository<ProductTopping, 
     boolean existsByProductIdAndToppingId(UUID productId, UUID toppingId);
 
     boolean existsByToppingId(UUID toppingId);
+    Optional<ProductTopping> findByProductIdAndToppingIdAndStatus(UUID productId, UUID toppingId, String status);
 }

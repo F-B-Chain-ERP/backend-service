@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 /** Truy vấn dữ liệu gán voucher cho chi nhánh (voucher_branch). */
 @Repository
 public interface VoucherBranchRepository extends JpaRepository<VoucherBranch, UUID> {
+    Optional<VoucherBranch> findByVoucherIdAndBranchIdAndStatus(UUID voucherId, UUID branchId, String status);
 
     /** Danh sách chi nhánh được gán cho một voucher. */
     List<VoucherBranch> findByVoucherId(UUID voucherId);

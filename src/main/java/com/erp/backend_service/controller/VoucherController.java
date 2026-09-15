@@ -12,13 +12,11 @@ import com.erp.core.dto.response.menu.VoucherUsageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,22 +36,16 @@ public class VoucherController {
         this.voucherUsageService = voucherUsageService;
     }
 
-    /** Danh sách voucher phân trang, lọc theo status/discountType/thời gian hiệu lực/chi nhánh. */
+    /** Danh sách voucher phân trang, lọc theo trạng thái. */
     @GetMapping
     @PreAuthorize("hasAuthority('menu:voucher:view')")
     public ResponseEntity<ApiResponse<PageResponse<VoucherResponse>>> list(
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String discountType,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTo,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTo,
-            @RequestParam(required = false) UUID branchId) {
+            @RequestParam(required = false) String status) {
         return ResponseEntity.ok(ApiResponse.success(voucherService.list(
-                page, size, search, status, discountType, startFrom, startTo, endFrom, endTo, branchId)));
+                page, size, search, status)));
     }
 
     /** Chi tiết voucher kèm danh sách chi nhánh được gán. */

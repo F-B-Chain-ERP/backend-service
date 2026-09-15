@@ -81,18 +81,13 @@ public class VoucherServiceImpl implements VoucherService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<VoucherResponse> list(int page, int size, String search, String status, String discountType,
-                                              Instant startFrom, Instant startTo, Instant endFrom, Instant endTo,
-                                              UUID branchId) {
+    public PageResponse<VoucherResponse> list(int page, int size, String search, String status) {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
         String normalizedSearch = StringUtils.hasText(search) ? search.trim() : "";
         String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
-        String normalizedDiscountType = StringUtils.hasText(discountType) ? discountType.trim().toUpperCase() : null;
-        Page<Voucher> pageResult = voucherRepository.search(
-                normalizedSearch, normalizedStatus, normalizedDiscountType,
-                startFrom, startTo, endFrom, endTo, branchId, pageable);
+        Page<Voucher> pageResult = voucherRepository.search(normalizedSearch, normalizedStatus, pageable);
 
         List<VoucherResponse> content = pageResult.getContent().stream()
                 .map(voucherMapper::toResponse)

@@ -35,6 +35,9 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     private static final int MAX_PAGE_SIZE = 100;
 
+    private static final Set<String> ALLOWED_WAREHOUSE_TYPES = Set.of("CENTRAL", "MAIN", "BRANCH");
+    private static final Set<String> ALLOWED_WAREHOUSE_STATUSES = Set.of("ACTIVE", "INACTIVE");
+
     private final WarehouseRepository warehouseRepository;
     private final BranchRepository branchRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
@@ -77,12 +80,17 @@ public class WarehouseServiceImpl implements WarehouseService {
         }
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
+        String normalizedWarehouseType = StringUtils.hasText(warehouseType) ? warehouseType.trim().toUpperCase() : null;
+        validateWarehouseType(normalizedWarehouseType);
+        String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
+        validateWarehouseStatus(normalizedStatus);
+
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Warehouse> pageResult = warehouseRepository.search(
                 StringUtils.hasText(search) ? search.trim() : null,
                 effectiveBranchId,
-                StringUtils.hasText(warehouseType) ? warehouseType.trim().toUpperCase() : null,
-                StringUtils.hasText(status) ? status.trim().toUpperCase() : null,
+                normalizedWarehouseType,
+                normalizedStatus,
                 pageable
         );
 
@@ -101,6 +109,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Transactional(readOnly = true)
     public List<WarehouseResponse> listAll(String status) {
         String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
+        validateWarehouseStatus(normalizedStatus);
         // Dropdown dùng ở mọi form kho: user chi nhánh chỉ thấy kho CN đang làm
         // (+ kho CENTRAL), khớp với enforce ở đường ghi để khỏi "thấy mà không làm được".
         // ALL_SYSTEM giữ nguyên toàn bộ. Chưa chọn CN thì chặn như list() phân trang.
@@ -131,11 +140,13 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (warehouseRepository.existsByCode(normalizedCode)) {
             throw new BaseException(ErrorCode.INV_409_WAREHOUSE_CODE_EXISTED);
         }
-        dataScopeHelper.enforceBranchAccess(request.branchId());
 
-        validateBranch(request.branchId());
+        validateBranchBinding(request.warehouseType(), request.branchId());
 
         Warehouse warehouse = warehouseMapper.toEntity(request);
+        if ("CENTRAL".equals(request.warehouseType().trim().toUpperCase())) {
+            warehouse.setBranchId(null);
+        }
         Warehouse saved = warehouseRepository.save(warehouse);
         String branchName = resolveSingleBranchName(saved.getBranchId());
         return warehouseMapper.toResponse(saved, branchName);
@@ -146,16 +157,19 @@ public class WarehouseServiceImpl implements WarehouseService {
     public WarehouseResponse update(UUID id, UpdateWarehouseRequest request) {
         Warehouse warehouse = findById(id);
         dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
-        dataScopeHelper.enforceBranchAccess(request.branchId());
+
+        validateBranchBinding(request.warehouseType(), request.branchId());
+
         String normalizedCode = request.code().trim().toUpperCase();
 
         if (warehouseRepository.existsByCodeAndIdNot(normalizedCode, id)) {
             throw new BaseException(ErrorCode.INV_409_WAREHOUSE_CODE_EXISTED);
         }
 
-        validateBranch(request.branchId());
-
         warehouseMapper.updateEntity(warehouse, request);
+        if ("CENTRAL".equals(request.warehouseType().trim().toUpperCase())) {
+            warehouse.setBranchId(null);
+        }
         Warehouse saved = warehouseRepository.save(warehouse);
         String branchName = resolveSingleBranchName(saved.getBranchId());
         return warehouseMapper.toResponse(saved, branchName);
@@ -200,6 +214,18 @@ public class WarehouseServiceImpl implements WarehouseService {
         warehouseRepository.deleteById(id);
     }
 
+    private void validateWarehouseType(String warehouseType) {
+        if (warehouseType != null && !ALLOWED_WAREHOUSE_TYPES.contains(warehouseType)) {
+            throw new BaseException(ErrorCode.INV_400_WAREHOUSE_INVALID_TYPE);
+        }
+    }
+
+    private void validateWarehouseStatus(String status) {
+        if (status != null && !ALLOWED_WAREHOUSE_STATUSES.contains(status)) {
+            throw new BaseException(ErrorCode.INV_400_WAREHOUSE_INVALID_STATUS);
+        }
+    }
+
     private Warehouse findById(UUID id) {
         return warehouseRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
@@ -212,6 +238,26 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (!"ACTIVE".equals(branch.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_BRANCH_INACTIVE);
         }
+    }
+
+    /**
+     * Ràng buộc giữa loại kho và chi nhánh:
+     * - CENTRAL: không được gắn branchId.
+     * - MAIN/BRANCH: bắt buộc branchId thuộc chi nhánh đang hoạt động.
+     */
+    private void validateBranchBinding(String warehouseType, UUID branchId) {
+        boolean isCentral = "CENTRAL".equals(warehouseType.trim().toUpperCase());
+        if (isCentral) {
+            if (branchId != null) {
+                throw new BaseException(ErrorCode.INV_400_WAREHOUSE_CENTRAL_NO_BRANCH);
+            }
+            return;
+        }
+        if (branchId == null) {
+            throw new BaseException(ErrorCode.INV_400_WAREHOUSE_BRANCH_REQUIRED);
+        }
+        dataScopeHelper.enforceBranchAccess(branchId);
+        validateBranch(branchId);
     }
 
     private String resolveSingleBranchName(UUID branchId) {

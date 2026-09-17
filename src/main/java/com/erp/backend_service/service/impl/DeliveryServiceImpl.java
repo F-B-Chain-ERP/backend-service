@@ -6,17 +6,17 @@ import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.DeliveryService;
+import com.erp.backend_service.service.pos.PosFlow;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.pos.*;
 import com.erp.core.dto.response.pos.*;
+import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.*;
-import java.util.Locale;
 import java.util.Objects;
 
 @Service
@@ -24,27 +24,21 @@ public class DeliveryServiceImpl implements DeliveryService {
     private static final String ACTIVE = "ACTIVE";
     private final OrderDeliveryRepository deliveryRepository;
     private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
     private final OrderStatusHistoryRepository historyRepository;
     private final AccountRepository accountRepository;
     private final AccountRoleRepository accountRoleRepository;
-    private final BranchVariantDailyStockRepository stockRepository;
     private final DataScopeHelper dataScopeHelper;
 
     public DeliveryServiceImpl(OrderDeliveryRepository deliveryRepository, OrderRepository orderRepository,
-                               OrderItemRepository orderItemRepository,
                                OrderStatusHistoryRepository historyRepository,
                                AccountRepository accountRepository,
                                AccountRoleRepository accountRoleRepository,
-                               BranchVariantDailyStockRepository stockRepository,
                                DataScopeHelper dataScopeHelper) {
         this.deliveryRepository = deliveryRepository;
         this.orderRepository = orderRepository;
-        this.orderItemRepository = orderItemRepository;
         this.historyRepository = historyRepository;
         this.accountRepository = accountRepository;
         this.accountRoleRepository = accountRoleRepository;
-        this.stockRepository = stockRepository;
         this.dataScopeHelper = dataScopeHelper;
     }
 
@@ -68,7 +62,9 @@ public class DeliveryServiceImpl implements DeliveryService {
         }
         OrderDelivery d = deliveryRepository.findByOrderId(o.getId()).orElseThrow(
             () -> new BaseException(ErrorCode.ORDER_404_DELIVERY_NOT_FOUND));
-        if (!Set.of("PENDING", "FAILED").contains(d.getStatus())) {
+        PosFlow.Delivery current = PosFlow.parseDelivery(d.getStatus());
+        if (!(current == PosFlow.Delivery.PENDING || current == PosFlow.Delivery.FAILED ||
+            current == PosFlow.Delivery.ASSIGNED)) {
             throw new BaseException(ErrorCode.ORDER_400_DELIVERY_FAILED,
                                     "Trạng thái giao hàng không cho phép phân công.");
         }
@@ -78,13 +74,20 @@ public class DeliveryServiceImpl implements DeliveryService {
             (!dataScopeHelper.isAllSystem() && !o.getBranchId().equals(shipper.getPrimaryBranchId()))) {
             throw new BaseException(ErrorCode.ORDER_403_OUT_OF_SCOPE);
         }
-        if (accountRoleRepository.findByAccountId(shipper.getId()).isEmpty()) {
+        // Giả thiết E6: DB chưa có role SHIPPER riêng nên không check code cứng.
+        // Check effective (chưa hết hạn) thay vì findByAccountId thô như cũ (lọt expired).
+        // TODO: tạo role SHIPPER + check pos:delivery:update trên role khi có.
+        var effective = accountRoleRepository.findEffectiveByAccountId(shipper.getId(), EntityStatus.ACTIVE,
+            Instant.now());
+        if (effective.isEmpty()) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "Tài khoản không có vai trò phù hợp để giao hàng.");
         }
+        // Cho đổi shipper khi đã ASSIGNED (ops cần); gán lại từ FAILED thì xóa dấu thất bại cũ.
         d.setShipperId(shipper.getId());
         d.setAssignedAt(Instant.now());
-        d.setStatus("ASSIGNED");
+        d.setStatus(PosFlow.Delivery.ASSIGNED.name());
         d.setFailReason(null);
+        d.setFailedAt(null);
         return toResponse(deliveryRepository.save(d));
     }
 
@@ -98,53 +101,74 @@ public class DeliveryServiceImpl implements DeliveryService {
         Order o = accessibleOrder(orderId);
         OrderDelivery d = deliveryRepository.findByOrderId(o.getId()).orElseThrow(
             () -> new BaseException(ErrorCode.ORDER_404_DELIVERY_NOT_FOUND));
-        String target = request.status().trim().toUpperCase(Locale.ROOT);
+        PosFlow.Delivery target = PosFlow.parseDelivery(request.status());
+        PosFlow.Delivery current = PosFlow.parseDelivery(d.getStatus());
         String old = d.getStatus();
-        if (!valid(old, target)) {
+        if (!PosFlow.canDeliveryTransition(current, target)) {
             throw new BaseException(ErrorCode.ORDER_400_DELIVERY_FAILED, "Chuyển trạng thái giao hàng không hợp lệ.");
         }
         Instant now = Instant.now();
-        d.setStatus(target);
+        d.setStatus(target.name());
         if (request.note() != null) {
             d.setDeliveryNote(request.note());
         }
         switch (target) {
-            case "PICKED_UP" -> d.setPickedUpAt(now);
-            case "DELIVERING" -> {
+            case PICKED_UP -> d.setPickedUpAt(now);
+            case DELIVERING -> {
                 d.setAssignedAt(d.getAssignedAt() == null ? now : d.getAssignedAt());
-                String previousOrderStatus = o.getStatus();
-                o.setStatus("DELIVERING");
-                o.setDeliveringAt(now);
-                orderRepository.save(o);
-                writeHistory(o, previousOrderStatus, "DELIVERING", request.note());
-            }
-            case "DELIVERED" -> {
-                d.setDeliveredAt(now);
-                if ("PAID".equalsIgnoreCase(o.getPaymentStatus()) &&
-                    Set.of("DELIVERING", "READY").contains(o.getStatus())) {
+                // Giả thiết E2: order phải READY mới được đi giao, chặn nhảy cóc PENDING->DELIVERING.
+                PosFlow.Order orderCurrent = PosFlow.parseOrder(o.getStatus());
+                if (!(orderCurrent == PosFlow.Order.READY || orderCurrent == PosFlow.Order.DELIVERING)) {
+                    throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION,
+                        "Đơn hàng phải ở trạng thái READY mới được giao.");
+                }
+                if (orderCurrent == PosFlow.Order.READY) {
                     String previousOrderStatus = o.getStatus();
-                    o.setStatus("COMPLETED");
-                    o.setCompletedAt(now);
-                    deductStock(o);
+                    o.setStatus(PosFlow.Order.DELIVERING.name());
+                    o.setDeliveringAt(now);
                     orderRepository.save(o);
-                    writeHistory(o, previousOrderStatus, "COMPLETED", request.note());
+                    writeHistory(o, previousOrderStatus, PosFlow.Order.DELIVERING.name(), request.note());
                 }
             }
-            case "FAILED" -> {
+            case DELIVERED -> {
+                d.setDeliveredAt(now);
+                // Giả thiết E4: COD giao xong coi như thu tiền mặt, khỏi treo đơn.
+                if ("COD".equals(o.getPaymentMethod())
+                    && PosFlow.Payment.UNPAID.name().equalsIgnoreCase(o.getPaymentStatus())) {
+                    o.setPaymentStatus(PosFlow.Payment.PAID.name());
+                }
+                // Tồn đã reserve ở Order CONFIRMED nên không trừ lần 2 (xóa deductStock cũ - lỗi ẩn double-deduct).
+                PosFlow.Order orderCurrent = PosFlow.parseOrder(o.getStatus());
+                if (PosFlow.Payment.PAID.name().equalsIgnoreCase(o.getPaymentStatus()) &&
+                    (orderCurrent == PosFlow.Order.DELIVERING || orderCurrent == PosFlow.Order.READY)) {
+                    String previousOrderStatus = o.getStatus();
+                    o.setStatus(PosFlow.Order.COMPLETED.name());
+                    o.setCompletedAt(now);
+                    orderRepository.save(o);
+                    writeHistory(o, previousOrderStatus, PosFlow.Order.COMPLETED.name(), request.note());
+                }
+            }
+            case FAILED -> {
+                if (request.failReason() == null || request.failReason().isBlank()) {
+                    throw new BaseException(ErrorCode.INVALID_REQUEST, "Giao thất bại phải có lý do.");
+                }
                 d.setFailedAt(now);
                 d.setFailReason(request.failReason());
-                if ("DELIVERING".equals(o.getStatus())) {
+                // Giả thiết E1: ASSIGNED là status delivery, không phải order (ck_orders_status).
+                // Giao thất bại -> order về READY để gán lại, không phải ASSIGNED bẩn.
+                if (PosFlow.parseOrder(o.getStatus()) == PosFlow.Order.DELIVERING) {
                     String previousOrderStatus = o.getStatus();
-                    o.setStatus("ASSIGNED");
+                    o.setStatus(PosFlow.Order.READY.name());
                     orderRepository.save(o);
-                    writeHistory(o, previousOrderStatus, "ASSIGNED", "Giao hàng thất bại, quay lại trạng thái đã phân công.");
+                    writeHistory(o, previousOrderStatus, PosFlow.Order.READY.name(),
+                        "Giao hàng thất bại, chuyển về READY để giao lại.");
                 }
             }
             default -> {
             }
         }
         deliveryRepository.save(d);
-        return new DeliveryStatusResponse(d.getId(), o.getId(), old, target, now);
+        return new DeliveryStatusResponse(d.getId(), o.getId(), old, target.name(), now);
     }
 
     private void requireViewPermission() {
@@ -164,15 +188,6 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     private boolean isCustomer() {
         return SecurityUtils.getCurrentPrincipalType().orElse(null) == PrincipalType.CUSTOMER;
-    }
-
-    private boolean valid(String a, String b) {
-        if (a == null || b == null) {
-            return false;
-        }
-        return (a.equals("PENDING") && b.equals("ASSIGNED")) || (a.equals("ASSIGNED") && b.equals("PICKED_UP")) ||
-            (a.equals("PICKED_UP") && b.equals("DELIVERING")) || (a.equals("DELIVERING") && b.equals("DELIVERED")) ||
-            (a.equals("DELIVERING") && b.equals("FAILED")) || (a.equals("FAILED") && b.equals("ASSIGNED"));
     }
 
     private Order accessibleOrder(UUID id) {
@@ -196,24 +211,6 @@ public class DeliveryServiceImpl implements DeliveryService {
                                     d.getReceiverPhone(), d.getDeliveryAddress(), d.getDeliveryNote(),
                                     d.getDeliveryFee(), d.getStatus(), d.getAssignedAt(), d.getPickedUpAt(),
                                     d.getDeliveredAt(), d.getFailedAt(), d.getFailReason());
-    }
-
-    private void deductStock(Order order) {
-        for (OrderItem oi : orderItemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE)) {
-            if (oi.getVariantId() != null) {
-                BranchVariantDailyStock s =
-                    stockRepository.findByBranchIdAndVariantIdAndBusinessDateAndStatus(order.getBranchId(),
-                                                                                       oi.getVariantId(),
-                                                                                       LocalDate.now(), ACTIVE)
-                                   .orElseThrow(() -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY));
-                if (s.getRemainingQuantity() < oi.getQuantity()) {
-                    throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
-                }
-                s.setRemainingQuantity(s.getRemainingQuantity() - oi.getQuantity());
-                s.setSoldQuantity(s.getSoldQuantity() + oi.getQuantity());
-                stockRepository.save(s);
-            }
-        }
     }
 
     private void writeHistory(Order order, String oldStatus, String newStatus, String note) {

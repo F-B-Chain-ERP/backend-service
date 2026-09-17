@@ -5,6 +5,7 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.CartService;
+import com.erp.backend_service.service.pos.PosComboService;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.pos.AddCartItemRequest;
 import com.erp.core.dto.request.pos.UpdateCartItemRequest;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,7 +31,7 @@ public class CartServiceImpl implements CartService {
     private final ProductToppingRepository productToppingRepository;
     private final BranchToppingAvailabilityRepository branchToppingAvailabilityRepository;
     private final BranchProductAvailabilityRepository availabilityRepository;
-    private final BranchVariantDailyStockRepository stockRepository;
+    private final PosComboService posComboService;
 
     public CartServiceImpl(CartRepository cartRepository, CartItemRepository itemRepository,
                            CartItemToppingRepository itemToppingRepository, ProductRepository productRepository,
@@ -39,7 +39,7 @@ public class CartServiceImpl implements CartService {
                            ProductToppingRepository productToppingRepository,
                            BranchToppingAvailabilityRepository branchToppingAvailabilityRepository,
                            BranchProductAvailabilityRepository availabilityRepository,
-                           BranchVariantDailyStockRepository stockRepository) {
+                           PosComboService posComboService) {
         this.cartRepository = cartRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -49,7 +49,7 @@ public class CartServiceImpl implements CartService {
         this.productToppingRepository = productToppingRepository;
         this.branchToppingAvailabilityRepository = branchToppingAvailabilityRepository;
         this.availabilityRepository = availabilityRepository;
-        this.stockRepository = stockRepository;
+        this.posComboService = posComboService;
     }
 
     @Override
@@ -90,8 +90,18 @@ public class CartServiceImpl implements CartService {
             if (!ACTIVE.equals(variant.getStatus())) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm không còn khả dụng.");
             }
-            checkStock(request.branchId(), variant.getId(), request.quantity());
+        } else {
+            // Giả thiết A1: SP có variant ACTIVE thì bắt buộc chọn variant.
+            // Trước đây variantId=null bypass kho -> oversell ẩn.
+            boolean hasActiveVariant = !variantRepository
+                .findByProductIdAndStatusOrderByDisplayOrderAsc(product.getId(), ACTIVE).isEmpty();
+            if (hasActiveVariant) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Sản phẩm có size, vui lòng chọn biến thể.");
+            }
         }
+        // Validate tồn + combo (theo ngày kinh doanh chi nhánh, nổ thành phần combo) thay cho checkStock cũ.
+        posComboService.validateForSale(product.getId(), request.variantId(), request.quantity(),
+            request.branchId());
 
         Cart cart = getOrCreateCart(customerId, request.branchId(), request.sessionToken());
         String ice = normalize(request.iceLevel(), "NORMAL");
@@ -99,26 +109,30 @@ public class CartServiceImpl implements CartService {
         String note = request.note();
         BigDecimal unitPrice = resolveUnitPrice(product, variant, availability);
 
-        String toppingSignature = toppingSignature(request.toppings());
-        CartItem item = itemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cart.getId(), ACTIVE).stream()
-                                      .filter(i -> Objects.equals(i.getProductId(), product.getId())
-                                          && Objects.equals(i.getVariantId(), request.variantId())
-                                          && Objects.equals(i.getIceLevel(), ice)
-                                          && Objects.equals(i.getSugarLevel(), sugar)
-                                          && Objects.equals(i.getNote(), note)
-                                          && Objects.equals(toppingSignature, toppingSignature(i.getId())))
-                                      .findFirst().orElse(null);
+        // So khớp theo topping/ly (không phải tổng line) để thêm 1 ly vào line 2 ly vẫn merge đúng.
+        // Topping load bulk 1 lần cho cả giỏ (tránh N+1: trước đây mỗi line 1 query).
+        String toppingSignature = toppingUnitSignature(request.toppings(), request.quantity());
+        List<CartItem> existingItems =
+            itemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cart.getId(), ACTIVE);
+        Map<UUID, String> signatureByItem = toppingUnitSignatures(existingItems);
+        CartItem item = existingItems.stream()
+                                     .filter(i -> Objects.equals(i.getProductId(), product.getId())
+                                         && Objects.equals(i.getVariantId(), request.variantId())
+                                         && Objects.equals(i.getIceLevel(), ice)
+                                         && Objects.equals(i.getSugarLevel(), sugar)
+                                         && Objects.equals(i.getNote(), note)
+                                         && Objects.equals(toppingSignature,
+                                             signatureByItem.getOrDefault(i.getId(), "")))
+                                     .findFirst().orElse(null);
 
         int newQuantity = request.quantity();
         if (item != null) {
             newQuantity += item.getQuantity();
-            if (variant != null) {
-                checkStock(request.branchId(), variant.getId(), newQuantity);
-            }
+            posComboService.validateForSale(product.getId(), request.variantId(), newQuantity,
+                request.branchId());
             item.setQuantity(newQuantity);
             item.setUnitPrice(unitPrice);
             item.setTotalPrice(unitPrice.multiply(BigDecimal.valueOf(newQuantity)));
-            itemToppingRepository.deleteByCartItemId(item.getId());
             itemRepository.save(item);
         } else {
             item = new CartItem();
@@ -154,9 +168,9 @@ public class CartServiceImpl implements CartService {
             throw new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND);
         }
         if (request.quantity() != null) {
-            if (item.getVariantId() != null) {
-                checkStock(cart.getBranchId(), item.getVariantId(), request.quantity());
-            }
+            posComboService.validateForSale(item.getProductId(), item.getVariantId(), request.quantity(),
+                cart.getBranchId());
+            scaleToppingsProportionally(item.getId(), item.getQuantity(), request.quantity());
             item.setQuantity(request.quantity());
         }
         if (request.iceLevel() != null) {
@@ -195,14 +209,13 @@ public class CartServiceImpl implements CartService {
         return new CartMutationResponse(cart.getId(), itemId, null, null, cart.getSubtotalAmount());
     }
 
+    // Quyết định nghiệp vụ: bỏ luồng guest (không có QR-bàn). Cart luôn gắn CUSTOMER login.
+    // Tham số sessionToken giữ ở API/DTO để tương thích FE nhưng backend ignore hoàn toàn.
     private Cart findCart(UUID customerId, UUID branchId, String sessionToken) {
-        if (customerId != null) {
-            return cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, ACTIVE).orElse(null);
+        if (customerId == null) {
+            return null;
         }
-        if (sessionToken != null && !sessionToken.isBlank()) {
-            return cartRepository.findBySessionTokenAndBranchIdAndStatus(sessionToken, branchId, ACTIVE).orElse(null);
-        }
-        return null;
+        return cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, ACTIVE).orElse(null);
     }
 
     private Cart getOrCreateCart(UUID customerId, UUID branchId, String sessionToken) {
@@ -214,7 +227,6 @@ public class CartServiceImpl implements CartService {
             Cart c = new Cart();
             c.setCustomerId(customerId);
             c.setBranchId(branchId);
-            c.setSessionToken(sessionToken);
             c.setStatus(ACTIVE);
             c.setSubtotalAmount(BigDecimal.ZERO);
             return cartRepository.save(c);
@@ -229,13 +241,19 @@ public class CartServiceImpl implements CartService {
 
     private void saveToppings(CartItem item, List<AddCartItemRequest.ToppingRequest> toppings,
                                UUID productId, UUID branchId) {
-        if (toppings == null) {
-            return;
-        }
+        // Gộp topping cũ của line + topping mới thêm (không xóa mất phần cũ khi merge).
+        // quantity là TỔNG cả line; trần = maxQuantity × số ly (giả thiết A2: topping theo ly).
         Map<UUID, Integer> mergedToppings = new LinkedHashMap<>();
-        for (AddCartItemRequest.ToppingRequest req : toppings) {
-            mergedToppings.merge(req.toppingId(), req.quantity(), Integer::sum);
+        for (CartItemTopping existing :
+            itemToppingRepository.findByCartItemIdAndStatus(item.getId(), ACTIVE)) {
+            mergedToppings.merge(existing.getToppingId(), existing.getQuantity(), Integer::sum);
         }
+        if (toppings != null) {
+            for (AddCartItemRequest.ToppingRequest req : toppings) {
+                mergedToppings.merge(req.toppingId(), req.quantity(), Integer::sum);
+            }
+        }
+        itemToppingRepository.deleteByCartItemId(item.getId());
         for (Map.Entry<UUID, Integer> entry : mergedToppings.entrySet()) {
             UUID toppingId = entry.getKey();
             int quantity = entry.getValue();
@@ -249,7 +267,7 @@ public class CartServiceImpl implements CartService {
                 .findByProductIdAndToppingIdAndStatus(productId, toppingId, ACTIVE)
                 .orElseThrow(() -> new BaseException(ErrorCode.INVALID_REQUEST,
                                                       "Topping không thuộc sản phẩm."));
-            if (quantity > productTopping.getMaxQuantity()) {
+            if (quantity > productTopping.getMaxQuantity() * item.getQuantity()) {
                 throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
             }
             branchToppingAvailabilityRepository
@@ -285,21 +303,86 @@ public class CartServiceImpl implements CartService {
         cartRepository.save(cart);
     }
 
-    private String toppingSignature(List<AddCartItemRequest.ToppingRequest> toppings) {
+    /**
+     * Chữ ký topping TÍNH THEO LY (id:sluợng-mỗi-ly) để merge đúng:
+     * thêm 1 ly vào line 2 ly cùng công thức vẫn gộp 1 line.
+     * Không chia hết -> null (coi như công thức khác, tách line riêng).
+     */
+    private String toppingUnitSignature(List<AddCartItemRequest.ToppingRequest> toppings, int itemQty) {
         if (toppings == null || toppings.isEmpty()) {
             return "";
         }
-        return toppings.stream()
-                       .map(t -> t.toppingId() + ":" + t.quantity())
-                       .sorted()
-                       .collect(java.util.stream.Collectors.joining(","));
+        if (itemQty <= 0) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (AddCartItemRequest.ToppingRequest t : toppings) {
+            if (t.quantity() % itemQty != 0) {
+                return null;
+            }
+            parts.add(t.toppingId() + ":" + (t.quantity() / itemQty));
+        }
+        Collections.sort(parts);
+        return String.join(",", parts);
     }
 
-    private String toppingSignature(UUID cartItemId) {
-        return itemToppingRepository.findByCartItemIdAndStatus(cartItemId, ACTIVE).stream()
-                                     .map(t -> t.getToppingId() + ":" + t.getQuantity())
-                                     .sorted()
-                                     .collect(java.util.stream.Collectors.joining(","));
+    private String toppingUnitSignature(UUID cartItemId, int itemQty) {
+        List<CartItemTopping> list = itemToppingRepository.findByCartItemIdAndStatus(cartItemId, ACTIVE);
+        if (list.isEmpty()) {
+            return "";
+        }
+        if (itemQty <= 0) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (CartItemTopping t : list) {
+            if (t.getQuantity() % itemQty != 0) {
+                return null;
+            }
+            parts.add(t.getToppingId() + ":" + (t.getQuantity() / itemQty));
+        }
+        Collections.sort(parts);
+        return String.join(",", parts);
+    }
+
+    /** Bulk chữ ký topping/ly cho cả giỏ trong 1 query (tránh N+1 ở so khớp merge). */
+    private Map<UUID, String> toppingUnitSignatures(List<CartItem> items) {
+        Map<UUID, List<CartItemTopping>> byItem = new HashMap<>();
+        if (!items.isEmpty()) {
+            List<UUID> ids = items.stream().map(CartItem::getId).toList();
+            for (CartItemTopping t : itemToppingRepository.findByCartItemIdInAndStatus(ids, ACTIVE)) {
+                byItem.computeIfAbsent(t.getCartItemId(), k -> new ArrayList<>()).add(t);
+            }
+        }
+        Map<UUID, String> result = new HashMap<>();
+        for (CartItem item : items) {
+            List<CartItemTopping> list = byItem.getOrDefault(item.getId(), List.of());
+            if (list.isEmpty()) {
+                result.put(item.getId(), "");
+                continue;
+            }
+            int itemQty = item.getQuantity();
+            if (itemQty <= 0) {
+                result.put(item.getId(), null);
+                continue;
+            }
+            List<String> parts = new ArrayList<>();
+            boolean divisible = true;
+            for (CartItemTopping t : list) {
+                if (t.getQuantity() % itemQty != 0) {
+                    divisible = false;
+                    break;
+                }
+                parts.add(t.getToppingId() + ":" + (t.getQuantity() / itemQty));
+            }
+            if (!divisible) {
+                result.put(item.getId(), null);
+                continue;
+            }
+            Collections.sort(parts);
+            result.put(item.getId(), String.join(",", parts));
+        }
+        return result;
     }
 
     private CartResponse toResponse(Cart cart) {
@@ -343,13 +426,27 @@ public class CartServiceImpl implements CartService {
         return new CartResponse(cart.getId(), cart.getBranchId(), cart.getSubtotalAmount(), items);
     }
 
-    private void checkStock(UUID branchId, UUID variantId, int quantity) {
-        BranchVariantDailyStock stock =
-            stockRepository.findByBranchIdAndVariantIdAndBusinessDateAndStatus(branchId, variantId, LocalDate.now(),
-                                                                               ACTIVE).orElseThrow(
-                () -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY));
-        if (quantity > stock.getRemainingQuantity()) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
+    /**
+     * Giả thiết A2: topping tính theo ly. Đổi số ly thì scale topping theo tỉ lệ,
+     * topping cũ phải chia hết cho số ly cũ, nếu không bắt FE gửi lại topping.
+     * Lỗi ẩn trước đây: tăng ly nhưng giữ topping -> thiếu tiền + thiếu NVL.
+     */
+    private void scaleToppingsProportionally(UUID cartItemId, int oldQty, int newQty) {
+        if (oldQty == newQty) {
+            return;
+        }
+        var toppings = itemToppingRepository.findByCartItemIdAndStatus(cartItemId, ACTIVE);
+        for (var topping : toppings) {
+            int totalQty = topping.getQuantity();
+            if (totalQty % oldQty != 0) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST,
+                    "Đổi số lượng thì topping phải chia đều theo ly, vui lòng chọn lại topping.");
+            }
+            int perUnit = totalQty / oldQty;
+            int scaled = perUnit * newQty;
+            topping.setQuantity(scaled);
+            topping.setTotalPrice(topping.getUnitPrice().multiply(BigDecimal.valueOf(scaled)));
+            itemToppingRepository.save(topping);
         }
     }
 

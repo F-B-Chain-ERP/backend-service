@@ -4,6 +4,7 @@ import com.erp.core.domain.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -11,11 +12,16 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface OrderRepository extends JpaRepository<Order, UUID> {
+public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
     boolean existsByOrderCode(String orderCode);
 
     Optional<Order> findTopByOrderCodeStartsWithOrderByOrderCodeDesc(String prefix);
 
+    /**
+     * Giữ cho tương thích ngược, không dùng cho list mới (xem {@link OrderSpecifications}).
+     * Query cũ "? is null" sập 500 trên Postgres khi param Instant null.
+     */
+    @Deprecated
     @Query("""
         select o from Order o
         where (:branchId is null or o.branchId = :branchId)

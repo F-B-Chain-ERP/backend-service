@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface OrderService {
-    OrderResponse create(CreateOrderRequest request);
+    OrderResponse create(String idempotencyKey, CreateOrderRequest request);
 
     PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
                                             LocalDate toDate, int page, int size);
@@ -21,6 +21,8 @@ public interface OrderService {
     OrderResponse cancel(UUID id, CancelOrderRequest request);
 
     OrderResponse complete(UUID id, CompleteOrderRequest request);
+
+    OrderResponse updatePaymentStatus(UUID id, UpdatePaymentStatusRequest request);
 
     List<OrderHistoryResponse> history(UUID id);
 }

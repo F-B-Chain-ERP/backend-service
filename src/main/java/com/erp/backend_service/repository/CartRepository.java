@@ -8,6 +8,4 @@ import java.util.UUID;
 
 public interface CartRepository extends JpaRepository<Cart, UUID> {
     Optional<Cart> findByCustomerIdAndBranchIdAndStatus(UUID customerId, UUID branchId, String status);
-
-    Optional<Cart> findBySessionTokenAndBranchIdAndStatus(String sessionToken, UUID branchId, String status);
 }

@@ -6,6 +6,12 @@ import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.OrderService;
+import com.erp.backend_service.service.pos.PosCogsService;
+import com.erp.backend_service.service.pos.PosComboService;
+import com.erp.backend_service.service.pos.PosBranchOpenService;
+import com.erp.backend_service.service.pos.PosFlow;
+import com.erp.backend_service.service.pos.PosIdempotencyService;
+import com.erp.backend_service.service.pos.PosShipperAssignService;
 import com.erp.backend_service.util.CodeGenerator;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.pos.*;
@@ -19,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.*;
 import java.util.*;
 
@@ -40,11 +47,16 @@ public class OrderServiceImpl implements OrderService {
     private final CustomerRepository customerRepository;
     private final BranchRepository branchRepository;
     private final BranchProductAvailabilityRepository availabilityRepository;
-    private final BranchVariantDailyStockRepository stockRepository;
     private final VoucherRepository voucherRepository;
     private final VoucherUsageRepository voucherUsageRepository;
     private final VoucherBranchRepository voucherBranchRepository;
     private final DataScopeHelper dataScopeHelper;
+    private final PosComboService posComboService;
+    private final PosCogsService posCogsService;
+    private final RefundRepository refundRepository;
+    private final PosIdempotencyService posIdempotencyService;
+    private final PosBranchOpenService posBranchOpenService;
+    private final PosShipperAssignService posShipperAssignService;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
@@ -54,9 +66,12 @@ public class OrderServiceImpl implements OrderService {
                             ProductRepository productRepository, ProductVariantRepository variantRepository,
                             ToppingRepository toppingRepository, CustomerRepository customerRepository,
                             BranchRepository branchRepository, BranchProductAvailabilityRepository availabilityRepository,
-                            BranchVariantDailyStockRepository stockRepository,
                             VoucherRepository voucherRepository, VoucherUsageRepository voucherUsageRepository,
-                            VoucherBranchRepository voucherBranchRepository, DataScopeHelper dataScopeHelper) {
+                            VoucherBranchRepository voucherBranchRepository, DataScopeHelper dataScopeHelper,
+                            PosComboService posComboService, PosCogsService posCogsService,
+                            RefundRepository refundRepository, PosIdempotencyService posIdempotencyService,
+                            PosBranchOpenService posBranchOpenService,
+                            PosShipperAssignService posShipperAssignService) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -71,18 +86,59 @@ public class OrderServiceImpl implements OrderService {
         this.customerRepository = customerRepository;
         this.branchRepository = branchRepository;
         this.availabilityRepository = availabilityRepository;
-        this.stockRepository = stockRepository;
         this.voucherRepository = voucherRepository;
         this.voucherUsageRepository = voucherUsageRepository;
         this.voucherBranchRepository = voucherBranchRepository;
         this.dataScopeHelper = dataScopeHelper;
+        this.posComboService = posComboService;
+        this.posCogsService = posCogsService;
+        this.refundRepository = refundRepository;
+        this.posIdempotencyService = posIdempotencyService;
+        this.posBranchOpenService = posBranchOpenService;
+        this.posShipperAssignService = posShipperAssignService;
     }
 
     @Override
     @Transactional
-    public OrderResponse create(CreateOrderRequest request) {
+    public OrderResponse create(String idempotencyKey, CreateOrderRequest request) {
         requireCustomerPermission("pos:order:create");
         UUID customerId = currentCustomerId();
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return createInternal(customerId, request);
+        }
+        String key = idempotencyKey.trim();
+        String hash = posIdempotencyService.hash(customerId, canonicalRequest(request));
+        // Retry cùng key+hash -> trả đơn cũ, không tạo mới, không trừ voucher/kho lần 2.
+        Optional<UUID> replayed = posIdempotencyService.replayOrderId(key, hash);
+        if (replayed.isPresent()) {
+            Order existing =
+                orderRepository.findById(replayed.get())
+                    .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_ORDER_NOT_FOUND));
+            if (!customerId.equals(existing.getCustomerId())) {
+                throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
+            }
+            return toResponse(existing);
+        }
+        IdempotencyKey record = posIdempotencyService.claim(key, hash);
+        try {
+            OrderResponse response = createInternal(customerId, request);
+            posIdempotencyService.succeeded(record, response.id());
+            return response;
+        } catch (RuntimeException e) {
+            posIdempotencyService.failed(record);
+            throw e;
+        }
+    }
+
+    private String canonicalRequest(CreateOrderRequest request) {
+        return String.join("|", String.valueOf(request.branchId()), String.valueOf(request.orderType()),
+            String.valueOf(request.voucherCode()), String.valueOf(request.receiverName()),
+            String.valueOf(request.receiverPhone()), String.valueOf(request.shippingAddress()),
+            String.valueOf(request.paymentMethod()), String.valueOf(request.note()),
+            String.valueOf(request.sessionToken()));
+    }
+
+    private OrderResponse createInternal(UUID customerId, CreateOrderRequest request) {
         Branch branch = branchRepository.findById(request.branchId())
                                         .orElseThrow(() -> new BaseException(ErrorCode.INV_404_BRANCH_NOT_FOUND));
         if (!"ACTIVE".equals(branch.getStatus())) {
@@ -132,28 +188,41 @@ public class OrderServiceImpl implements OrderService {
                 if (!ACTIVE.equals(variant.getStatus())) {
                     throw new BaseException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm không còn khả dụng.");
                 }
-                checkStock(request.branchId(), ci.getVariantId(), ci.getQuantity());
             }
+            // Giả thiết B1: subtotal phải khớp Cart (item + topping). Giả thiết combo A4 tái validate ở chốt đơn.
+            posComboService.validateForSale(ci.getProductId(), ci.getVariantId(), ci.getQuantity(),
+                request.branchId());
             subtotal = subtotal.add(ci.getTotalPrice());
+            BigDecimal toppingsTotal = cartItemToppingRepository.findByCartItemIdAndStatus(ci.getId(), ACTIVE)
+                .stream()
+                .map(CartItemTopping::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            subtotal = subtotal.add(toppingsTotal);
             checked.add(ci);
         }
 
         BigDecimal discount = BigDecimal.ZERO;
         Voucher voucher = null;
         if (request.voucherCode() != null && !request.voucherCode().isBlank()) {
-            voucher = voucherRepository.findByCodeIgnoreCaseAndStatus(request.voucherCode().trim(), ACTIVE).orElseThrow(
-                () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
-            if (voucherBranchRepository.findByVoucherIdAndBranchIdAndStatus(voucher.getId(), request.branchId(), ACTIVE)
-                                        .isEmpty()) {
+            // Check rẻ (chi nhánh, hạn, giá trị tối thiểu) đọc không lock để khỏi giữ lock lâu.
+            Voucher preview =
+                voucherRepository.findByCodeIgnoreCaseAndStatus(request.voucherCode().trim(), ACTIVE).orElseThrow(
+                    () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
+            if (voucherBranchRepository.findByVoucherIdAndBranchIdAndStatus(preview.getId(), request.branchId(),
+                ACTIVE).isEmpty()) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không áp dụng tại chi nhánh này.");
             }
             Instant now = Instant.now();
-            if (now.isBefore(voucher.getStartAt()) || now.isAfter(voucher.getEndAt())) {
+            if (now.isBefore(preview.getStartAt()) || now.isAfter(preview.getEndAt())) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher đã hết hạn hoặc chưa bắt đầu.");
             }
-            if (subtotal.compareTo(voucher.getMinOrderAmount()) < 0) {
+            if (subtotal.compareTo(preview.getMinOrderAmount()) < 0) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Đơn hàng chưa đạt giá trị tối thiểu của voucher.");
             }
+            // Lock bi quan row voucher: check hạn mức + ghi usage + tăng usedCount thành 1 khối,
+            // 2 đơn cùng lúc không thể cùng lọt (kể cả limit-theo-khách vì count nằm trong lock).
+            voucher = voucherRepository.findByIdForUpdate(preview.getId()).orElseThrow(
+                () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
             if (voucher.getUsageLimit() != null && voucher.getUsedCount() >= voucher.getUsageLimit()) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher đã hết lượt sử dụng.");
             }
@@ -162,8 +231,10 @@ public class OrderServiceImpl implements OrderService {
                     voucher.getUsageLimitPerCustomer()) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Bạn đã sử dụng voucher quá số lần cho phép.");
             }
+            // Giả thiết B2: PERCENT làm tròn HALF_UP 2 decimals để không crash số lẻ.
             discount = "PERCENT".equalsIgnoreCase(voucher.getDiscountType()) ?
-                subtotal.multiply(voucher.getDiscountValue()).divide(BigDecimal.valueOf(100)) :
+                subtotal.multiply(voucher.getDiscountValue())
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP) :
                 voucher.getDiscountValue();
             if (voucher.getMaxDiscountAmount() != null) {
                 discount = discount.min(voucher.getMaxDiscountAmount());
@@ -210,9 +281,12 @@ public class OrderServiceImpl implements OrderService {
             oi.setNote(ci.getNote());
             oi.setUnitPrice(ci.getUnitPrice());
             oi.setTotalPrice(ci.getTotalPrice());
-            oi.setUnitCogsAmount(BigDecimal.ZERO);
+            // Giả thiết B3: COGS từ BOM × giá NCC ưu tiên, thiếu thì ZERO (không chặn bán).
+            BigDecimal unitCogs = posCogsService.unitCogs(ci.getVariantId());
+            oi.setUnitCogsAmount(unitCogs);
             oi.setStatus(ACTIVE);
             oi = itemRepository.save(oi);
+            o.setTotalCogsAmount(o.getTotalCogsAmount().add(unitCogs.multiply(BigDecimal.valueOf(ci.getQuantity()))));
             for (CartItemTopping ct : cartItemToppingRepository.findByCartItemIdAndStatus(ci.getId(), ACTIVE)) {
                 Topping t = toppingRepository.findById(ct.getToppingId()).orElseThrow();
                 OrderItemTopping ot = new OrderItemTopping();
@@ -228,6 +302,31 @@ public class OrderServiceImpl implements OrderService {
             }
         }
         writeHistory(o, null, "PENDING", "Khởi tạo đơn hàng từ Cart");
+        // Tạo delivery record TRƯỚC auto-confirm để auto-assign tìm thấy (bug cũ:
+        // record tạo sau nên autoAssign luôn thấy trống và bỏ qua).
+        if ("DELIVERY".equals(o.getOrderType())) {
+            OrderDelivery d = new OrderDelivery();
+            d.setOrderId(o.getId());
+            d.setReceiverName(o.getCustomerName());
+            d.setReceiverPhone(o.getCustomerPhone());
+            d.setDeliveryAddress(o.getDeliveryAddress());
+            d.setDeliveryFee(fee);
+            d.setStatus("PENDING");
+            deliveryRepository.save(d);
+        }
+        // Tự động CONFIRMED khi đủ điều kiện (tiền mặt/COD + chi nhánh mở cửa):
+        // quán không phải bấm tay từng đơn, trang quản lý chỉ xử lý đơn kẹt.
+        // Online (VNPAY/MOMO/BANK_TRANSFER) ở lại PENDING chờ thanh toán thật.
+        if (isAutoConfirmable(o)) {
+            String confirmedOld = o.getStatus();
+            o.setStatus(PosFlow.Order.CONFIRMED.name());
+            o.setConfirmedAt(Instant.now());
+            orderRepository.save(o);
+            reserveAll(o);
+            posShipperAssignService.autoAssign(o);
+            writeHistory(o, confirmedOld, PosFlow.Order.CONFIRMED.name(),
+                "Tự động xác nhận: chi nhánh mở cửa và thanh toán tiền mặt/COD");
+        }
         if (voucher != null) {
             VoucherUsage vu = new VoucherUsage();
             vu.setVoucherId(voucher.getId());
@@ -239,16 +338,6 @@ public class OrderServiceImpl implements OrderService {
             voucherUsageRepository.save(vu);
             voucher.setUsedCount(voucher.getUsedCount() + 1);
             voucherRepository.save(voucher);
-        }
-        if ("DELIVERY".equals(o.getOrderType())) {
-            OrderDelivery d = new OrderDelivery();
-            d.setOrderId(o.getId());
-            d.setReceiverName(o.getCustomerName());
-            d.setReceiverPhone(o.getCustomerPhone());
-            d.setDeliveryAddress(o.getDeliveryAddress());
-            d.setDeliveryFee(fee);
-            d.setStatus("PENDING");
-            deliveryRepository.save(d);
         }
         cartItemToppingRepository.deleteAll(cartItems.stream().flatMap(
             i -> cartItemToppingRepository.findByCartItemIdAndStatus(i.getId(), ACTIVE).stream()).toList());
@@ -276,8 +365,9 @@ public class OrderServiceImpl implements OrderService {
         }
         Instant from = fromDate == null ? null : fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant to = toDate == null ? null : toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Page<Order> p = orderRepository.search(effectiveBranch, customerId, orderType, status, from, to,
-                                               PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        Page<Order> p = orderRepository.findAll(
+            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status, from, to),
+            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
         return new PageResponse<>(p.getNumber(), p.getSize(), p.getTotalElements(), p.getTotalPages(),
                                   p.getContent().stream().map(
                                       o -> new OrderSummaryResponse(o.getId(), o.getOrderCode(), o.getBranchId(),
@@ -299,34 +389,64 @@ public class OrderServiceImpl implements OrderService {
     public OrderStatusResponse updateStatus(UUID id, UpdateOrderStatusRequest request) {
         requirePermission("pos:order:update");
         Order o = findAccessible(id);
-        String target = request.status().trim().toUpperCase(Locale.ROOT);
-        if (!validTransition(o.getStatus(), target)) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION);
-        }
-        if ("COMPLETED".equals(target) && !"PAID".equalsIgnoreCase(o.getPaymentStatus())) {
-            throw new BaseException(ErrorCode.ORDER_400_UNPAID);
+        PosFlow.Order target = PosFlow.parseOrder(request.status());
+        PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
+        PosFlow.requireOrderTransition(current, target);
+        if (target == PosFlow.Order.COMPLETED) {
+            if (!"PAID".equalsIgnoreCase(o.getPaymentStatus())) {
+                throw new BaseException(ErrorCode.ORDER_400_UNPAID);
+            }
+            // Hoàn tất đúng chặng theo loại đơn (giống complete()): PICKUP từ READY,
+            // DELIVERY từ DELIVERING. Cấm DELIVERY nhảy READY -> COMPLETED bỏ qua giao hàng.
+            boolean pickupReady = "PICKUP".equals(o.getOrderType()) && current == PosFlow.Order.READY;
+            boolean deliveryDelivering =
+                "DELIVERY".equals(o.getOrderType()) && current == PosFlow.Order.DELIVERING;
+            if (!(pickupReady || deliveryDelivering)) {
+                throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION);
+            }
         }
         String old = o.getStatus();
-        o.setStatus(target);
+        o.setStatus(target.name());
         Instant now = Instant.now();
         switch (target) {
-            case "CONFIRMED" -> o.setConfirmedAt(now);
-            case "PREPARING" -> o.setPreparedAt(now);
-            case "READY" -> o.setReadyAt(now);
-            case "DELIVERING" -> o.setDeliveringAt(now);
-            case "COMPLETED" -> {
-                o.setCompletedAt(now);
-                deductStock(o);
+            case CONFIRMED -> {
+                o.setConfirmedAt(now);
+                // Giả thiết C1: reserve tồn ngay khi quán nhận đơn (lock + log), khỏi oversell.
+                reserveAll(o);
+                // Đơn giao: thử gán shipper rảnh nhất luôn, không có xe thì chờ gán tay.
+                posShipperAssignService.autoAssign(o);
             }
-            case "CANCELLED" -> o.setCancelledAt(now);
-            case "REJECTED" -> o.setRejectedAt(now);
+            case PREPARING -> o.setPreparedAt(now);
+            case READY -> o.setReadyAt(now);
+            case DELIVERING -> o.setDeliveringAt(now);
+            case COMPLETED -> {
+                // Đã reserve ở CONFIRMED nên không trừ lần 2 (lỗi ẩn double-deduct cũ).
+                o.setCompletedAt(now);
+            }
+            case CANCELLED -> {
+                o.setCancelledAt(now);
+                restoreVoucher(o);
+                // PENDING chưa reserve nên không hoàn (hoàn thừa sẽ phình tồn).
+                if (current != PosFlow.Order.PENDING) {
+                    releaseAll(o);
+                }
+                cancelDelivery(o);
+            }
+            case REJECTED -> {
+                o.setRejectedAt(now);
+                restoreVoucher(o);
+                if (current != PosFlow.Order.PENDING) {
+                    releaseAll(o);
+                }
+                cancelDelivery(o);
+            }
             default -> {
             }
         }
         orderRepository.save(o);
         UUID by = currentPrincipalId();
-        writeHistory(o, old, target, request.note());
-        return new OrderStatusResponse(o.getId(), o.getOrderCode(), old, target, by, now);
+        writeHistory(o, old, target.name(), request.note());
+        return new OrderStatusResponse(o.getId(), o.getOrderCode(), old, target.name(), by, now);
     }
 
     @Override
@@ -334,16 +454,25 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse cancel(UUID id, CancelOrderRequest request) {
         requirePermission("pos:order:cancel");
         Order o = findAccessible(id);
-        if (!Set.of("PENDING", "CONFIRMED", "PREPARING").contains(o.getStatus())) {
+        PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
+        if (!(current == PosFlow.Order.PENDING || current == PosFlow.Order.CONFIRMED ||
+            current == PosFlow.Order.PREPARING)) {
             throw new BaseException(ErrorCode.ORDER_400_ORDER_NOT_CANCELLABLE);
         }
         String old = o.getStatus();
-        o.setStatus("CANCELLED");
+        o.setStatus(PosFlow.Order.CANCELLED.name());
         o.setCancelReason(request.reason());
         o.setCancelledAt(Instant.now());
         orderRepository.save(o);
         restoreVoucher(o);
-        writeHistory(o, old, "CANCELLED", request.note() != null ? request.note() : request.reason());
+        // Chỉ hoàn tồn nếu đơn đã từng reserve (CONFIRMED trở đi); PENDING thì chưa trừ.
+        if (current != PosFlow.Order.PENDING) {
+            releaseAll(o);
+        }
+        cancelDelivery(o);
+        // Giả thiết D1: hủy đơn đã PAID phải sinh refund PENDING cho kế toán, tránh mất tiền khách.
+        refundIfPaid(o, request.reason());
+        writeHistory(o, old, PosFlow.Order.CANCELLED.name(), request.note() != null ? request.note() : request.reason());
         return toResponse(o);
     }
 
@@ -352,33 +481,59 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse complete(UUID id, CompleteOrderRequest request) {
         requirePermission("pos:order:update");
         Order o = findAccessible(id);
-        if (!"PAID".equalsIgnoreCase(o.getPaymentStatus())) {
+        if (!PosFlow.Payment.PAID.name().equalsIgnoreCase(o.getPaymentStatus())) {
             throw new BaseException(ErrorCode.ORDER_400_UNPAID);
         }
-        if (!Set.of("READY", "DELIVERING").contains(o.getStatus())) {
+        // Giả thiết C2: PICKUP kết ở READY, DELIVERY kết ở DELIVERING. Không ép PICKUP qua DELIVERING.
+        PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
+        boolean pickupReady = "PICKUP".equals(o.getOrderType()) && current == PosFlow.Order.READY;
+        boolean deliveryDelivering = "DELIVERY".equals(o.getOrderType()) && current == PosFlow.Order.DELIVERING;
+        if (!(pickupReady || deliveryDelivering)) {
             throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION);
         }
         String old = o.getStatus();
         Instant now = Instant.now();
-        o.setStatus("COMPLETED");
+        o.setStatus(PosFlow.Order.COMPLETED.name());
         o.setCompletedAt(now);
         orderRepository.save(o);
-        for (OrderItem oi : itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(o.getId(), ACTIVE)) {
-            if (oi.getVariantId() != null) {
-                BranchVariantDailyStock s =
-                    stockRepository.findByBranchIdAndVariantIdAndBusinessDateAndStatus(o.getBranchId(),
-                                                                                       oi.getVariantId(),
-                                                                                       LocalDate.now(), ACTIVE)
-                                   .orElseThrow(() -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY));
-                if (s.getRemainingQuantity() < oi.getQuantity()) {
-                    throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
-                }
-                s.setRemainingQuantity(s.getRemainingQuantity() - oi.getQuantity());
-                s.setSoldQuantity(s.getSoldQuantity() + oi.getQuantity());
-                stockRepository.save(s);
-            }
+        writeHistory(o, old, PosFlow.Order.COMPLETED.name(), request.note());
+        return toResponse(o);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updatePaymentStatus(UUID id, UpdatePaymentStatusRequest request) {
+        // Luật tiền 1 chiều: chỉ UNPAID -> PAID (thu tiền). PAID muốn đảo phải hủy đơn
+        // để sinh refund PENDING (payment -> REFUNDED do hệ thống set), cấm un-thu tay
+        // và cấm set REFUNDED tay (không có chứng từ refund đi kèm).
+        requirePermission("pos:order:update");
+        Order o = findAccessible(id);
+        PosFlow.Payment target = PosFlow.parsePayment(request.status());
+        PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
+        if (current == PosFlow.Order.CANCELLED || current == PosFlow.Order.REJECTED ||
+            current == PosFlow.Order.COMPLETED) {
+            throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION,
+                "Đơn ở trạng thái hiện tại không được đổi thanh toán.");
         }
-        writeHistory(o, old, "COMPLETED", request.note());
+        boolean alreadyPaid = PosFlow.Payment.PAID.name().equalsIgnoreCase(o.getPaymentStatus());
+        if (target == PosFlow.Payment.PAID) {
+            if (alreadyPaid) {
+                return toResponse(o);
+            }
+        } else if (target == PosFlow.Payment.UNPAID) {
+            if (!alreadyPaid) {
+                return toResponse(o);
+            }
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Đơn đã thu tiền không được chuyển về chưa trả, hãy hủy đơn để hoàn tiền.");
+        } else {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Hoàn tiền chỉ thực hiện qua hủy đơn, không đổi tay.");
+        }
+        o.setPaymentStatus(target.name());
+        orderRepository.save(o);
+        writeHistory(o, o.getStatus(), o.getStatus(),
+            "Thu tiền -> " + target.name() + (request.note() != null ? ": " + request.note() : ""));
         return toResponse(o);
     }
 
@@ -405,10 +560,10 @@ public class OrderServiceImpl implements OrderService {
         return o;
     }
 
+    // Quyết định nghiệp vụ: bỏ luồng guest, checkout bắt buộc CUSTOMER login.
+    // Tham số token giữ ở DTO để tương thích FE nhưng backend ignore hoàn toàn.
     private Cart findCart(UUID customerId, UUID branchId, String token) {
-        return cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, ACTIVE).orElseGet(
-            () -> token == null ? null :
-                cartRepository.findBySessionTokenAndBranchIdAndStatus(token, branchId, ACTIVE).orElse(null));
+        return cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, ACTIVE).orElse(null);
     }
 
     private void writeHistory(Order o, String old, String target, String reason) {
@@ -434,41 +589,54 @@ public class OrderServiceImpl implements OrderService {
         });
     }
 
-    private boolean validTransition(String a, String b) {
-        return (a.equals("PENDING") && b.equals("CONFIRMED")) ||
-            (a.equals("CONFIRMED") && b.equals("PREPARING")) ||
-            (a.equals("PREPARING") && b.equals("READY")) ||
-            (a.equals("READY") && b.equals("DELIVERING")) ||
-            (a.equals("DELIVERING") && b.equals("COMPLETED")) ||
-            (Set.of("PENDING", "CONFIRMED", "PREPARING").contains(a) && b.equals("CANCELLED")) ||
-            (Set.of("PENDING", "CONFIRMED", "PREPARING").contains(a) && b.equals("REJECTED"));
+    /**
+     * Điều kiện tự động CONFIRMED lúc tạo đơn: tiền mặt/COD (online phải chờ tiền thật)
+     * và chi nhánh đang mở cửa. Thiếu 1 trong 2 -> ở PENDING chờ staff xử lý tay.
+     */
+    private boolean isAutoConfirmable(Order order) {
+        boolean cashLike = "COD".equals(order.getPaymentMethod()) || "CASH".equals(order.getPaymentMethod());
+        return cashLike && posBranchOpenService.isOpenNow(order.getBranchId());
     }
 
-    private void checkStock(UUID branch, UUID variant, int qty) {
-        BranchVariantDailyStock s =
-            stockRepository.findByBranchIdAndVariantIdAndBusinessDateAndStatus(branch, variant, LocalDate.now(), ACTIVE)
-                           .orElseThrow(() -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY));
-        if (qty > s.getRemainingQuantity()) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
+    private void reserveAll(Order order) {        for (OrderItem oi : itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE)) {
+            posComboService.reserveForSale(order.getBranchId(), oi.getProductId(), oi.getVariantId(),
+                oi.getQuantity(), order.getId());
         }
     }
 
-    private void deductStock(Order order) {
+    private void releaseAll(Order order) {
         for (OrderItem oi : itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE)) {
-            if (oi.getVariantId() != null) {
-                BranchVariantDailyStock s =
-                    stockRepository.findByBranchIdAndVariantIdAndBusinessDateAndStatus(order.getBranchId(),
-                                                                                       oi.getVariantId(),
-                                                                                       LocalDate.now(), ACTIVE)
-                                   .orElseThrow(() -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY));
-                if (s.getRemainingQuantity() < oi.getQuantity()) {
-                    throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
-                }
-                s.setRemainingQuantity(s.getRemainingQuantity() - oi.getQuantity());
-                s.setSoldQuantity(s.getSoldQuantity() + oi.getQuantity());
-                stockRepository.save(s);
-            }
+            posComboService.releaseForSale(order.getBranchId(), oi.getProductId(), oi.getVariantId(),
+                oi.getQuantity(), order.getId());
         }
+    }
+
+    private void cancelDelivery(Order o) {
+        // Lỗi ẩn orphan: hủy đơn mà delivery còn PENDING -> shipper vẫn thấy đơn.
+        deliveryRepository.findByOrderId(o.getId()).ifPresent(d -> {
+            if (!PosFlow.Delivery.CANCELLED.name().equals(d.getStatus())) {
+                d.setStatus(PosFlow.Delivery.CANCELLED.name());
+                deliveryRepository.save(d);
+            }
+        });
+    }
+
+    private void refundIfPaid(Order o, String reason) {
+        if (!PosFlow.Payment.PAID.name().equalsIgnoreCase(o.getPaymentStatus())) {
+            return;
+        }
+        if (refundRepository.existsByOrderIdAndStatus(o.getId(), "PENDING")) {
+            return;
+        }
+        Refund refund = new Refund();
+        refund.setOrderId(o.getId());
+        refund.setRefundCode(CodeGenerator.random("RF-", refundRepository::existsByRefundCode));
+        refund.setAmount(o.getTotalAmount() != null ? o.getTotalAmount() : BigDecimal.ZERO);
+        refund.setReason(reason != null ? reason : "Hoàn tiền đơn hủy");
+        refund.setStatus("PENDING");
+        refundRepository.save(refund);
+        o.setPaymentStatus(PosFlow.Payment.REFUNDED.name());
+        orderRepository.save(o);
     }
 
     private String generateOrderCode() {
@@ -479,19 +647,44 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponse toResponse(Order o) {
-        List<OrderItemResponse> items =
-            itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(o.getId(), ACTIVE).stream().map(i -> {
-                List<OrderItemToppingResponse> tops =
-                    itemToppingRepository.findByOrderItemIdAndStatus(i.getId(), ACTIVE).stream().map(
-                        t -> new OrderItemToppingResponse(t.getToppingId(), t.getToppingName(), t.getQuantity(),
-                                                          t.getUnitPrice(), t.getTotalPrice())).toList();
-                ProductVariant variant = i.getVariantId() == null ? null : variantRepository.findById(i.getVariantId()).orElse(null);
-                return new OrderItemResponse(i.getId(), i.getProductCode(), i.getProductName(), i.getVariantId(),
-                                             variant == null ? null : variant.getVariantCode(), i.getVariantName(),
-                                             i.getQuantity(), i.getIceLevel(), i.getSugarLevel(),
-                                             i.getNote(), i.getUnitPrice(), i.getTotalPrice(), i.getUnitCogsAmount(),
-                                             tops);
-            }).toList();
+        // Bulk 1 lần: items + toppings + variant + product (ảnh), tránh N+1 theo từng dòng.
+        List<OrderItem> orderItems =
+            itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(o.getId(), ACTIVE);
+        Map<UUID, List<OrderItemTopping>> topsByItem = new HashMap<>();
+        if (!orderItems.isEmpty()) {
+            List<UUID> itemIds = orderItems.stream().map(OrderItem::getId).toList();
+            for (OrderItemTopping topping :
+                itemToppingRepository.findByOrderItemIdInAndStatus(itemIds, ACTIVE)) {
+                topsByItem.computeIfAbsent(topping.getOrderItemId(), k -> new ArrayList<>()).add(topping);
+            }
+        }
+        Map<UUID, ProductVariant> variantMap = new HashMap<>();
+        Map<UUID, Product> productMap = new HashMap<>();
+        if (!orderItems.isEmpty()) {
+            List<UUID> variantIds =
+                orderItems.stream().map(OrderItem::getVariantId).filter(Objects::nonNull).distinct().toList();
+            if (!variantIds.isEmpty()) {
+                variantRepository.findAllById(variantIds).forEach(v -> variantMap.put(v.getId(), v));
+            }
+            List<UUID> productIds =
+                orderItems.stream().map(OrderItem::getProductId).filter(Objects::nonNull).distinct().toList();
+            if (!productIds.isEmpty()) {
+                productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
+            }
+        }
+        List<OrderItemResponse> items = orderItems.stream().map(i -> {
+            List<OrderItemToppingResponse> tops =
+                topsByItem.getOrDefault(i.getId(), List.of()).stream().map(
+                    t -> new OrderItemToppingResponse(t.getToppingId(), t.getToppingName(), t.getQuantity(),
+                                                      t.getUnitPrice(), t.getTotalPrice())).toList();
+            ProductVariant variant = i.getVariantId() == null ? null : variantMap.get(i.getVariantId());
+            Product product = i.getProductId() == null ? null : productMap.get(i.getProductId());
+            return new OrderItemResponse(i.getId(), i.getProductCode(), i.getProductName(), i.getVariantId(),
+                                         variant == null ? null : variant.getVariantCode(), i.getVariantName(),
+                                         i.getQuantity(), i.getIceLevel(), i.getSugarLevel(),
+                                         i.getNote(), i.getUnitPrice(), i.getTotalPrice(), i.getUnitCogsAmount(),
+                                         tops, product == null ? null : product.getImageUrl());
+        }).toList();
         OrderDelivery d = deliveryRepository.findByOrderId(o.getId()).orElse(null);
         DeliveryResponse dr = d == null ? null :
             new DeliveryResponse(d.getId(), d.getOrderId(), d.getShipperId(), d.getReceiverName(), d.getReceiverPhone(),

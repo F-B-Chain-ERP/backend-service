@@ -23,8 +23,11 @@ public class OrderController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<OrderResponse>> create(@Valid @RequestBody CreateOrderRequest request) {
-        return ResponseEntity.status(201).body(ApiResponse.created(service.create(request), "Tạo đơn hàng thành công"));
+    public ResponseEntity<ApiResponse<OrderResponse>> create(
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+        @Valid @RequestBody CreateOrderRequest request) {
+        return ResponseEntity.status(201).body(
+            ApiResponse.created(service.create(idempotencyKey, request), "Tạo đơn hàng thành công"));
     }
 
     @GetMapping
@@ -60,6 +63,13 @@ public class OrderController {
     public ResponseEntity<ApiResponse<OrderResponse>> complete(@PathVariable UUID id,
                                                                @Valid @RequestBody CompleteOrderRequest request) {
         return ResponseEntity.ok(ApiResponse.success(service.complete(id, request), "Hoàn tất đơn hàng thành công"));
+    }
+
+    @PostMapping("/{id}/payment")
+    public ResponseEntity<ApiResponse<OrderResponse>> payment(@PathVariable UUID id,
+                                                              @Valid @RequestBody UpdatePaymentStatusRequest request) {
+        return ResponseEntity.ok(
+            ApiResponse.success(service.updatePaymentStatus(id, request), "Cập nhật thanh toán thành công"));
     }
 
     @GetMapping("/{id}/history")

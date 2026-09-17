@@ -70,7 +70,8 @@ public class SecurityConfiguration {
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html",
-            "/api/v1/sales/**"
+            "/api/v1/sales/**",
+            "/api/v1/public/**"
     };
 
     /**

@@ -13,6 +13,13 @@ import com.erp.core.dto.request.branch.CreateBranchRequest;
 import com.erp.core.dto.request.branch.UpdateBranchRequest;
 import com.erp.core.dto.response.branch.BranchResponse;
 import com.erp.core.dto.auth.ScopeResponse;
+import com.erp.backend_service.repository.OrderRepository;
+import com.erp.backend_service.repository.ScopeRepository;
+import com.erp.backend_service.repository.ShiftAssignmentRepository;
+import com.erp.backend_service.repository.WarehouseRepository;
+import com.erp.backend_service.service.BranchHoursService;
+import com.erp.core.domain.Scope;
+import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,12 +45,27 @@ public class BranchServiceImpl implements BranchService {
     private final BranchRepository branchRepository;
     private final BranchMapper branchMapper;
     private final com.erp.backend_service.repository.AccountRepository accountRepository;
+    private final ScopeRepository scopeRepository;
+    private final BranchHoursService branchHoursService;
+    private final OrderRepository orderRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final ShiftAssignmentRepository shiftAssignmentRepository;
 
     public BranchServiceImpl(BranchRepository branchRepository, BranchMapper branchMapper,
-                             com.erp.backend_service.repository.AccountRepository accountRepository) {
+                             com.erp.backend_service.repository.AccountRepository accountRepository,
+                             ScopeRepository scopeRepository,
+                             BranchHoursService branchHoursService,
+                             OrderRepository orderRepository,
+                             WarehouseRepository warehouseRepository,
+                             ShiftAssignmentRepository shiftAssignmentRepository) {
         this.branchRepository = branchRepository;
         this.branchMapper = branchMapper;
         this.accountRepository = accountRepository;
+        this.scopeRepository = scopeRepository;
+        this.branchHoursService = branchHoursService;
+        this.orderRepository = orderRepository;
+        this.warehouseRepository = warehouseRepository;
+        this.shiftAssignmentRepository = shiftAssignmentRepository;
     }
 
     /** {@inheritDoc} */
@@ -109,14 +131,29 @@ public class BranchServiceImpl implements BranchService {
     @Transactional
     public BranchResponse create(CreateBranchRequest request) {
         if (branchRepository.existsByCode(request.code())) {
-            throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
+            throw new BaseException(ErrorCode.BRANCH_400_CODE_EXISTS);
         }
         Branch branch = new Branch();
         applyRequest(branch, request.code(), request.name(), request.address(), request.phone(),
                 request.email(), request.latitude(), request.longitude(), request.timezone(),
                 request.supportsPickup(), request.supportsDelivery(),
                 request.averagePreparationMinutes(), request.status(), request.parentId());
-        return branchMapper.toResponse(branchRepository.save(branch), Map.of());
+        Branch saved = branchRepository.save(branch);
+
+        // BR-ORG-07: Tự động tạo bản ghi Scope loại STORE cho chi nhánh mới
+        scopeRepository.findByScopeTypeAndBranchId(ScopeType.STORE, saved.getId())
+                .orElseGet(() -> {
+                    Scope scope = new Scope();
+                    scope.setScopeType(ScopeType.STORE);
+                    scope.setBranchId(saved.getId());
+                    scope.setStatus(EntityStatus.ACTIVE);
+                    return scopeRepository.save(scope);
+                });
+
+        // BR-ORG-07: Tự động khởi tạo 7 bản ghi branch_hours mặc định
+        branchHoursService.initDefaultHours(saved.getId());
+
+        return branchMapper.toResponse(saved, Map.of());
     }
 
     /** {@inheritDoc} */
@@ -145,6 +182,12 @@ public class BranchServiceImpl implements BranchService {
     public void delete(UUID id) {
         if (!branchRepository.existsById(id)) {
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        // BR-ORG-02: Khóa xóa chi nhánh đã phát sinh kho hàng, đơn hàng hoặc ca làm việc
+        if (orderRepository.existsByBranchId(id)
+                || warehouseRepository.existsByBranchId(id)
+                || shiftAssignmentRepository.existsByBranchId(id)) {
+            throw new BaseException(ErrorCode.BRANCH_400_CANNOT_DELETE_ACTIVE_RESOURCES);
         }
         branchRepository.deleteById(id);
     }

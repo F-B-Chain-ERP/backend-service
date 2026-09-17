@@ -40,26 +40,61 @@ public class PosBranchOpenService {
         } catch (Exception e) {
             zone = ZoneId.of("Asia/Ho_Chi_Minh");
         }
-        ZonedDateTime now = ZonedDateTime.now(zone);
-        int dayOfWeek = now.getDayOfWeek().getValue(); // MONDAY=1..SUNDAY=7, khớp ck_branch_hours_day
-        Optional<BranchHours> hours = hoursRepository.findByBranchIdAndDayOfWeekAndStatus(branchId, dayOfWeek,
-            "ACTIVE");
-        if (hours.isEmpty()) {
+        return isOpenAt(branchId, ZonedDateTime.now(zone));
+    }
+
+    /**
+     * Kiểm tra trạng thái mở cửa tại một thời điểm cụ thể theo múi giờ chi nhánh.
+     * Hỗ trợ ca thường trong ngày và ca qua đêm kéo dài từ tối hôm qua sang sáng sớm hôm nay.
+     */
+    @Transactional(readOnly = true)
+    public boolean isOpenAt(UUID branchId, ZonedDateTime targetTime) {
+        int todayDayOfWeek = targetTime.getDayOfWeek().getValue(); // MONDAY=1..SUNDAY=7
+        LocalTime currentTime = targetTime.toLocalTime();
+
+        // 1. Kiểm tra cấu hình của ngày hôm nay
+        Optional<BranchHours> todayOpt = hoursRepository.findByBranchIdAndDayOfWeekAndStatus(
+                branchId, todayDayOfWeek, "ACTIVE");
+        if (todayOpt.isPresent()) {
+            BranchHours h = todayOpt.get();
+            if (!h.isClosed() && h.getOpenTime() != null && h.getCloseTime() != null) {
+                LocalTime open = h.getOpenTime();
+                LocalTime close = h.getCloseTime();
+                if (close.isAfter(open)) {
+                    // Ca thường trong ngày (vd: 07:00 - 22:00)
+                    if (!currentTime.isBefore(open) && currentTime.isBefore(close)) {
+                        return true;
+                    }
+                } else {
+                    // Ca qua đêm bắt đầu từ ngày hôm nay (vd: 20:00 hôm nay - 02:00 sáng mai)
+                    if (!currentTime.isBefore(open)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // 2. Kiểm tra ca qua đêm bắt đầu từ HÔM QUA kéo dài sang sáng sớm hôm nay
+        int yesterdayDayOfWeek = todayDayOfWeek == 1 ? 7 : todayDayOfWeek - 1;
+        Optional<BranchHours> yesterdayOpt = hoursRepository.findByBranchIdAndDayOfWeekAndStatus(
+                branchId, yesterdayDayOfWeek, "ACTIVE");
+        if (yesterdayOpt.isPresent()) {
+            BranchHours y = yesterdayOpt.get();
+            if (!y.isClosed() && y.getOpenTime() != null && y.getCloseTime() != null) {
+                LocalTime open = y.getOpenTime();
+                LocalTime close = y.getCloseTime();
+                // Nếu ca hôm qua là ca qua đêm (close <= open) và hiện tại chưa tới close_time của hôm qua
+                if (!close.isAfter(open) && currentTime.isBefore(close)) {
+                    return true;
+                }
+            }
+        }
+
+        // Không cấu hình giờ ở cả hôm nay và hôm qua -> coi như mở (fail-open)
+        if (todayOpt.isEmpty() && yesterdayOpt.isEmpty()) {
             return true;
         }
-        BranchHours h = hours.get();
-        if (h.isClosed()) {
-            return false;
-        }
-        LocalTime time = now.toLocalTime();
-        LocalTime open = h.getOpenTime();
-        LocalTime close = h.getCloseTime();
-        if (open == null || close == null) {
-            return true;
-        }
-        if (!close.isAfter(open)) {
-            return !time.isBefore(open) || time.isBefore(close);
-        }
-        return !time.isBefore(open) && time.isBefore(close);
+
+        return false;
     }
 }

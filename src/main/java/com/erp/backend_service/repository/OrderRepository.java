@@ -48,4 +48,35 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
     java.util.List<Order> findOrdersInShiftWindow(@Param("branchId") UUID branchId,
                                                   @Param("fromInstant") Instant fromInstant,
                                                   @Param("toInstant") Instant toInstant);
+
+    boolean existsByBranchId(UUID branchId);
+
+    boolean existsByPickupTimeSlotId(UUID pickupTimeSlotId);
+
+    @Query("""
+        select o.pickupTimeSlotId, count(o) from Order o
+        where o.branchId = :branchId
+          and o.pickupTimeSlotId in :slotIds
+          and o.createdAt >= :startOfDay
+          and o.createdAt < :endOfDay
+          and o.status not in ('CANCELLED', 'REJECTED')
+        group by o.pickupTimeSlotId
+        """)
+    java.util.List<Object[]> countActiveOrdersBySlotIdsOnDate(@Param("branchId") UUID branchId,
+                                                             @Param("slotIds") java.util.Collection<UUID> slotIds,
+                                                             @Param("startOfDay") Instant startOfDay,
+                                                             @Param("endOfDay") Instant endOfDay);
+
+    @Query("""
+        select count(o) from Order o
+        where o.branchId = :branchId
+          and o.pickupTimeSlotId = :slotId
+          and o.createdAt >= :startOfDay
+          and o.createdAt < :endOfDay
+          and o.status not in ('CANCELLED', 'REJECTED')
+        """)
+    long countActiveOrdersInSlotOnDate(@Param("branchId") UUID branchId,
+                                      @Param("slotId") UUID slotId,
+                                      @Param("startOfDay") Instant startOfDay,
+                                      @Param("endOfDay") Instant endOfDay);
 }

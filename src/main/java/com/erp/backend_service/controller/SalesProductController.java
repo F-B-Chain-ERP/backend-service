@@ -1,10 +1,12 @@
 package com.erp.backend_service.controller;
 
 import com.erp.backend_service.service.ProductService;
+import com.erp.backend_service.service.SalesToppingService;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.ProductDetailResponse;
 import com.erp.core.dto.response.menu.ProductSalesResponse;
+import com.erp.core.dto.response.menu.ProductToppingResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,9 +26,11 @@ import java.util.UUID;
 public class SalesProductController {
 
     private final ProductService productService;
+    private final SalesToppingService salesToppingService;
 
-    public SalesProductController(ProductService productService) {
+    public SalesProductController(ProductService productService, SalesToppingService salesToppingService) {
         this.productService = productService;
+        this.salesToppingService = salesToppingService;
     }
 
     /**
@@ -60,5 +65,17 @@ public class SalesProductController {
     public ResponseEntity<ApiResponse<ProductDetailResponse>> get(@PathVariable UUID id) {
         ProductDetailResponse response = productService.getDetailForSales(id);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy chi tiết sản phẩm thành công"));
+    }
+
+    /**
+     * Topping gọi được của sản phẩm cho kênh bán hàng (thay topping hardcode ở FE).
+     * Có branchId thì chỉ trả topping khả dụng tại chi nhánh.
+     */
+    @GetMapping("/{id}/toppings")
+    public ResponseEntity<ApiResponse<List<ProductToppingResponse>>> toppings(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID branchId) {
+        return ResponseEntity.ok(
+            ApiResponse.success(salesToppingService.listForSales(id, branchId), "Lấy topping thành công"));
     }
 }

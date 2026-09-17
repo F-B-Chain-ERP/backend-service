@@ -11,7 +11,9 @@ import org.springframework.stereotype.Repository;
 /** Truy vấn dữ liệu lịch sử sử dụng voucher (voucher_usage). */
 @Repository
 public interface VoucherUsageRepository extends JpaRepository<VoucherUsage, UUID> {
+    long countByVoucherIdAndCustomerIdAndStatus(UUID voucherId, UUID customerId, String status);
 
+    java.util.Optional<VoucherUsage> findByOrderIdAndStatus(UUID orderId, String status);
     /** Lịch sử sử dụng của một voucher, phân trang theo thời gian sử dụng. */
     Page<VoucherUsage> findByVoucherId(UUID voucherId, Pageable pageable);
 

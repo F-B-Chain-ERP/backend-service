@@ -27,3 +27,5 @@ databaseChangeLog:
       file: db/changelog/changeset/013-store-shift-report.sql
   - include:
       file: db/changelog/changeset/014-order-pickup-slot.sql
+  - include:
+      file: db/changelog/changeset/015-report-job.sql

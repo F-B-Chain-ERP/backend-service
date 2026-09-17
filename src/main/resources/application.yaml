@@ -34,6 +34,12 @@ spring:
           starttls:
             enable: true
             required: true
+    rabbitmq:
+      host: ${RABBITMQ_HOST:localhost}
+      port: ${RABBITMQ_PORT:5672}
+      username: ${RABBITMQ_USER:erp_rabbit}
+      password: ${RABBITMQ_PASS:erp123456@}
+      virtual-host: ${RABBITMQ_VHOST:erp_vhost}
 
 app:
   jwt:
@@ -70,6 +76,9 @@ app:
     secret-key: ${MINIO_SECRET_KEY:erp123456@}
     bucket-name: ${MINIO_BUCKET_NAME:erp-products}
     public-url: ${MINIO_PUBLIC_URL:/storage}
+  report:
+    sync-threshold: ${REPORT_SYNC_THRESHOLD:500}
+    minio-bucket-name: ${MINIO_REPORT_BUCKET:erp-reports}
 
 management:
   endpoints:

@@ -215,7 +215,24 @@ public enum ErrorCode {
     ORDER_400_DELIVERY_FAILED(400, "ORDER_400_DELIVERY_FAILED", "Không thể cập nhật kết quả giao hàng."),
     ORDER_400_UNPAID(400, "ORDER_400_UNPAID", "Đơn hàng chưa thanh toán."),
     ORDER_403_OUT_OF_SCOPE(403, "ORDER_403_OUT_OF_SCOPE", "Tài khoản truy cập đơn/giao hàng ngoài phạm vi."),
-    MENU_404_BRANCH_PRODUCT_NOT_FOUND(404, "MENU_404_BRANCH_PRODUCT_NOT_FOUND", "Không tìm thấy cấu hình sản phẩm chi nhánh.");
+    MENU_404_BRANCH_PRODUCT_NOT_FOUND(404, "MENU_404_BRANCH_PRODUCT_NOT_FOUND", "Không tìm thấy cấu hình sản phẩm chi nhánh."),
+
+    // STORE module (006-store)
+    STORE_404_SHIFT_NOT_FOUND(404, "STORE_404_SHIFT_NOT_FOUND", "Không tìm thấy khung ca làm việc."),
+    STORE_404_ASSIGNMENT_NOT_FOUND(404, "STORE_404_ASSIGNMENT_NOT_FOUND", "Không tìm thấy phân ca làm việc."),
+    STORE_404_REPORT_NOT_FOUND(404, "STORE_404_REPORT_NOT_FOUND", "Không tìm thấy biên bản chốt ca."),
+    STORE_404_DAILY_REPORT_NOT_FOUND(404, "STORE_404_DAILY_REPORT_NOT_FOUND", "Không tìm thấy báo cáo ngày của chi nhánh."),
+    STORE_409_SHIFT_CODE_EXISTS(409, "STORE_409_SHIFT_CODE_EXISTS", "Mã ca đã tồn tại trong chi nhánh."),
+    STORE_409_ASSIGNMENT_EXISTS(409, "STORE_409_ASSIGNMENT_EXISTS", "Nhân viên đã được phân ca này trong ngày."),
+    STORE_409_DAILY_REPORT_EXISTS(409, "STORE_409_DAILY_REPORT_EXISTS", "Báo cáo ngày của chi nhánh đã tồn tại."),
+    STORE_400_INVALID_HOURS(400, "STORE_400_INVALID_HOURS", "Giờ bắt đầu và kết thúc ca không hợp lệ."),
+    STORE_400_INVALID_STATUS_TRANSITION(400, "STORE_400_INVALID_STATUS_TRANSITION", "Chuyển trạng thái ca không hợp lệ."),
+    STORE_400_ACTIVE_SHIFT_EXISTS(400, "STORE_400_ACTIVE_SHIFT_EXISTS", "Nhân viên đang có ca làm việc chưa kết thúc."),
+    STORE_400_ACTIVE_SHIFTS_REMAINING(400, "STORE_400_ACTIVE_SHIFTS_REMAINING", "Còn ca chưa hoàn thành, không thể chốt sổ ngày."),
+    STORE_400_DIFFERENCE_REASON_REQUIRED(400, "STORE_400_DIFFERENCE_REASON_REQUIRED", "Bắt buộc nhập lý do khi tiền kiểm đếm thực tế bị lệch so với tiền lý thuyết."),
+    STORE_400_DENOMINATION_MISMATCH(400, "STORE_400_DENOMINATION_MISMATCH", "Tổng tiền bảng kê mệnh giá không khớp với tiền thực đếm."),
+    STORE_400_INVALID_CASH(400, "STORE_400_INVALID_CASH", "Số tiền mặt không hợp lệ."),
+    STORE_403_OUT_OF_SCOPE(403, "STORE_403_OUT_OF_SCOPE", "Bạn không có quyền truy cập dữ liệu ca của chi nhánh này.");
 
 
     private final int statusCode;

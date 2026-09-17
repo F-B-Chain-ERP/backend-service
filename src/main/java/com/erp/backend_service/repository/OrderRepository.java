@@ -36,4 +36,16 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
                        @Param("orderType") String orderType, @Param("status") String status,
                        @Param("fromDate") Instant fromDate, @Param("toDate") Instant toDate,
                        Pageable pageable);
+
+    @Query("""
+        select o from Order o
+        where o.branchId = :branchId
+          and o.createdAt >= :fromInstant
+          and o.createdAt <= :toInstant
+          and o.status != 'CANCELLED'
+        order by o.createdAt asc
+        """)
+    java.util.List<Order> findOrdersInShiftWindow(@Param("branchId") UUID branchId,
+                                                  @Param("fromInstant") Instant fromInstant,
+                                                  @Param("toInstant") Instant toInstant);
 }

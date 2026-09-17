@@ -232,7 +232,18 @@ public enum ErrorCode {
     STORE_400_DIFFERENCE_REASON_REQUIRED(400, "STORE_400_DIFFERENCE_REASON_REQUIRED", "Bắt buộc nhập lý do khi tiền kiểm đếm thực tế bị lệch so với tiền lý thuyết."),
     STORE_400_DENOMINATION_MISMATCH(400, "STORE_400_DENOMINATION_MISMATCH", "Tổng tiền bảng kê mệnh giá không khớp với tiền thực đếm."),
     STORE_400_INVALID_CASH(400, "STORE_400_INVALID_CASH", "Số tiền mặt không hợp lệ."),
-    STORE_403_OUT_OF_SCOPE(403, "STORE_403_OUT_OF_SCOPE", "Bạn không có quyền truy cập dữ liệu ca của chi nhánh này.");
+    STORE_403_OUT_OF_SCOPE(403, "STORE_403_OUT_OF_SCOPE", "Bạn không có quyền truy cập dữ liệu ca của chi nhánh này."),
+
+    // ORG & BRANCH module (002-branch & pickup slot)
+    BRANCH_400_CODE_EXISTS(400, "BRANCH_400_CODE_EXISTS", "Mã chi nhánh đã tồn tại."),
+    BRANCH_400_CANNOT_DELETE_ACTIVE_RESOURCES(400, "BRANCH_400_CANNOT_DELETE_ACTIVE_RESOURCES", "Không thể xóa chi nhánh đã phát sinh đơn hàng, kho hoặc ca làm việc."),
+    BRANCH_HOURS_400_INVALID_TIMES(400, "BRANCH_HOURS_400_INVALID_TIMES", "Giờ mở và đóng cửa không hợp lệ. Giờ mở và đóng không được trùng nhau trừ khi đóng cửa cả ngày."),
+    BRANCH_HOURS_404_NOT_FOUND(404, "BRANCH_HOURS_404_NOT_FOUND", "Không tìm thấy cấu hình giờ hoạt động."),
+    PICKUP_SLOT_400_INVALID_TIME_RANGE(400, "PICKUP_SLOT_400_INVALID_TIME_RANGE", "Khung giờ pickup không hợp lệ: start_time phải nhỏ hơn end_time và kéo dài từ 15 đến 120 phút."),
+    PICKUP_SLOT_404_NOT_FOUND(404, "PICKUP_SLOT_404_NOT_FOUND", "Không tìm thấy khung giờ pickup."),
+    PICKUP_SLOT_409_CODE_EXISTS(409, "PICKUP_SLOT_409_CODE_EXISTS", "Mã khung giờ pickup đã tồn tại trong chi nhánh."),
+    ORDER_400_SLOT_FULL(400, "ORDER_400_SLOT_FULL", "Khung giờ này đã kín đơn, vui lòng chọn khung giờ khác."),
+    ORDER_400_BRANCH_CLOSED(400, "ORDER_400_BRANCH_CLOSED", "Chi nhánh hiện đang ngoài giờ hoạt động.");
 
 
     private final int statusCode;

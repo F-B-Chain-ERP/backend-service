@@ -17,6 +17,8 @@ public interface ShiftAssignmentRepository extends JpaRepository<ShiftAssignment
 
     Optional<ShiftAssignment> findByIdAndBranchId(UUID id, UUID branchId);
 
+    boolean existsByBranchId(UUID branchId);
+
     boolean existsByShiftIdAndAccountIdAndWorkDate(UUID shiftId, UUID accountId, LocalDate workDate);
 
     Optional<ShiftAssignment> findFirstByAccountIdAndStatus(UUID accountId, String status);

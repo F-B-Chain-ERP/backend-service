@@ -57,6 +57,7 @@ public class OrderServiceImpl implements OrderService {
     private final PosIdempotencyService posIdempotencyService;
     private final PosBranchOpenService posBranchOpenService;
     private final PosShipperAssignService posShipperAssignService;
+    private final PickupTimeSlotRepository pickupTimeSlotRepository;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
@@ -71,7 +72,8 @@ public class OrderServiceImpl implements OrderService {
                             PosComboService posComboService, PosCogsService posCogsService,
                             RefundRepository refundRepository, PosIdempotencyService posIdempotencyService,
                             PosBranchOpenService posBranchOpenService,
-                            PosShipperAssignService posShipperAssignService) {
+                            PosShipperAssignService posShipperAssignService,
+                            PickupTimeSlotRepository pickupTimeSlotRepository) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -96,6 +98,7 @@ public class OrderServiceImpl implements OrderService {
         this.posIdempotencyService = posIdempotencyService;
         this.posBranchOpenService = posBranchOpenService;
         this.posShipperAssignService = posShipperAssignService;
+        this.pickupTimeSlotRepository = pickupTimeSlotRepository;
     }
 
     @Override
@@ -135,6 +138,7 @@ public class OrderServiceImpl implements OrderService {
             String.valueOf(request.voucherCode()), String.valueOf(request.receiverName()),
             String.valueOf(request.receiverPhone()), String.valueOf(request.shippingAddress()),
             String.valueOf(request.paymentMethod()), String.valueOf(request.note()),
+            String.valueOf(request.pickupTimeSlotId()),
             String.valueOf(request.sessionToken()));
     }
 
@@ -262,6 +266,32 @@ public class OrderServiceImpl implements OrderService {
         o.setTotalCogsAmount(BigDecimal.ZERO);
         o.setDeliveryAddress(request.shippingAddress());
         o.setNote(request.note());
+
+        // Kiểm soát khung giờ pickup & chống quá tải (BR-ORG-04 & Test Case 3)
+        if ("PICKUP".equals(request.orderType()) && request.pickupTimeSlotId() != null) {
+            PickupTimeSlot slot = pickupTimeSlotRepository.findByIdForUpdate(request.pickupTimeSlotId())
+                .orElseThrow(() -> new BaseException(ErrorCode.PICKUP_SLOT_404_NOT_FOUND));
+            if (!branch.getId().equals(slot.getBranchId()) || !"ACTIVE".equalsIgnoreCase(slot.getStatus())) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Khung giờ pickup không khả dụng tại chi nhánh này.");
+            }
+            ZoneId zone;
+            try {
+                zone = ZoneId.of(branch.getTimezone() != null ? branch.getTimezone() : "Asia/Ho_Chi_Minh");
+            } catch (Exception e) {
+                zone = ZoneId.of("Asia/Ho_Chi_Minh");
+            }
+            ZonedDateTime now = ZonedDateTime.now(zone);
+            Instant startOfDay = now.toLocalDate().atStartOfDay(zone).toInstant();
+            Instant endOfDay = now.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant();
+
+            long activeInSlot = orderRepository.countActiveOrdersInSlotOnDate(branch.getId(), slot.getId(), startOfDay, endOfDay);
+            if (slot.getMaxOrders() != null && activeInSlot >= slot.getMaxOrders()) {
+                throw new BaseException(ErrorCode.ORDER_400_SLOT_FULL);
+            }
+            o.setPickupTimeSlotId(slot.getId());
+            o.setPickupTime(now.toLocalDate().atTime(slot.getStartTime()).atZone(zone).toInstant());
+        }
+
         o = orderRepository.save(o);
 
         for (CartItem ci : checked) {
@@ -691,11 +721,14 @@ public class OrderServiceImpl implements OrderService {
                                  d.getDeliveryAddress(), d.getDeliveryNote(), d.getDeliveryFee(), d.getStatus(),
                                  d.getAssignedAt(), d.getPickedUpAt(), d.getDeliveredAt(), d.getFailedAt(),
                                  d.getFailReason());
+        String pickupSlotCode = o.getPickupTimeSlotId() == null ? null :
+            pickupTimeSlotRepository.findById(o.getPickupTimeSlotId()).map(PickupTimeSlot::getSlotCode).orElse(null);
         return new OrderResponse(o.getId(), o.getOrderCode(), o.getBranchId(), o.getCustomerId(), o.getCustomerName(),
                                  o.getCustomerPhone(), o.getCustomerEmail(), o.getOrderType(), o.getStatus(),
                                  o.getPaymentMethod(), o.getPaymentStatus(), o.getSubtotalAmount(),
                                  o.getDiscountAmount(), o.getDeliveryFee(), o.getTotalAmount(), o.getTotalCogsAmount(),
-                                 o.getDeliveryAddress(), o.getNote(), o.getCreatedAt(), items, dr);
+                                 o.getDeliveryAddress(), o.getNote(), o.getCreatedAt(), items, dr,
+                                 o.getPickupTimeSlotId(), pickupSlotCode);
     }
 
     private void requireCustomerPermission(String permission) {

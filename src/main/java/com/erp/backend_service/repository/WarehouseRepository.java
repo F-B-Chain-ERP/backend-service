@@ -18,6 +18,9 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
     /** Tìm danh sách kho thuộc một chi nhánh cụ thể. */
     List<Warehouse> findByBranchId(UUID branchId);
 
+    /** Kiểm tra xem chi nhánh có kho hàng hay không. */
+    boolean existsByBranchId(UUID branchId);
+
     /** Kiểm tra mã kho đã tồn tại chưa. */
     boolean existsByCode(String code);
 

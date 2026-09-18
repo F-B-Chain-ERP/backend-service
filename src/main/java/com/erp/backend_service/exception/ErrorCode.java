@@ -135,6 +135,8 @@ public enum ErrorCode {
     INV_404_STOCK_IN_NOT_FOUND(404, "INV_404_STOCK_IN_NOT_FOUND", "Phiếu nhập kho không tồn tại."),
     INV_404_STOCK_OUT_NOT_FOUND(404, "INV_404_STOCK_OUT_NOT_FOUND", "Phiếu xuất kho không tồn tại."),
     INV_404_MATERIAL_NOT_FOUND(404, "INV_404_MATERIAL_NOT_FOUND", "Không tìm thấy nguyên vật liệu."),
+    INV_400_INVALID_PAGE(400, "INV_400_INVALID_PAGE", "Tham số page không hợp lệ: page phải là số nguyên không âm (page >= 0)."),
+    INV_400_INVALID_SIZE(400, "INV_400_INVALID_SIZE", "Tham số size không hợp lệ: size phải lớn hơn 0 (size > 0)."),
     INV_400_STOCK_IN_ITEMS_EMPTY(400, "INV_400_STOCK_IN_ITEMS_EMPTY",
                                  "Phiếu nhập kho phải có ít nhất một dòng chi tiết."),
     INV_400_STOCK_OUT_ITEMS_EMPTY(400, "INV_400_STOCK_OUT_ITEMS_EMPTY",

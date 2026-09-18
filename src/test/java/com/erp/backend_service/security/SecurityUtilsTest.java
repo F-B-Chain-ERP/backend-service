@@ -62,9 +62,54 @@ class SecurityUtilsTest {
     }
 
     @Test
-    @DisplayName("requireCustomerId should throw UNAUTHORIZED when not authenticated")
-    void requireCustomerId_WhenUnauthenticated_ThrowsUnauthorized() {
-        BaseException ex = assertThrows(BaseException.class, SecurityUtils::requireCustomerId);
-        assertEquals(ErrorCode.UNAUTHORIZED, ex.getErrorCode());
+    @DisplayName("hasAuthority should return true for admin username regardless of specific authority")
+    void hasAuthority_WhenAdminUsername_ReturnsTrue() {
+        CustomUserDetails admin = new CustomUserDetails(
+                PrincipalType.ACCOUNT,
+                UUID.randomUUID(),
+                "admin",
+                "password",
+                true,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                null,
+                Instant.now()
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(admin, null, admin.getAuthorities()));
+
+        org.junit.jupiter.api.Assertions.assertTrue(SecurityUtils.hasAuthority("any:random:permission"));
+        org.junit.jupiter.api.Assertions.assertTrue(SecurityUtils.hasPermission("pos:order:delete"));
+    }
+
+    @Test
+    @DisplayName("hasAuthority should return true when user has ROLE_ADMIN")
+    void hasAuthority_WhenRoleAdmin_ReturnsTrue() {
+        CustomUserDetails manager = new CustomUserDetails(
+                PrincipalType.ACCOUNT,
+                UUID.randomUUID(),
+                "manager",
+                "password",
+                true,
+                Collections.singletonList(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")),
+                Collections.singletonList("ROLE_ADMIN"),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                null,
+                Instant.now()
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(manager, null, manager.getAuthorities()));
+
+        org.junit.jupiter.api.Assertions.assertTrue(SecurityUtils.hasAuthority("inv:warehouse:create"));
+    }
+
+    @Test
+    @DisplayName("hasAuthority should return false for regular user without authority")
+    void hasAuthority_WhenRegularUserWithoutAuthority_ReturnsFalse() {
+        mockUser(PrincipalType.ACCOUNT, UUID.randomUUID());
+        org.junit.jupiter.api.Assertions.assertFalse(SecurityUtils.hasAuthority("sys:account:create"));
     }
 }

@@ -157,4 +157,29 @@ class DataScopeHelperTest {
         assertEquals(1, allowed.size());
         assertTrue(allowed.contains(warehouseA));
     }
+
+    @Test
+    @DisplayName("isAllSystem() should return true for admin account even with empty scopes")
+    void testIsAllSystemForAdminAccount() {
+        CustomUserDetails admin = new CustomUserDetails(
+                PrincipalType.ACCOUNT,
+                UUID.randomUUID(),
+                "admin",
+                "password",
+                true,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                null,
+                Instant.now()
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(admin, null, admin.getAuthorities()));
+
+        assertTrue(dataScopeHelper.isAllSystem());
+        assertDoesNotThrow(() -> dataScopeHelper.enforceBranchAccess(UUID.randomUUID()));
+        assertEquals(branchA, dataScopeHelper.resolveEffectiveBranchId(branchA));
+        assertNull(dataScopeHelper.resolveEffectiveBranchId(null));
+    }
 }

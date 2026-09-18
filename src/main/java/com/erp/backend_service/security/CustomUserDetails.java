@@ -112,6 +112,30 @@ public class CustomUserDetails implements UserDetails {
         return issuedAt;
     }
 
+    /**
+     * Kiểm tra xem người dùng hiện tại có vai trò quản trị viên toàn quyền (Superuser) hay không.
+     * Áp dụng cho tài khoản 'admin', vai trò ADMIN/ROLE_ADMIN, hoặc quyền FULL_PERMISSION.
+     */
+    public boolean isAdmin() {
+        if ("admin".equalsIgnoreCase(username)) {
+            return true;
+        }
+        if (roles != null && roles.stream().anyMatch(r -> 
+                "ADMIN".equalsIgnoreCase(r) || "ROLE_ADMIN".equalsIgnoreCase(r))) {
+            return true;
+        }
+        if (permissions != null && (permissions.contains("FULL_PERMISSION") || permissions.contains("ROLE_ADMIN") || permissions.contains("ADMIN"))) {
+            return true;
+        }
+        if (authorities != null && authorities.stream().anyMatch(a -> 
+                "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority()) ||
+                "ADMIN".equalsIgnoreCase(a.getAuthority()) ||
+                "FULL_PERMISSION".equalsIgnoreCase(a.getAuthority()))) {
+            return true;
+        }
+        return false;
+    }
+
     /** Xây dựng UserDetails từ entity Account (dùng khi đăng nhập). */
     public static CustomUserDetails fromAccount(
             Account account,
@@ -122,6 +146,25 @@ public class CustomUserDetails implements UserDetails {
         Set<GrantedAuthority> authorities = new HashSet<>();
         List<String> normalizedRoles = normalize(roleCodes, authorities);
         List<String> normalizedPermissions = addAuthorities(permissionCodes, authorities);
+
+        boolean isAdmin = "admin".equalsIgnoreCase(account.getUsername())
+                || (roleCodes != null && roleCodes.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "ROLE_ADMIN".equalsIgnoreCase(r)));
+        if (isAdmin) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+            authorities.add(new SimpleGrantedAuthority("ADMIN"));
+            authorities.add(new SimpleGrantedAuthority("FULL_PERMISSION"));
+            if (!normalizedRoles.contains("ROLE_ADMIN")) normalizedRoles.add("ROLE_ADMIN");
+            if (!normalizedRoles.contains("ADMIN")) normalizedRoles.add("ADMIN");
+            if (!normalizedPermissions.contains("FULL_PERMISSION")) normalizedPermissions.add("FULL_PERMISSION");
+            if (scopes == null) {
+                scopes = new ArrayList<>();
+            } else {
+                scopes = new ArrayList<>(scopes);
+            }
+            if (scopes.stream().noneMatch(s -> s.scopeType() == ScopeType.ALL_SYSTEM)) {
+                scopes.add(new ScopeResponse(UUID.fromString("d0000000-0000-0000-0000-000000000001"), ScopeType.ALL_SYSTEM, null));
+            }
+        }
 
         boolean isActive = account.getStatus() == EntityStatus.ACTIVE;
         return new CustomUserDetails(
@@ -199,6 +242,38 @@ public class CustomUserDetails implements UserDetails {
         }
         if (principalType == PrincipalType.CUSTOMER) {
             authorities.add(new SimpleGrantedAuthority(ROLE_CUSTOMER));
+        }
+
+        boolean isAdmin = "admin".equalsIgnoreCase(username)
+                || (roles != null && roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "ROLE_ADMIN".equalsIgnoreCase(r)))
+                || (permissions != null && (permissions.contains("FULL_PERMISSION") || permissions.contains("ROLE_ADMIN")));
+        if (isAdmin) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+            authorities.add(new SimpleGrantedAuthority("ADMIN"));
+            authorities.add(new SimpleGrantedAuthority("FULL_PERMISSION"));
+            if (roles == null) {
+                roles = new ArrayList<>();
+            } else {
+                roles = new ArrayList<>(roles);
+            }
+            if (!roles.contains("ROLE_ADMIN")) roles.add("ROLE_ADMIN");
+            if (!roles.contains("ADMIN")) roles.add("ADMIN");
+
+            if (permissions == null) {
+                permissions = new ArrayList<>();
+            } else {
+                permissions = new ArrayList<>(permissions);
+            }
+            if (!permissions.contains("FULL_PERMISSION")) permissions.add("FULL_PERMISSION");
+
+            if (scopes == null) {
+                scopes = new ArrayList<>();
+            } else {
+                scopes = new ArrayList<>(scopes);
+            }
+            if (scopes.stream().noneMatch(s -> s.scopeType() == ScopeType.ALL_SYSTEM)) {
+                scopes.add(new ScopeResponse(UUID.fromString("d0000000-0000-0000-0000-000000000001"), ScopeType.ALL_SYSTEM, null));
+            }
         }
 
         Date iatDate = claims.getIssuedAt();

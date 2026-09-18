@@ -61,12 +61,15 @@ public final class SecurityUtils {
         return Optional.empty();
     }
 
-    /** Kiểm tra người dùng hiện tại có quyền (authority) được chỉ định hay không. */
+    /** Kiểm tra người dùng hiện tại có quyền (authority) được chỉ định hay không (Admin toàn quyền luôn trả về true). */
     public static boolean hasAuthority(String authority) {
         return getCurrentUserDetails()
-                .map(u -> u.getAuthorities().stream()
+                .map(u -> u.isAdmin() || u.getAuthorities().stream()
                         .map(GrantedAuthority::getAuthority).filter(Objects::nonNull)
-                        .anyMatch(a -> a.equals(authority)))
+                        .anyMatch(a -> a.equals(authority)
+                                || "FULL_PERMISSION".equals(a)
+                                || "ROLE_ADMIN".equals(a)
+                                || "ADMIN".equals(a)))
                 .orElse(false);
     }
 

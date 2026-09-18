@@ -18,11 +18,13 @@ import com.erp.core.dto.request.pos.*;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.PrincipalType;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.erp.backend_service.event.OrderRealtimeEvent;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -64,6 +66,7 @@ public class OrderServiceImpl implements OrderService {
     private final PosBranchOpenService posBranchOpenService;
     private final PosShipperAssignService posShipperAssignService;
     private final PickupTimeSlotRepository pickupTimeSlotRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
@@ -79,7 +82,7 @@ public class OrderServiceImpl implements OrderService {
                             RefundRepository refundRepository, PosIdempotencyService posIdempotencyService,
                             PosBranchOpenService posBranchOpenService,
                             PosShipperAssignService posShipperAssignService,
-                            PickupTimeSlotRepository pickupTimeSlotRepository) {
+                            PickupTimeSlotRepository pickupTimeSlotRepository, ApplicationEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -105,6 +108,7 @@ public class OrderServiceImpl implements OrderService {
         this.posBranchOpenService = posBranchOpenService;
         this.posShipperAssignService = posShipperAssignService;
         this.pickupTimeSlotRepository = pickupTimeSlotRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -381,13 +385,16 @@ public class OrderServiceImpl implements OrderService {
         cart.setStatus("CONVERTED");
         cart.setSubtotalAmount(BigDecimal.ZERO);
         cartRepository.save(cart);
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_CREATED,
+            "Đơn hàng mới: #" + o.getOrderCode(),
+            "Đơn hàng mới từ " + (o.getCustomerName() != null ? o.getCustomerName() : "Khách hàng") + " (" + o.getTotalAmount() + "đ)");
         return toResponse(o);
     }
 
     @Override
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
-                                                   LocalDate toDate, int page, int size) {
+                                                   LocalDate toDate, String search, int page, int size) {
         requirePermission("pos:order:view");
         if (page < 0 || size < 1 || size > 100) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
@@ -402,7 +409,7 @@ public class OrderServiceImpl implements OrderService {
         Instant from = fromDate == null ? null : fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant to = toDate == null ? null : toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
         Page<Order> p = orderRepository.findAll(
-            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status, from, to),
+            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status, from, to, search),
             PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
         return new PageResponse<>(p.getNumber(), p.getSize(), p.getTotalElements(), p.getTotalPages(),
                                   p.getContent().stream().map(
@@ -482,6 +489,9 @@ public class OrderServiceImpl implements OrderService {
         orderRepository.save(o);
         UUID by = currentPrincipalId();
         writeHistory(o, old, target.name(), request.note());
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Cập nhật đơn hàng: #" + o.getOrderCode(),
+            "Đơn hàng #" + o.getOrderCode() + " đã chuyển sang trạng thái " + target.name());
         return new OrderStatusResponse(o.getId(), o.getOrderCode(), old, target.name(), by, now);
     }
 
@@ -509,6 +519,9 @@ public class OrderServiceImpl implements OrderService {
         // Giả thiết D1: hủy đơn đã PAID phải sinh refund PENDING cho kế toán, tránh mất tiền khách.
         refundIfPaid(o, request.reason());
         writeHistory(o, old, PosFlow.Order.CANCELLED.name(), request.note() != null ? request.note() : request.reason());
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Đơn hàng #" + o.getOrderCode() + " đã bị hủy",
+            "Lý do: " + (request.reason() != null ? request.reason() : "Khách hủy"));
         return toResponse(o);
     }
 
@@ -533,6 +546,9 @@ public class OrderServiceImpl implements OrderService {
         o.setCompletedAt(now);
         orderRepository.save(o);
         writeHistory(o, old, PosFlow.Order.COMPLETED.name(), request.note());
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Đơn hàng #" + o.getOrderCode() + " đã hoàn tất",
+            "Đơn hàng đã được hoàn tất thành công.");
         return toResponse(o);
     }
 
@@ -572,6 +588,9 @@ public class OrderServiceImpl implements OrderService {
         orderRepository.save(o);
         writeHistory(o, o.getStatus(), o.getStatus(),
             "Thu tiền -> " + target.name() + (request.note() != null ? ": " + request.note() : ""));
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Thanh toán đơn hàng: #" + o.getOrderCode(),
+            "Trạng thái thanh toán: " + target.name());
         return toResponse(o);
     }
 
@@ -765,7 +784,40 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private UUID currentPrincipalId() {
-        return SecurityUtils.getCurrentPrincipalId().orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        return SecurityUtils.getCurrentPrincipalId()
+            .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+    }
+
+    private void publishRealtimeEvent(Order o, String eventType, String title, String message) {
+        if (eventPublisher == null || o == null) {
+            return;
+        }
+        try {
+            UUID shipperId = null;
+            String deliveryStatus = null;
+            if ("DELIVERY".equals(o.getOrderType())) {
+                var dOpt = deliveryRepository.findByOrderId(o.getId());
+                if (dOpt.isPresent()) {
+                    shipperId = dOpt.get().getShipperId();
+                    deliveryStatus = dOpt.get().getStatus();
+                }
+            }
+            eventPublisher.publishEvent(new OrderRealtimeEvent(
+                eventType,
+                o.getId(),
+                o.getOrderCode(),
+                o.getBranchId(),
+                o.getCustomerId(),
+                shipperId,
+                o.getStatus(),
+                deliveryStatus,
+                o.getPaymentStatus(),
+                title,
+                message,
+                Instant.now()
+            ));
+        } catch (Exception ignored) {
+        }
     }
 
     private UUID currentCustomerId() {

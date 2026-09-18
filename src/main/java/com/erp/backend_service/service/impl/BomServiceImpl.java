@@ -424,7 +424,7 @@ public class BomServiceImpl implements BomService {
 
     private void validateWastage(BigDecimal wastage) {
         if (wastage == null
-                || wastage.compareTo(BigDecimal.ZERO) < 0
+                || wastage.compareTo(BigDecimal.ZERO) <= 0
                 || wastage.compareTo(new BigDecimal("100")) > 0
                 || wastage.scale() > 2) {
             throw new BaseException(ErrorCode.MENU_400_BOM_INVALID_WASTAGE);

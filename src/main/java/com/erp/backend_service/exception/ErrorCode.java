@@ -184,6 +184,8 @@ public enum ErrorCode {
     VOUCHER_NOT_FOUND(404, "MENU_404_VOUCHER_NOT_FOUND", "Không tìm thấy voucher."),
     INVALID_DATE(400, "MENU_400_INVALID_DATE", "Thời gian hiệu lực voucher không hợp lệ."),
     INVALID_PRICE(400, "MENU_400_INVALID_PRICE", "Giá trị giảm giá voucher không hợp lệ."),
+    VOUCHER_INVALID_USAGE_LIMIT(400, "MENU_400_INVALID_USAGE_LIMIT",
+            "Giới hạn sử dụng voucher không hợp lệ (lượt dùng mỗi khách phải lớn hơn 0 và không vượt quá tổng lượt dùng tối đa)."),
     USAGE_LIMIT_EXCEEDED(400, "MENU_400_USAGE_LIMIT_EXCEEDED", "Voucher đã đạt giới hạn sử dụng."),
     VOUCHER_EXPIRED(400, "MENU_400_VOUCHER_EXPIRED", "Voucher đã hết hạn hoặc chưa đến hạn sử dụng."),
     VOUCHER_NOT_APPLICABLE(400, "MENU_400_VOUCHER_NOT_APPLICABLE", "Voucher không áp dụng được."),

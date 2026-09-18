@@ -1,5 +1,8 @@
 package com.erp.backend_service.security;
 
+import com.erp.backend_service.exception.BaseException;
+import com.erp.backend_service.exception.ErrorCode;
+import com.erp.core.enums.PrincipalType;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
@@ -26,9 +29,19 @@ public final class SecurityUtils {
     }
 
     /** Lấy loại thực thể đang xác thực (ACCOUNT / CUSTOMER), rỗng nếu chưa đăng nhập. */
-    public static Optional<com.erp.core.enums.PrincipalType> getCurrentPrincipalType() {
+    public static Optional<PrincipalType> getCurrentPrincipalType() {
         return getCurrentUserDetails().map(CustomUserDetails::getPrincipalType);
     }
+
+    /** Trả về UUID của CUSTOMER đang login, ném UNAUTHORIZED nếu không phải CUSTOMER. */
+    public static UUID requireCustomerId() {
+        if (getCurrentPrincipalType().orElse(null) != PrincipalType.CUSTOMER) {
+            throw new BaseException(ErrorCode.UNAUTHORIZED, "Chỉ CUSTOMER được truy cập.");
+        }
+        return getCurrentPrincipalId()
+                .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+    }
+
 
     /** Lấy id chi nhánh đang làm việc hiện tại từ UserDetails trong SecurityContext. */
     public static Optional<UUID> getCurrentBranchId() {

@@ -33,6 +33,12 @@ import java.util.*;
 public class OrderServiceImpl implements OrderService {
     private static final String ACTIVE = "ACTIVE";
     private static final BigDecimal DEFAULT_DELIVERY_FEE = BigDecimal.valueOf(15000);
+    private static final String VOUCHER_INVALID_MSG = "Mã giảm giá không hợp lệ hoặc không áp dụng cho đơn hàng này.";
+    /** Quyền CUSTOMER được phép trong luồng đọc/hủy đơn của chính mình. */
+    private static final Set<String> CUSTOMER_ALLOWED_PERMISSIONS = Set.of(
+        "pos:order:view",
+        "pos:order:cancel"
+    );
     private final OrderRepository orderRepository;
     private final OrderItemRepository itemRepository;
     private final OrderItemToppingRepository itemToppingRepository;
@@ -211,17 +217,17 @@ public class OrderServiceImpl implements OrderService {
             // Check rẻ (chi nhánh, hạn, giá trị tối thiểu) đọc không lock để khỏi giữ lock lâu.
             Voucher preview =
                 voucherRepository.findByCodeIgnoreCaseAndStatus(request.voucherCode().trim(), ACTIVE).orElseThrow(
-                    () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
+                    () -> new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG));
             if (voucherBranchRepository.findByVoucherIdAndBranchIdAndStatus(preview.getId(), request.branchId(),
                 ACTIVE).isEmpty()) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không áp dụng tại chi nhánh này.");
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
             Instant now = Instant.now();
             if (now.isBefore(preview.getStartAt()) || now.isAfter(preview.getEndAt())) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher đã hết hạn hoặc chưa bắt đầu.");
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
             if (subtotal.compareTo(preview.getMinOrderAmount()) < 0) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Đơn hàng chưa đạt giá trị tối thiểu của voucher.");
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
             // Lock bi quan row voucher: check hạn mức + ghi usage + tăng usedCount thành 1 khối,
             // 2 đơn cùng lúc không thể cùng lọt (kể cả limit-theo-khách vì count nằm trong lock).
@@ -533,6 +539,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse updatePaymentStatus(UUID id, UpdatePaymentStatusRequest request) {
+        // TODO [VNPay Sprint]: Thay requirePermission("pos:order:update") bằng requirePaymentPermission()
+        // để CUSTOMER có thể tự cập nhật sau khi VNPay callback. Xem chi tiết trong implementation_plan.md Fix 3.
         // Luật tiền 1 chiều: chỉ UNPAID -> PAID (thu tiền). PAID muốn đảo phải hủy đơn
         // để sinh refund PENDING (payment -> REFUNDED do hệ thống set), cấm un-thu tay
         // và cấm set REFUNDED tay (không có chứng từ refund đi kèm).
@@ -742,7 +750,7 @@ public class OrderServiceImpl implements OrderService {
 
     private void requirePermission(String permission) {
         if (isCustomer()) {
-            if (!"pos:order:view".equals(permission) && !"pos:order:cancel".equals(permission)) {
+            if (!CUSTOMER_ALLOWED_PERMISSIONS.contains(permission)) {
                 throw new BaseException(ErrorCode.UNAUTHORIZED);
             }
             return;

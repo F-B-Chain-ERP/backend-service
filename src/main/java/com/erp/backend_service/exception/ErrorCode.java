@@ -242,10 +242,16 @@ public enum ErrorCode {
     PICKUP_SLOT_400_INVALID_TIME_RANGE(400, "PICKUP_SLOT_400_INVALID_TIME_RANGE", "Khung giờ pickup không hợp lệ: start_time phải nhỏ hơn end_time và kéo dài từ 15 đến 120 phút."),
     PICKUP_SLOT_404_NOT_FOUND(404, "PICKUP_SLOT_404_NOT_FOUND", "Không tìm thấy khung giờ pickup."),
     PICKUP_SLOT_409_CODE_EXISTS(409, "PICKUP_SLOT_409_CODE_EXISTS", "Mã khung giờ pickup đã tồn tại trong chi nhánh."),
-    ORDER_400_SLOT_FULL(400, "ORDER_400_SLOT_FULL", "Khung giờ này đã kín đơn, vui lòng chọn khung giờ khác."),
-    ORDER_400_BRANCH_CLOSED(400, "ORDER_400_BRANCH_CLOSED", "Chi nhánh hiện đang ngoài giờ hoạt động.");
-
-
+    ORDER_400_SLOT_FULL(400, 
+"ORDER_400_SLOT_FULL", "Khung giờ này đã kín đơn, vui lòng chọn khung giờ khác."),
+    ORDER_400_BRANCH_CLOSED(400, 
+"ORDER_400_BRANCH_CLOSED", "Chi nhánh hiện đang ngoài giờ hoạt động."),
+    KDS_404_TICKET_NOT_FOUND(404, "KDS_404_TICKET_NOT_FOUND", "Không tìm thấy phiếu bếp."),
+    KDS_404_TICKET_ITEM_NOT_FOUND(404, "KDS_404_TICKET_ITEM_NOT_FOUND", "Không tìm thấy món trong phiếu bếp."),
+    KDS_400_INVALID_STATUS_TRANSITION(400, "KDS_400_INVALID_STATUS_TRANSITION",
+                                        "Chuyển trạng thái bếp không hợp lệ."),
+    KDS_400_INVALID_QUANTITY(400, "KDS_400_INVALID_QUANTITY", "Số lượng hoàn tất không hợp lệ."),
+    KDS_400_INVALID_STATION(400, "KDS_400_INVALID_STATION", "Trạm bếp không hợp lệ. Hệ thống chỉ dùng trạm BAR.");
     private final int statusCode;
     private final String code;
     private final String message;

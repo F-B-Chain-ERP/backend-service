@@ -64,6 +64,7 @@ class OrderPickupSlotTest {
     @Mock private PosBranchOpenService posBranchOpenService;
     @Mock private PosShipperAssignService posShipperAssignService;
     @Mock private PickupTimeSlotRepository pickupTimeSlotRepository;
+    @Mock private KdsService kdsService;
 
     private OrderServiceImpl orderService;
     private UUID branchId;
@@ -80,7 +81,7 @@ class OrderPickupSlotTest {
                 branchRepository, availabilityRepository, voucherRepository, voucherUsageRepository,
                 voucherBranchRepository, dataScopeHelper, posComboService, posCogsService,
                 refundRepository, posIdempotencyService, posBranchOpenService,
-                posShipperAssignService, pickupTimeSlotRepository
+                posShipperAssignService, pickupTimeSlotRepository, kdsService
         );
 
         branchId = UUID.randomUUID();

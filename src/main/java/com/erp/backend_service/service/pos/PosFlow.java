@@ -42,6 +42,14 @@ public final class PosFlow {
         REFUNDED
     }
 
+    public enum Kds {
+        QUEUED,
+        PREPARING,
+        READY,
+        SERVED,
+        CANCELLED
+    }
+
     public static Order parseOrder(String code) {
         if (code == null || code.isBlank()) {
             throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION);
@@ -116,5 +124,39 @@ public final class PosFlow {
             case DELIVERING -> to == Delivery.DELIVERED || to == Delivery.FAILED;
             default -> false;
         };
+    }
+
+    public static Kds parseKds(String code) {
+        if (code == null || code.isBlank()) {
+            throw new BaseException(ErrorCode.KDS_400_INVALID_STATUS_TRANSITION);
+        }
+        try {
+            return Kds.valueOf(code.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BaseException(ErrorCode.KDS_400_INVALID_STATUS_TRANSITION,
+                "Trạng thái bếp không hợp lệ: " + code);
+        }
+    }
+
+    /**
+     * Luật bếp (1 trạm BAR cố định, không sửa DB):
+     * QUEUED -> PREPARING -> READY -> SERVED, các trạng thái hoạt động -> CANCELLED.
+     */
+    public static boolean canKdsTransition(Kds from, Kds to) {
+        if (from == null || to == null) {
+            return false;
+        }
+        return switch (from) {
+            case QUEUED -> to == Kds.PREPARING || to == Kds.CANCELLED;
+            case PREPARING -> to == Kds.READY || to == Kds.CANCELLED;
+            case READY -> to == Kds.SERVED || to == Kds.CANCELLED;
+            default -> false;
+        };
+    }
+
+    public static void requireKdsTransition(Kds from, Kds to) {
+        if (!canKdsTransition(from, to)) {
+            throw new BaseException(ErrorCode.KDS_400_INVALID_STATUS_TRANSITION);
+        }
     }
 }

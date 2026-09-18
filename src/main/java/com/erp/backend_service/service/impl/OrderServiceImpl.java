@@ -6,6 +6,7 @@ import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.OrderService;
+import com.erp.backend_service.service.KdsService;
 import com.erp.backend_service.service.pos.PosCogsService;
 import com.erp.backend_service.service.pos.PosComboService;
 import com.erp.backend_service.service.pos.PosBranchOpenService;
@@ -58,6 +59,7 @@ public class OrderServiceImpl implements OrderService {
     private final PosBranchOpenService posBranchOpenService;
     private final PosShipperAssignService posShipperAssignService;
     private final PickupTimeSlotRepository pickupTimeSlotRepository;
+    private final KdsService kdsService;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
@@ -73,7 +75,8 @@ public class OrderServiceImpl implements OrderService {
                             RefundRepository refundRepository, PosIdempotencyService posIdempotencyService,
                             PosBranchOpenService posBranchOpenService,
                             PosShipperAssignService posShipperAssignService,
-                            PickupTimeSlotRepository pickupTimeSlotRepository) {
+                            PickupTimeSlotRepository pickupTimeSlotRepository,
+                            KdsService kdsService) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -99,6 +102,7 @@ public class OrderServiceImpl implements OrderService {
         this.posBranchOpenService = posBranchOpenService;
         this.posShipperAssignService = posShipperAssignService;
         this.pickupTimeSlotRepository = pickupTimeSlotRepository;
+        this.kdsService = kdsService;
     }
 
     @Override
@@ -356,6 +360,8 @@ public class OrderServiceImpl implements OrderService {
             posShipperAssignService.autoAssign(o);
             writeHistory(o, confirmedOld, PosFlow.Order.CONFIRMED.name(),
                 "Tự động xác nhận: chi nhánh mở cửa và thanh toán tiền mặt/COD");
+            // KDS: 1 đơn CONFIRMED = 1 ticket BAR (station cố định, queue_no theo ngày).
+            kdsService.createOnOrderConfirmed(o.getId());
         }
         if (voucher != null) {
             VoucherUsage vu = new VoucherUsage();
@@ -474,6 +480,13 @@ public class OrderServiceImpl implements OrderService {
             }
         }
         orderRepository.save(o);
+        // KDS theo Order (cùng transaction, không sửa DB):
+        // CONFIRMED -> tạo ticket BAR; CANCELLED/REJECTED -> hủy ticket.
+        if (target == PosFlow.Order.CONFIRMED) {
+            kdsService.createOnOrderConfirmed(o.getId());
+        } else if (target == PosFlow.Order.CANCELLED || target == PosFlow.Order.REJECTED) {
+            kdsService.cancelByOrderId(o.getId(), request.note());
+        }
         UUID by = currentPrincipalId();
         writeHistory(o, old, target.name(), request.note());
         return new OrderStatusResponse(o.getId(), o.getOrderCode(), old, target.name(), by, now);
@@ -502,6 +515,7 @@ public class OrderServiceImpl implements OrderService {
         cancelDelivery(o);
         // Giả thiết D1: hủy đơn đã PAID phải sinh refund PENDING cho kế toán, tránh mất tiền khách.
         refundIfPaid(o, request.reason());
+        kdsService.cancelByOrderId(o.getId(), request.reason());
         writeHistory(o, old, PosFlow.Order.CANCELLED.name(), request.note() != null ? request.note() : request.reason());
         return toResponse(o);
     }

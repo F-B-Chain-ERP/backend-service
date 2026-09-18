@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ToppingMapper {
 
-    public ToppingResponse toResponse(Topping t) {
+    public ToppingResponse toResponse(Topping t, String materialName) {
         if (t == null) return null;
         return new ToppingResponse(
                 t.getId() != null ? t.getId().toString() : null,
@@ -17,8 +17,10 @@ public class ToppingMapper {
                 t.getImageUrl(),
                 t.getGroupName(),
                 t.getMaterialId() != null ? t.getMaterialId().toString() : null,
+                materialName,
                 t.getMaterialQuantity(),
                 t.getStatus(),
+                t.getCreatedBy(),
                 t.getCreatedAt(),
                 t.getUpdatedAt()
         );

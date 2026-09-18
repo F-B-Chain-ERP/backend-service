@@ -117,12 +117,9 @@ public class StockInServiceImpl implements StockInService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<StockInResponse> list(int page, int size, String search, String status, UUID warehouseId, String sourceType, LocalDate fromDate, LocalDate toDate) {
-        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
-            throw new BaseException(ErrorCode.INV_400_STOCK_IN_INVALID_FILTER);
-        }
-        validateFilterValues(status, sourceType);
-        Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
+        validateFilter(page, size, status, sourceType, fromDate, toDate);
+        int safeSize = Math.min(size, MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(page, safeSize, Sort.by("createdAt").descending());
 
         LocalDate effectiveFromDate = fromDate != null ? fromDate : LocalDate.of(1, 1, 1);
         LocalDate effectiveToDate = toDate != null ? toDate : LocalDate.of(9999, 12, 31);
@@ -268,7 +265,17 @@ public class StockInServiceImpl implements StockInService {
         return toResponseWithNames(stockIn, items);
     }
 
-    private void validateFilterValues(String status, String sourceType) {
+    /**
+     * Kiểm tra toàn bộ tham số lọc của API danh sách trước khi truy vấn DB.
+     * Không clamp/normalize giá trị không hợp lệ — trả 400 (INV_400_STOCK_IN_INVALID_FILTER).
+     */
+    private void validateFilter(int page, int size, String status, String sourceType, LocalDate fromDate, LocalDate toDate) {
+        if (page < 0 || size <= 0) {
+            throw new BaseException(ErrorCode.INV_400_STOCK_IN_INVALID_FILTER);
+        }
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new BaseException(ErrorCode.INV_400_STOCK_IN_INVALID_FILTER);
+        }
         if (status != null && !VALID_STATUSES.contains(status)) {
             throw new BaseException(ErrorCode.INV_400_STOCK_IN_INVALID_FILTER);
         }

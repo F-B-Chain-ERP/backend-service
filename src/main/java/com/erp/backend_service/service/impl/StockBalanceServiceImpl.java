@@ -53,15 +53,23 @@ public class StockBalanceServiceImpl implements StockBalanceService {
             String search
     ) {
         if (page < 0) {
-            page = 0;
+            throw new BaseException(ErrorCode.INV_400_INVALID_PAGE);
         }
 
         if (size <= 0) {
-            size = 20;
+            throw new BaseException(ErrorCode.INV_400_INVALID_SIZE);
         }
 
         if (size > 100) {
             size = 100;
+        }
+
+        if (warehouseId != null && !warehouseRepository.existsById(warehouseId)) {
+            throw new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND);
+        }
+
+        if (materialId != null && !materialRepository.existsById(materialId)) {
+            throw new BaseException(ErrorCode.INV_404_MATERIAL_NOT_FOUND);
         }
 
         Collection<UUID> allowedWarehouseIds =

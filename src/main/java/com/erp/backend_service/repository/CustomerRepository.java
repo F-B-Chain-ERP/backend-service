@@ -48,11 +48,17 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     /** Kiểm tra tồn tại theo email. */
     boolean existsByEmail(String email);
 
+    /** Kiểm tra tồn tại theo email (không phân biệt hoa thường). */
+    boolean existsByEmailIgnoreCase(String email);
+
     /** Kiểm tra mã khách hàng đã tồn tại ở một khách hàng khác (dùng khi cập nhật). */
     boolean existsByCustomerCodeAndIdNot(String customerCode, UUID id);
 
     /** Kiểm tra email đã tồn tại ở một khách hàng khác (dùng khi cập nhật). */
     boolean existsByEmailAndIdNot(String email, UUID id);
+
+    /** Kiểm tra email đã tồn tại ở một khách hàng khác, không phân biệt hoa thường (dùng khi cập nhật). */
+    boolean existsByEmailIgnoreCaseAndIdNot(String email, UUID id);
 
     /** Kiểm tra số điện thoại đã tồn tại ở một khách hàng khác (dùng khi cập nhật). */
     boolean existsByPhoneAndIdNot(String phone, UUID id);

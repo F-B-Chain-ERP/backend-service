@@ -64,7 +64,8 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     public CustomerDetailResponse createCustomer(CreateCustomerRequest request) {
         assertInternalAdmin();
-        if (request.email() != null && customerRepository.existsByEmail(request.email())) {
+        String email = request.email() != null ? request.email().trim().toLowerCase() : null;
+        if (StringUtils.hasText(email) && customerRepository.existsByEmailIgnoreCase(email)) {
             throw new BaseException(ErrorCode.EMAIL_EXISTED);
         }
         if (request.phone() != null && customerRepository.existsByPhone(request.phone())) {
@@ -79,7 +80,7 @@ public class CustomerServiceImpl implements CustomerService {
         customer.setUsername(request.username());
         customer.setFullName(request.fullName());
         customer.setPhone(request.phone());
-        customer.setEmail(request.email());
+        customer.setEmail(email);
         customer.setAvatarUrl(request.avatarUrl());
         customer.setDateOfBirth(request.dateOfBirth());
         customer.setGender(request.gender());
@@ -137,11 +138,12 @@ public class CustomerServiceImpl implements CustomerService {
             }
             customer.setUsername(request.username());
         }
-        if (request.email() != null && !Objects.equals(customer.getEmail(), request.email())) {
-            if (customerRepository.existsByEmailAndIdNot(request.email(), id)) {
+        if (request.email() != null && !Objects.equals(customer.getEmail(), request.email().trim().toLowerCase())) {
+            String newEmail = request.email().trim().toLowerCase();
+            if (customerRepository.existsByEmailIgnoreCaseAndIdNot(newEmail, id)) {
                 throw new BaseException(ErrorCode.EMAIL_EXISTED);
             }
-            customer.setEmail(request.email());
+            customer.setEmail(newEmail);
         }
         if (request.phone() != null && !Objects.equals(customer.getPhone(), request.phone())) {
             if (customerRepository.existsByPhoneAndIdNot(request.phone(), id)) {

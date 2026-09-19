@@ -8,13 +8,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class SupplierMaterialMapper {
 
-    public SupplierMaterialResponse toResponse(SupplierMaterial e, String supplierName, String materialName) {
+    public SupplierMaterialResponse toResponse(SupplierMaterial e, String supplierName, String materialName, String unitName) {
         return new SupplierMaterialResponse(
                 e.getId().toString(),
                 e.getSupplierId().toString(),
                 supplierName,
                 e.getMaterialId().toString(),
                 materialName,
+                unitName,
                 e.getSupplierSku(),
                 e.getPurchasePrice(),
                 e.getLeadTimeDays(),

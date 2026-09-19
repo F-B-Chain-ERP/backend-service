@@ -82,9 +82,9 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return List.of();
         }
-        return notificationRepository.findTop20ByAccountIdOrderByCreatedAtDesc(accountId)
+        int pageSize = limit > 0 ? limit : 20;
+        return notificationRepository.findRecentByPrincipalId(accountId, org.springframework.data.domain.PageRequest.of(0, pageSize))
                 .stream()
-                .limit(limit > 0 ? limit : 20)
                 .map(this::toResponse)
                 .toList();
     }
@@ -95,7 +95,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return 0L;
         }
-        return notificationRepository.countByAccountIdAndReadAtIsNull(accountId);
+        return notificationRepository.countUnreadByPrincipalId(accountId);
     }
 
     @Override
@@ -144,11 +144,12 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     private NotificationResponse toResponse(Notification n) {
-        String actionUrl = resolveActionUrl(n.getTitle(), n.getBody());
+        String actionUrl = resolveActionUrl(n.getTitle(), n.getBody(), n.getRecipientType());
         String type = resolveNotificationType(n.getTitle(), n.getBody());
+        UUID recipientId = n.getAccountId() != null ? n.getAccountId() : n.getCustomerId();
         return new NotificationResponse(
                 n.getId(),
-                n.getAccountId(),
+                recipientId,
                 n.getTitle(),
                 n.getBody(),
                 n.getStatus(),
@@ -162,6 +163,24 @@ public class NotificationServiceImpl implements NotificationService {
 
     private String resolveNotificationType(String title, String body) {
         String text = ((title != null ? title : "") + " " + (body != null ? body : "")).toLowerCase();
+        if (text.contains("đơn hàng mới") || text.contains("đặt hàng thành công")) {
+            return "ORDER_CREATED";
+        }
+        if (text.contains("confirmed") || text.contains("đã xác nhận")) {
+            return "ORDER_CONFIRMED";
+        }
+        if (text.contains("preparing") || text.contains("đang thực hiện") || text.contains("đang pha chế")) {
+            return "ORDER_PREPARING";
+        }
+        if (text.contains("ready") || text.contains("đã chuẩn bị xong") || text.contains("chờ lấy")) {
+            return "ORDER_READY";
+        }
+        if (text.contains("delivering") || text.contains("đang giao")) {
+            return "ORDER_DELIVERING";
+        }
+        if (text.contains("completed") || text.contains("hoàn tất") || text.contains("thành công")) {
+            return "ORDER_COMPLETED";
+        }
         if (text.contains("chờ duyệt") || text.contains("trình duyệt")) {
             return "PO_SUBMITTED";
         }
@@ -169,10 +188,10 @@ public class NotificationServiceImpl implements NotificationService {
             return "PO_APPROVED";
         }
         if (text.contains("từ chối") || text.contains("bị từ chối")) {
-            return "PO_REJECTED";
+            return "REJECTED";
         }
         if (text.contains("bị huỷ") || text.contains("đã bị hủy") || text.contains("hủy đơn")) {
-            return "PO_CANCELLED";
+            return "CANCELLED";
         }
         if (text.contains("nhập kho")) {
             return "PO_RECEIVED";
@@ -180,19 +199,26 @@ public class NotificationServiceImpl implements NotificationService {
         return "GENERAL";
     }
 
-    private String resolveActionUrl(String title, String body) {
-        if (body != null) {
-            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("PO-[\\w-]+").matcher(body);
-            if (matcher.find()) {
-                return "/admin/procurement/purchase-orders/list?code=" + matcher.group();
+    private String resolveActionUrl(String title, String body, String recipientType) {
+        String content = (title != null ? title : "") + " " + (body != null ? body : "");
+
+        // 1. Nhận diện mã đơn hàng POS: HD-YYYYMMDD-XXXX
+        java.util.regex.Matcher hdMatcher = java.util.regex.Pattern.compile("HD-[\\w-]+").matcher(content);
+        if (hdMatcher.find()) {
+            String orderCode = hdMatcher.group();
+            if ("CUSTOMER".equalsIgnoreCase(recipientType)) {
+                return "/store/orders?orderCode=" + orderCode;
+            } else {
+                return "/admin/pos/orders/list?code=" + orderCode;
             }
         }
-        if (title != null) {
-            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("PO-[\\w-]+").matcher(title);
-            if (matcher.find()) {
-                return "/admin/procurement/purchase-orders/list?code=" + matcher.group();
-            }
+
+        // 2. Nhận diện mã đơn mua hàng: PO-...
+        java.util.regex.Matcher poMatcher = java.util.regex.Pattern.compile("PO-[\\w-]+").matcher(content);
+        if (poMatcher.find()) {
+            return "/admin/procurement/purchase-orders/list?code=" + poMatcher.group();
         }
+
         return null;
     }
 }

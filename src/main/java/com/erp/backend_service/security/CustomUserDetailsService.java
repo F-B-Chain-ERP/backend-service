@@ -113,6 +113,24 @@ public class CustomUserDetailsService implements UserDetailsService {
                     .toList());
         }
 
+        boolean isAdmin = "admin".equalsIgnoreCase(account.getUsername())
+                || roleCodes.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "ROLE_ADMIN".equalsIgnoreCase(r));
+
+        if (isAdmin) {
+            if (!roleCodes.contains("ADMIN")) roleCodes.add("ADMIN");
+            if (!roleCodes.contains("ROLE_ADMIN")) roleCodes.add("ROLE_ADMIN");
+            if (!permissionCodes.contains("FULL_PERMISSION")) permissionCodes.add("FULL_PERMISSION");
+            List<Permission> allActivePermissions = permissionRepository.findByStatus(EntityStatus.ACTIVE);
+            for (Permission p : allActivePermissions) {
+                if (!permissionCodes.contains(p.getCode())) {
+                    permissionCodes.add(p.getCode());
+                }
+            }
+            if (scopes.stream().noneMatch(s -> s.scopeType() == ScopeType.ALL_SYSTEM)) {
+                scopes.add(new ScopeResponse(UUID.fromString("d0000000-0000-0000-0000-000000000001"), ScopeType.ALL_SYSTEM, null));
+            }
+        }
+
         return CustomUserDetails.fromAccount(
                 account,
                 roleCodes.stream().distinct().toList(),

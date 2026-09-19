@@ -1,5 +1,6 @@
 package com.erp.backend_service.controller;
 
+import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.CustomerService;
 import com.erp.core.dto.auth.CreateCustomerRequest;
 import com.erp.core.dto.auth.ResetCustomerPasswordRequest;
@@ -34,6 +35,23 @@ public class CustomerController {
 
     public CustomerController(CustomerService customerService) {
         this.customerService = customerService;
+    }
+
+    /** Khách hàng xem hồ sơ chính mình (không cần quyền admin). */
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> getMe() {
+        UUID customerId = SecurityUtils.requireCustomerId();
+        return ResponseEntity.ok(ApiResponse.success(customerService.getCustomer(customerId)));
+    }
+
+    /** Khách hàng cập nhật hồ sơ chính mình. */
+    @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> updateMe(
+            @Valid @RequestBody UpdateCustomerRequest request) {
+        UUID customerId = SecurityUtils.requireCustomerId();
+        return ResponseEntity.ok(ApiResponse.success(customerService.updateCustomer(customerId, request)));
     }
 
     /** Tạo tài khoản khách hàng mới (do admin cấp). */

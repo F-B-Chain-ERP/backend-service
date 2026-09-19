@@ -9,6 +9,7 @@ import com.erp.backend_service.util.RedisKeys;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.notification.NotificationResponse;
 import com.erp.core.dto.response.notification.SseTicketResponse;
+import com.erp.core.enums.PrincipalType;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -54,17 +56,25 @@ public class NotificationController {
     /**
      * Cấp vé kết nối SSE dùng một lần (single-use ticket) có thời hạn 30 giây.
      * Yêu cầu người dùng đã xác thực bằng JWT Bearer.
+     * Ghi nhận cờ isStaff và chi nhánh làm việc (nếu có) để lọc phạm vi broadcast.
      */
     @PostMapping("/sse-ticket")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<SseTicketResponse>> generateSseTicket() {
-        UUID accountId = SecurityUtils.getCurrentPrincipalId()
+        UUID principalId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        PrincipalType principalType = SecurityUtils.getCurrentPrincipalType()
+                .orElse(PrincipalType.CUSTOMER);
+        Optional<UUID> branchIdOpt = SecurityUtils.getCurrentBranchId();
 
+        boolean isStaff = (principalType == PrincipalType.ACCOUNT);
         String ticket = UUID.randomUUID().toString();
+        String branchPart = branchIdOpt.map(UUID::toString).orElse("");
+        // Định dạng ticketValue: principalId:branchId:isStaff
+        String ticketValue = principalId + ":" + branchPart + ":" + isStaff;
         stringRedisTemplate.opsForValue().set(
                 RedisKeys.sseTicket(ticket),
-                accountId.toString(),
+                ticketValue,
                 Duration.ofSeconds(RedisKeys.SSE_TICKET_TTL_SECONDS)
         );
 
@@ -84,13 +94,24 @@ public class NotificationController {
         }
 
         // Lấy và xóa vé khỏi Redis (chỉ dùng được một lần)
-        String accountIdStr = stringRedisTemplate.opsForValue().getAndDelete(RedisKeys.sseTicket(ticket));
-        if (!StringUtils.hasText(accountIdStr)) {
+        String ticketValue = stringRedisTemplate.opsForValue().getAndDelete(RedisKeys.sseTicket(ticket));
+        if (!StringUtils.hasText(ticketValue)) {
             throw new BaseException(ErrorCode.UNAUTHENTICATED);
         }
 
-        UUID accountId = UUID.fromString(accountIdStr);
-        return sseEmitterRegistry.register(accountId, SSE_TIMEOUT_MS);
+        UUID principalId;
+        UUID branchId = null;
+        boolean isStaff = false;
+
+        String[] parts = ticketValue.split(":", -1);
+        principalId = UUID.fromString(parts[0]);
+        if (parts.length > 1 && StringUtils.hasText(parts[1])) {
+            branchId = UUID.fromString(parts[1]);
+        }
+        if (parts.length > 2) {
+            isStaff = Boolean.parseBoolean(parts[2]);
+        }
+        return sseEmitterRegistry.register(principalId, branchId, isStaff, SSE_TIMEOUT_MS);
     }
 
     /**

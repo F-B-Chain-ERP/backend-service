@@ -12,7 +12,12 @@ public interface OrderService {
     OrderResponse create(String idempotencyKey, CreateOrderRequest request);
 
     PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
-                                            LocalDate toDate, int page, int size);
+                                            LocalDate toDate, String search, int page, int size);
+
+    default PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
+                                                    LocalDate toDate, int page, int size) {
+        return list(branchId, orderType, status, fromDate, toDate, null, page, size);
+    }
 
     OrderResponse get(UUID id);
 

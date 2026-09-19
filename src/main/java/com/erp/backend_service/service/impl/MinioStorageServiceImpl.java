@@ -7,6 +7,11 @@ import com.erp.backend_service.service.StorageService;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
+import io.minio.StatObjectArgs;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -85,6 +90,47 @@ public class MinioStorageServiceImpl implements StorageService {
             // Không ném exception khi xóa thất bại (file có thể đã bị xóa trước đó)
             System.err.println("[MinIO] Không thể xóa file '" + fileUrl + "': " + e.getMessage());
         }
+    }
+
+    @Override
+    public Resource download(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) {
+            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        String objectName = extractObjectName(fileUrl);
+        if (objectName == null || objectName.isBlank()) {
+            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND, "URL báo cáo không hợp lệ: " + fileUrl);
+        }
+
+        try {
+            GetObjectResponse response = minioClient.getObject(
+                    GetObjectArgs.builder()
+                            .bucket(props.getBucketName())
+                            .object(objectName)
+                            .build()
+            );
+            return new InputStreamResource(response);
+        } catch (Exception e) {
+            throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND,
+                    "Không thể tải báo cáo từ máy chủ lưu trữ: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Trích xuất tên đối tượng object từ URL công khai: tìm sau marker {@code /{bucketName}/}.
+     */
+    private String extractObjectName(String fileUrl) {
+        String marker = "/" + props.getBucketName() + "/";
+        int idx = fileUrl.indexOf(marker);
+        if (idx != -1) {
+            return fileUrl.substring(idx + marker.length());
+        }
+        String prefix = props.getPublicUrl().endsWith("/")
+                ? props.getPublicUrl() + props.getBucketName() + "/"
+                : props.getPublicUrl() + "/" + props.getBucketName() + "/";
+        if (!fileUrl.startsWith(prefix)) return null;
+        return fileUrl.substring(prefix.length());
     }
 
     // ── Private helpers ─────────────────────────────────────────────────

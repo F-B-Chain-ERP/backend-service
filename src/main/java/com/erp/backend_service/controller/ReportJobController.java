@@ -4,13 +4,17 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.ReportJobService;
+import com.erp.backend_service.service.StorageService;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.report.ReportJobResponse;
 import com.erp.core.dto.response.report.ReportJobSummaryResponse;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -25,9 +29,11 @@ import java.util.UUID;
 public class ReportJobController {
 
     private final ReportJobService reportJobService;
+    private final StorageService storageService;
 
-    public ReportJobController(ReportJobService reportJobService) {
+    public ReportJobController(ReportJobService reportJobService, StorageService storageService) {
         this.reportJobService = reportJobService;
+        this.storageService = storageService;
     }
 
     /**
@@ -51,6 +57,27 @@ public class ReportJobController {
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.success(reportJobService.getJob(jobId, currentUserId)));
+    }
+
+    /**
+     * Tải về file báo cáo đã hoàn thành (stream trực tiếp từ MinIO).
+     */
+    @GetMapping("/{jobId}/download")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Resource> download(@PathVariable UUID jobId) {
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
+                .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        ReportJobResponse job = reportJobService.getJob(jobId, currentUserId);
+        if (job.status() == null || !"DONE".equals(job.status())
+                || job.fileUrl() == null || job.fileUrl().isBlank()) {
+            throw new BaseException(ErrorCode.BAD_REQUEST, "Tác vụ chưa hoàn thành hoặc chưa có file báo cáo");
+        }
+        String fileName = "bao-cao-" + jobId + ".xlsx";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(storageService.download(job.fileUrl()));
     }
 
     /**

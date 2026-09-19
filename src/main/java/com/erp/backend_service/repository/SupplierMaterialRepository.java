@@ -13,6 +13,7 @@ import java.util.UUID;
 public interface SupplierMaterialRepository extends JpaRepository<SupplierMaterial, UUID> {
     boolean existsBySupplierIdAndMaterialId(UUID supplierID, UUID materialID);
     boolean existsBySupplierIdAndMaterialIdAndIdNot(UUID supplierID, UUID materialID, UUID id);
+    boolean existsBySupplierSku(String supplierSku);
 
     /**
      * Gỡ cờ ưu tiên của tất cả NCC khác cùng NVL.

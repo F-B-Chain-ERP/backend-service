@@ -71,6 +71,13 @@ public class KdsServiceImpl implements KdsService {
     @Transactional(readOnly = true)
     public PageResponse<KdsTicketSummaryResponse> list(UUID branchId, String status, LocalDate fromDate,
                                                        LocalDate toDate, int page, int size) {
+        return list(branchId, status, fromDate, toDate, null, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<KdsTicketSummaryResponse> list(UUID branchId, String status, LocalDate fromDate,
+                                                       LocalDate toDate, String search, int page, int size) {
         requireViewPermission();
         if (page < 0 || size < 1 || size > 100) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
@@ -83,7 +90,7 @@ public class KdsServiceImpl implements KdsService {
             PosFlow.parseKds(normalizedStatus);
         }
         Page<KdsTicket> p = ticketRepository.findAll(
-            KdsTicketSpecifications.filter(effectiveBranch, normalizedStatus, from, to),
+            KdsTicketSpecifications.filter(effectiveBranch, normalizedStatus, from, to, search),
             PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "createdAt")));
         Map<UUID, Order> orders = ordersOf(p.getContent());
         Map<UUID, Long> itemCounts = itemCountsOf(p.getContent());
@@ -191,16 +198,16 @@ public class KdsServiceImpl implements KdsService {
         return toResponse(t);
     }
 
+    /**
+     * Chốt luồng thực tế: bếp chỉ làm tới READY, phần còn lại (đi giao/hoàn tất)
+     * do màn Đơn/Giao hàng bấm, hệ thống tự dọn board qua markServedByOrderId.
+     * Giữ endpoint để tương thích nhưng chặn bấm tay READY -&gt; SERVED tại bếp.
+     */
     @Override
     @Transactional
     public KdsTicketResponse serve(UUID id) {
-        requireUpdatePermission();
-        KdsTicket t = accessibleTicket(id);
-        transition(t, PosFlow.Kds.SERVED);
-        t.setServedAt(Instant.now());
-        ticketRepository.save(t);
-        markItems(t.getId(), PosFlow.Kds.SERVED);
-        return toResponse(t);
+        throw new BaseException(ErrorCode.KDS_400_INVALID_STATUS_TRANSITION,
+            "Bếp chỉ làm tới Sẵn sàng (READY). Đi giao/hoàn tất bấm ở màn Đơn/Giao hàng, ticket tự dọn.");
     }
 
     @Override
@@ -224,6 +231,11 @@ public class KdsServiceImpl implements KdsService {
         }
         if (request.status() != null && !request.status().isBlank()) {
             PosFlow.Kds target = PosFlow.parseKds(request.status());
+            // Chốt luồng: món trong bếp cũng chỉ tới READY, không đẩy SERVED tay.
+            if (target == PosFlow.Kds.SERVED) {
+                throw new BaseException(ErrorCode.KDS_400_INVALID_STATUS_TRANSITION,
+                    "Bếp chỉ làm tới Sẵn sàng (READY). Đi giao/hoàn tất bấm ở màn Đơn/Giao hàng.");
+            }
             PosFlow.requireKdsTransition(current, target);
             ti.setStatus(target.name());
         } else if (current == PosFlow.Kds.QUEUED) {
@@ -328,6 +340,112 @@ public class KdsServiceImpl implements KdsService {
         return t;
     }
 
+    @Override
+    @Transactional
+    public void syncFromOrder(UUID orderId, String orderStatus) {
+        if (orderId == null || orderStatus == null || orderStatus.isBlank()) {
+            return;
+        }
+        PosFlow.Order target;
+        try {
+            target = PosFlow.parseOrder(orderStatus);
+        } catch (BaseException e) {
+            return;
+        }
+        // Đảm bảo có ticket để kéo theo (Order CONFIRMED/PREPARING mà thiếu ticket do lỗi cũ).
+        KdsTicket t = ticketRepository.findByOrderId(orderId).orElse(null);
+        if (t == null) {
+            if (target == PosFlow.Order.CONFIRMED || target == PosFlow.Order.PREPARING
+                || target == PosFlow.Order.READY) {
+                try {
+                    t = toTicket(createOnOrderConfirmed(orderId));
+                } catch (BaseException e) {
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+        PosFlow.Kds current = PosFlow.parseKds(t.getStatus());
+        if (current == PosFlow.Kds.CANCELLED || current == PosFlow.Kds.SERVED) {
+            return;
+        }
+        boolean changed = false;
+        Instant now = Instant.now();
+        if (target == PosFlow.Order.PREPARING) {
+            if (current == PosFlow.Kds.QUEUED) {
+                transition(t, PosFlow.Kds.PREPARING);
+                t.setStartedAt(now);
+                markItems(t.getId(), PosFlow.Kds.PREPARING);
+                changed = true;
+            }
+        } else if (target == PosFlow.Order.READY) {
+            if (current == PosFlow.Kds.QUEUED) {
+                transition(t, PosFlow.Kds.PREPARING);
+                t.setStartedAt(now);
+                markItems(t.getId(), PosFlow.Kds.PREPARING);
+                current = PosFlow.Kds.PREPARING;
+            }
+            if (current == PosFlow.Kds.PREPARING) {
+                transition(t, PosFlow.Kds.READY);
+                t.setReadyAt(now);
+                markItems(t.getId(), PosFlow.Kds.READY);
+                changed = true;
+            } else if (current == PosFlow.Kds.QUEUED) {
+                changed = true;
+            }
+        } else if (target == PosFlow.Order.DELIVERING || target == PosFlow.Order.COMPLETED) {
+            markServedInternal(t, now);
+            changed = true;
+        }
+        if (changed) {
+            ticketRepository.save(t);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void markServedByOrderId(UUID orderId) {
+        if (orderId == null) {
+            return;
+        }
+        ticketRepository.findByOrderId(orderId).ifPresent(t -> {
+            PosFlow.Kds current = PosFlow.parseKds(t.getStatus());
+            if (current == PosFlow.Kds.CANCELLED || current == PosFlow.Kds.SERVED) {
+                return;
+            }
+            markServedInternal(t, Instant.now());
+            ticketRepository.save(t);
+        });
+    }
+
+    private void markServedInternal(KdsTicket t, Instant now) {
+        PosFlow.Kds current = PosFlow.parseKds(t.getStatus());
+        if (current == PosFlow.Kds.QUEUED) {
+            // Bếp chưa bấm gì nhưng Order đã đi giao/hoàn tất (VD bấm nhanh ở màn đơn):
+            // kéo thẳng QUEUED -> PREPARING -> READY -> SERVED để board dọn.
+            t.setStatus(PosFlow.Kds.PREPARING.name());
+            t.setStartedAt(now);
+            markItems(t.getId(), PosFlow.Kds.PREPARING);
+            current = PosFlow.Kds.PREPARING;
+        }
+        if (current == PosFlow.Kds.PREPARING) {
+            t.setStatus(PosFlow.Kds.READY.name());
+            t.setReadyAt(now);
+            markItems(t.getId(), PosFlow.Kds.READY);
+            current = PosFlow.Kds.READY;
+        }
+        if (current == PosFlow.Kds.READY) {
+            t.setStatus(PosFlow.Kds.SERVED.name());
+            t.setServedAt(now);
+            markItems(t.getId(), PosFlow.Kds.SERVED);
+        }
+    }
+
+    private KdsTicket toTicket(KdsTicketResponse response) {
+        return ticketRepository.findById(response.id()).orElseThrow();
+    }
+
     private Map<UUID, Order> ordersOf(List<KdsTicket> tickets) {
         List<UUID> orderIds = tickets.stream().map(KdsTicket::getOrderId).distinct().toList();
         if (orderIds.isEmpty()) {
@@ -361,7 +479,8 @@ public class KdsServiceImpl implements KdsService {
                 oi == null ? null : oi.getNote(), ti.getPreparedQuantity(), ti.getStatus(), ti.getCreatedAt());
         }).toList();
         return new KdsTicketResponse(t.getId(), t.getOrderId(),
-            o == null ? null : o.getOrderCode(), t.getBranchId(), t.getStation(), t.getQueueNo(),
+            o == null ? null : o.getOrderCode(), o == null ? null : o.getStatus(),
+            t.getBranchId(), t.getStation(), t.getQueueNo(),
             ticketCode(t.getStation(), t.getQueueNo()), t.getStatus(),
             o == null ? null : o.getCustomerName(), o == null ? null : o.getCustomerPhone(),
             o == null ? null : o.getOrderType(), o == null ? null : o.getNote(),
@@ -370,7 +489,8 @@ public class KdsServiceImpl implements KdsService {
 
     private KdsTicketSummaryResponse toSummary(KdsTicket t, Order o, long itemCount) {
         return new KdsTicketSummaryResponse(t.getId(), t.getOrderId(),
-            o == null ? null : o.getOrderCode(), t.getBranchId(), t.getStation(), t.getQueueNo(),
+            o == null ? null : o.getOrderCode(), o == null ? null : o.getStatus(),
+            t.getBranchId(), t.getStation(), t.getQueueNo(),
             ticketCode(t.getStation(), t.getQueueNo()), t.getStatus(),
             o == null ? null : o.getCustomerName(), o == null ? null : o.getOrderType(),
             (int) itemCount, t.getCreatedAt());

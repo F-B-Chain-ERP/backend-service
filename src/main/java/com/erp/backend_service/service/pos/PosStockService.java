@@ -17,6 +17,13 @@ import java.util.UUID;
  * - ensure: lazy seed dòng tồn hôm nay (carryover số dư hôm qua, ngày đầu = 0).
  *   Không cần cron/job, lần check đầu tiên trong ngày tự tạo dòng.
  * - check/reserve/release: giữ PESSIMISTIC_WRITE + ghi stock_log để trace.
+ *
+ * Chốt luồng trừ kho POS (tồn ngày theo variant):
+ * - Giỏ + chốt đơn (PENDING): chỉ checkAvailable, CHƯA trừ.
+ * - CONFIRMED (auto lúc tạo hoặc staff bấm tay): reserve 1 LẦN duy nhất.
+ * - CANCELLED/REJECTED: release CHỈ khi đơn đã từng reserve (từ CONFIRMED trở đi).
+ * - PREPARING/READY/DELIVERING/COMPLETED: không trừ thêm (chống double-deduct).
+ * - Topping/material (BOM kho tổng): không trừ ở POS, theo dõi ở module kho.
  */
 @Service
 public class PosStockService {
@@ -91,7 +98,8 @@ public class PosStockService {
         }
         BranchVariantDailyStock stock = ensureToday(branchId, variantId);
         if (quantity > stock.getRemainingQuantity()) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
+            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY,
+                "Sản phẩm đã hết hàng (còn " + stock.getRemainingQuantity() + ", cần " + quantity + ").");
         }
     }
 
@@ -107,7 +115,8 @@ public class PosStockService {
             .orElseThrow(() -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY,
                 "Sản phẩm chưa có tồn trong ngày, vui lòng restock."));
         if (stock.getRemainingQuantity() < quantity) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
+            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY,
+                "Tồn không đủ để xác nhận đơn (còn " + stock.getRemainingQuantity() + ", cần " + quantity + ").");
         }
         stock.setRemainingQuantity(stock.getRemainingQuantity() - quantity);
         stock.setSoldQuantity(stock.getSoldQuantity() + quantity);

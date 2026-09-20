@@ -13,11 +13,16 @@ public class MaterialMapper {
 
     /** Ánh xạ cho danh sách (list) - không join tên category/unit. */
     public MaterialResponse toResponse(Material e) {
-        return toResponse(e, null, null);
+        return toResponse(e, null, null, null);
     }
 
     /** Ánh xạ cho danh sách (list) - có tên category/unit. */
     public MaterialResponse toResponse(Material e, String categoryName, String unitName) {
+        return toResponse(e, categoryName, unitName, null);
+    }
+
+    /** Ánh xạ đầy đủ gồm tên đơn vị đóng gói. */
+    public MaterialResponse toResponse(Material e, String categoryName, String unitName, String packUnitName) {
         return new MaterialResponse(
                 e.getId() != null ? e.getId().toString() : null,
                 e.getCode(),
@@ -26,6 +31,9 @@ public class MaterialMapper {
                 categoryName,
                 e.getBaseUnitId() != null ? e.getBaseUnitId().toString() : null,
                 unitName,
+                e.getPackUnitId() != null ? e.getPackUnitId().toString() : null,
+                packUnitName,
+                e.getPackToBaseFactor(),
                 e.getMinStockAlert(),
                 e.getShelfLifeDays(),
                 e.isPerishable(),
@@ -38,6 +46,11 @@ public class MaterialMapper {
 
     /** Ánh xạ cho chi tiết (detail) - có tên category/unit. */
     public MaterialResponse toDetailResponse(Material e, String categoryName, String unitName) {
+        return toDetailResponse(e, categoryName, unitName, null);
+    }
+
+    /** Ánh xạ cho chi tiết (detail) - gồm tên đơn vị đóng gói. */
+    public MaterialResponse toDetailResponse(Material e, String categoryName, String unitName, String packUnitName) {
         return new MaterialResponse(
                 e.getId() != null ? e.getId().toString() : null,
                 e.getCode(),
@@ -46,6 +59,9 @@ public class MaterialMapper {
                 categoryName,
                 e.getBaseUnitId() != null ? e.getBaseUnitId().toString() : null,
                 unitName,
+                e.getPackUnitId() != null ? e.getPackUnitId().toString() : null,
+                packUnitName,
+                e.getPackToBaseFactor(),
                 e.getMinStockAlert(),
                 e.getShelfLifeDays(),
                 e.isPerishable(),
@@ -63,6 +79,8 @@ public class MaterialMapper {
         m.setName(request.name());
         m.setCategoryId(request.categoryId());
         m.setBaseUnitId(request.baseUnitId());
+        m.setPackUnitId(request.packUnitId());
+        m.setPackToBaseFactor(request.packToBaseFactor());
         m.setMinStockAlert(request.minStockAlert() != null ? request.minStockAlert() : BigDecimal.ZERO);
         m.setShelfLifeDays(request.shelfLifeDays());
         m.setPerishable(request.isPerishable() != null && request.isPerishable());
@@ -76,6 +94,8 @@ public class MaterialMapper {
         m.setName(request.name());
         m.setCategoryId(request.categoryId());
         m.setBaseUnitId(request.baseUnitId());
+        m.setPackUnitId(request.packUnitId());
+        m.setPackToBaseFactor(request.packToBaseFactor());
         m.setMinStockAlert(request.minStockAlert() != null ? request.minStockAlert() : BigDecimal.ZERO);
         m.setShelfLifeDays(request.shelfLifeDays());
         m.setPerishable(request.isPerishable() != null && request.isPerishable());

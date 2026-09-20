@@ -27,9 +27,10 @@ public class KdsController {
     public ResponseEntity<ApiResponse<PageResponse<KdsTicketSummaryResponse>>> list(
         @RequestParam(required = false) UUID branchId, @RequestParam(required = false) String status,
         @RequestParam(required = false) LocalDate fromDate, @RequestParam(required = false) LocalDate toDate,
+        @RequestParam(required = false) String search,
         @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(
-            ApiResponse.success(service.list(branchId, status, fromDate, toDate, page, size),
+            ApiResponse.success(service.list(branchId, status, fromDate, toDate, search, page, size),
                 "Lấy danh sách phiếu bếp thành công"));
     }
 

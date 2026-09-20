@@ -206,6 +206,14 @@ public class OrderServiceImpl implements OrderService {
                 if (!ACTIVE.equals(variant.getStatus())) {
                     throw new BaseException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm không còn khả dụng.");
                 }
+            } else {
+                // Chốt trừ kho: SP có variant ACTIVE thì bắt buộc chọn variant (giả thiết A1,
+                // giống CartServiceImpl). Chặn đơn lọt với variantId=null bypass kho dù giỏ đã check.
+                boolean hasActiveVariant = !variantRepository
+                    .findByProductIdAndStatusOrderByDisplayOrderAsc(p.getId(), ACTIVE).isEmpty();
+                if (hasActiveVariant) {
+                    throw new BaseException(ErrorCode.INVALID_REQUEST, "Sản phẩm có size, vui lòng chọn biến thể.");
+                }
             }
             // Giả thiết B1: subtotal phải khớp Cart (item + topping). Giả thiết combo A4 tái validate ở chốt đơn.
             posComboService.validateForSale(ci.getProductId(), ci.getVariantId(), ci.getQuantity(),
@@ -440,7 +448,20 @@ public class OrderServiceImpl implements OrderService {
         Order o = findAccessible(id);
         PosFlow.Order target = PosFlow.parseOrder(request.status());
         PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
-        PosFlow.requireOrderTransition(current, target);
+        // Chốt hủy: đơn DELIVERY đang READY sau giao thất bại (delivery FAILED) được hủy
+        // để thoát kẹt (khách từ chối hàng). Các ca khác giữ machine PosFlow strict.
+        boolean failedReturnCancel = target == PosFlow.Order.CANCELLED
+            && isFailedDeliveryReturn(o.getOrderType(), current, o.getId());
+        if (!failedReturnCancel) {
+            PosFlow.requireOrderTransition(current, target);
+        }
+        // Chốt luồng thực tế: đơn DELIVERY đi giao từ màn Giao hàng
+        // (assign -> picked_up -> delivering), cấm bấm READY -> DELIVERING tay ở màn Đơn
+        // để không vòng qua shipper. DeliveryService tự kéo Order khi shipper đi giao.
+        if (target == PosFlow.Order.DELIVERING) {
+            throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION,
+                "Đơn giao hàng đi giao từ màn Giao hàng (shipper lấy hàng -> đi giao).");
+        }
         if (target == PosFlow.Order.COMPLETED) {
             if (!"PAID".equalsIgnoreCase(o.getPaymentStatus())) {
                 throw new BaseException(ErrorCode.ORDER_400_UNPAID);
@@ -453,6 +474,8 @@ public class OrderServiceImpl implements OrderService {
             if (!(pickupReady || deliveryDelivering)) {
                 throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION);
             }
+            // Chốt giao hàng: đơn DELIVERY chỉ COMPLETED sau khi shipper DELIVERED.
+            requireDeliveredForComplete(o);
         }
         String old = o.getStatus();
         o.setStatus(target.name());
@@ -476,10 +499,13 @@ public class OrderServiceImpl implements OrderService {
                 o.setCancelledAt(now);
                 restoreVoucher(o);
                 // PENDING chưa reserve nên không hoàn (hoàn thừa sẽ phình tồn).
-                if (current != PosFlow.Order.PENDING) {
+                // READY hậu giao thất bại cũng không hoàn: hàng đã làm xong, tính hao hụt.
+                if (current != PosFlow.Order.PENDING && !failedReturnCancel) {
                     releaseAll(o);
                 }
                 cancelDelivery(o);
+                // Hủy đơn đã PAID phải sinh refund cho kế toán (kể cả hủy tay qua updateStatus).
+                refundIfPaid(o, request.note());
             }
             case REJECTED -> {
                 o.setRejectedAt(now);
@@ -494,9 +520,15 @@ public class OrderServiceImpl implements OrderService {
         }
         orderRepository.save(o);
         // KDS theo Order (cùng transaction, không sửa DB):
-        // CONFIRMED -> tạo ticket BAR; CANCELLED/REJECTED -> hủy ticket.
+        // CONFIRMED -> tạo ticket BAR; PREPARING/READY -> kéo ticket theo;
+        // DELIVERING/COMPLETED -> dọn board (SERVED); CANCELLED/REJECTED -> hủy ticket.
+        // KDS chỉ làm tới READY, Order bấm nốt phần còn lại.
         if (target == PosFlow.Order.CONFIRMED) {
             kdsService.createOnOrderConfirmed(o.getId());
+        } else if (target == PosFlow.Order.PREPARING || target == PosFlow.Order.READY) {
+            kdsService.syncFromOrder(o.getId(), target.name());
+        } else if (target == PosFlow.Order.DELIVERING || target == PosFlow.Order.COMPLETED) {
+            kdsService.markServedByOrderId(o.getId());
         } else if (target == PosFlow.Order.CANCELLED || target == PosFlow.Order.REJECTED) {
             kdsService.cancelByOrderId(o.getId(), request.note());
         }
@@ -514,8 +546,11 @@ public class OrderServiceImpl implements OrderService {
         requirePermission("pos:order:cancel");
         Order o = findAccessible(id);
         PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
+        // Chốt hủy: thêm READY hậu giao thất bại (đơn DELIVERY + delivery FAILED, khách từ
+        // chối hàng) để thoát kẹt. Các ca READY khác vẫn cấm hủy (hàng đã làm xong).
+        boolean failedReturn = isFailedDeliveryReturn(o.getOrderType(), current, o.getId());
         if (!(current == PosFlow.Order.PENDING || current == PosFlow.Order.CONFIRMED ||
-            current == PosFlow.Order.PREPARING)) {
+            current == PosFlow.Order.PREPARING || failedReturn)) {
             throw new BaseException(ErrorCode.ORDER_400_ORDER_NOT_CANCELLABLE);
         }
         String old = o.getStatus();
@@ -525,7 +560,8 @@ public class OrderServiceImpl implements OrderService {
         orderRepository.save(o);
         restoreVoucher(o);
         // Chỉ hoàn tồn nếu đơn đã từng reserve (CONFIRMED trở đi); PENDING thì chưa trừ.
-        if (current != PosFlow.Order.PENDING) {
+        // READY hậu giao thất bại không hoàn: hàng đã làm xong, tính hao hụt.
+        if (current != PosFlow.Order.PENDING && !failedReturn) {
             releaseAll(o);
         }
         cancelDelivery(o);
@@ -554,11 +590,15 @@ public class OrderServiceImpl implements OrderService {
         if (!(pickupReady || deliveryDelivering)) {
             throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION);
         }
+        // Chốt giao hàng: đơn DELIVERY chỉ COMPLETED sau khi shipper DELIVERED.
+        requireDeliveredForComplete(o);
         String old = o.getStatus();
         Instant now = Instant.now();
         o.setStatus(PosFlow.Order.COMPLETED.name());
         o.setCompletedAt(now);
         orderRepository.save(o);
+        // Hoàn tất đơn -> dọn board bếp (ticket -> SERVED).
+        kdsService.markServedByOrderId(o.getId());
         writeHistory(o, old, PosFlow.Order.COMPLETED.name(), request.note());
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Đơn hàng #" + o.getOrderCode() + " đã hoàn tất",
@@ -667,6 +707,39 @@ public class OrderServiceImpl implements OrderService {
     private boolean isAutoConfirmable(Order order) {
         boolean cashLike = "COD".equals(order.getPaymentMethod()) || "CASH".equals(order.getPaymentMethod());
         return cashLike && posBranchOpenService.isOpenNow(order.getBranchId());
+    }
+
+    /**
+     * Chốt luồng giao: đơn DELIVERY chỉ COMPLETED sau khi shipper DELIVERED.
+     * Shipper bấm giao xong ở màn Giao hàng (tự hoàn tất nếu đủ PAID); màn Đơn chỉ thu
+     * nốt tiền + hoàn tất ca DELIVERED + UNPAID ngoài COD. Bỏ qua khi thiếu delivery
+     * record (dữ liệu cũ) để không kẹt đơn.
+     */
+    private void requireDeliveredForComplete(Order o) {
+        if (!"DELIVERY".equals(o.getOrderType())) {
+            return;
+        }
+        boolean delivered = deliveryRepository.findByOrderId(o.getId())
+            .map(d -> PosFlow.Delivery.DELIVERED.name().equals(d.getStatus()))
+            .orElse(true);
+        if (!delivered) {
+            throw new BaseException(ErrorCode.ORDER_400_INVALID_STATUS_TRANSITION,
+                "Shipper chưa bấm giao xong. Đơn giao hoàn tất sau khi giao xong ở màn Giao hàng.");
+        }
+    }
+
+    /**
+     * Chốt luồng hủy: đơn DELIVERY đang READY mà delivery FAILED (giao thất bại, khách
+     * từ chối) được hủy để thoát kẹt. Gán lại shipper (ASSIGNED/...) thì khóa lại cho
+     * tới lần FAILED tiếp theo.
+     */
+    private boolean isFailedDeliveryReturn(String orderType, PosFlow.Order currentStatus, UUID orderId) {
+        if (!"DELIVERY".equals(orderType) || currentStatus != PosFlow.Order.READY) {
+            return false;
+        }
+        return deliveryRepository.findByOrderId(orderId)
+            .map(d -> PosFlow.Delivery.FAILED.name().equals(d.getStatus()))
+            .orElse(false);
     }
 
     private void reserveAll(Order order) {        for (OrderItem oi : itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE)) {

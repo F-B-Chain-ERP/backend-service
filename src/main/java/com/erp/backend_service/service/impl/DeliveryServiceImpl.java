@@ -6,6 +6,7 @@ import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.DeliveryService;
+import com.erp.backend_service.service.KdsService;
 import com.erp.backend_service.service.pos.PosFlow;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.pos.*;
@@ -31,12 +32,14 @@ public class DeliveryServiceImpl implements DeliveryService {
     private final AccountRoleRepository accountRoleRepository;
     private final DataScopeHelper dataScopeHelper;
     private final ApplicationEventPublisher eventPublisher;
+    private final KdsService kdsService;
 
     public DeliveryServiceImpl(OrderDeliveryRepository deliveryRepository, OrderRepository orderRepository,
-                               OrderStatusHistoryRepository historyRepository,
-                               AccountRepository accountRepository,
-                               AccountRoleRepository accountRoleRepository,
-                               DataScopeHelper dataScopeHelper, ApplicationEventPublisher eventPublisher) {
+                                OrderStatusHistoryRepository historyRepository,
+                                AccountRepository accountRepository,
+                                AccountRoleRepository accountRoleRepository,
+                                DataScopeHelper dataScopeHelper, ApplicationEventPublisher eventPublisher,
+                                KdsService kdsService) {
         this.deliveryRepository = deliveryRepository;
         this.orderRepository = orderRepository;
         this.historyRepository = historyRepository;
@@ -44,6 +47,7 @@ public class DeliveryServiceImpl implements DeliveryService {
         this.accountRoleRepository = accountRoleRepository;
         this.dataScopeHelper = dataScopeHelper;
         this.eventPublisher = eventPublisher;
+        this.kdsService = kdsService;
     }
 
     @Override
@@ -137,6 +141,8 @@ public class DeliveryServiceImpl implements DeliveryService {
                     o.setDeliveringAt(now);
                     orderRepository.save(o);
                     writeHistory(o, previousOrderStatus, PosFlow.Order.DELIVERING.name(), request.note());
+                    // Đơn đi giao -> bếp đã xong, dọn board (ticket -> SERVED).
+                    safeMarkServed(o.getId());
                 }
             }
             case DELIVERED -> {
@@ -155,6 +161,10 @@ public class DeliveryServiceImpl implements DeliveryService {
                     o.setCompletedAt(now);
                     orderRepository.save(o);
                     writeHistory(o, previousOrderStatus, PosFlow.Order.COMPLETED.name(), request.note());
+                    safeMarkServed(o.getId());
+                } else {
+                    // Giao xong nhưng chưa đủ ĐK hoàn tất (VD chưa PAID): bếp vẫn coi là xong.
+                    safeMarkServed(o.getId());
                 }
             }
             case FAILED -> {
@@ -171,6 +181,8 @@ public class DeliveryServiceImpl implements DeliveryService {
                     orderRepository.save(o);
                     writeHistory(o, previousOrderStatus, PosFlow.Order.READY.name(),
                         "Giao hàng thất bại, chuyển về READY để giao lại.");
+                    // Giao thất bại không nấu lại: ticket đã SERVED thì giữ, chưa thì đảm bảo READY.
+                    safeSyncFromOrder(o.getId(), PosFlow.Order.READY.name());
                 }
             }
             default -> {
@@ -258,5 +270,24 @@ public class DeliveryServiceImpl implements DeliveryService {
         history.setReason(note);
         history.setStatus(ACTIVE);
         historyRepository.save(history);
+    }
+
+    /** KDS là phụ: lỗi sync không được làm fail luồng giao hàng chính. */
+    private void safeMarkServed(UUID orderId) {
+        try {
+            if (kdsService != null) {
+                kdsService.markServedByOrderId(orderId);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void safeSyncFromOrder(UUID orderId, String orderStatus) {
+        try {
+            if (kdsService != null) {
+                kdsService.syncFromOrder(orderId, orderStatus);
+            }
+        } catch (Exception ignored) {
+        }
     }
 }

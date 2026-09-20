@@ -5,6 +5,7 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.BomMapper;
 import com.erp.backend_service.repository.*;
 import com.erp.backend_service.service.BomService;
+import com.erp.backend_service.service.UnitConversionService;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.menu.AddBomItemRequest;
 import com.erp.core.dto.request.menu.BulkSyncBomRequest;
@@ -42,6 +43,7 @@ public class BomServiceImpl implements BomService {
     private final CategoryRepository categoryRepository;
     private final MaterialRepository materialRepository;
     private final UnitRepository unitRepository;
+    private final UnitConversionService unitConversionService;
     private final BomMapper bomMapper;
 
     public BomServiceImpl(
@@ -51,6 +53,7 @@ public class BomServiceImpl implements BomService {
             CategoryRepository categoryRepository,
             MaterialRepository materialRepository,
             UnitRepository unitRepository,
+            UnitConversionService unitConversionService,
             BomMapper bomMapper
     ) {
         this.productRecipeItemRepository = productRecipeItemRepository;
@@ -59,6 +62,7 @@ public class BomServiceImpl implements BomService {
         this.categoryRepository = categoryRepository;
         this.materialRepository = materialRepository;
         this.unitRepository = unitRepository;
+        this.unitConversionService = unitConversionService;
         this.bomMapper = bomMapper;
     }
 
@@ -110,9 +114,8 @@ public class BomServiceImpl implements BomService {
             throw new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND);
         }
 
-        if (!material.getBaseUnitId().equals(request.unitId())) {
-            throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
-        }
+        // Đơn vị dòng BOM: gốc, pack của NVL, hoặc cùng nhóm có dòng quy đổi.
+        unitConversionService.validateBomUnit(material, unit);
 
         validateQuantity(request.quantity());
         validateWastage(request.wastagePercent());
@@ -172,9 +175,8 @@ public class BomServiceImpl implements BomService {
             throw new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND);
         }
 
-        if (!material.getBaseUnitId().equals(request.unitId())) {
-            throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
-        }
+        // Đơn vị dòng BOM: gốc, pack của NVL, hoặc cùng nhóm có dòng quy đổi.
+        unitConversionService.validateBomUnit(material, unit);
 
         validateQuantity(request.quantity());
         validateWastage(request.wastagePercent());
@@ -259,9 +261,8 @@ public class BomServiceImpl implements BomService {
                 throw new BaseException(ErrorCode.MENU_404_UNIT_NOT_FOUND);
             }
 
-            if (!material.getBaseUnitId().equals(entry.unitId())) {
-                throw new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH);
-            }
+            // Đơn vị dòng BOM: gốc, pack của NVL, hoặc cùng nhóm có dòng quy đổi.
+            unitConversionService.validateBomUnit(material, unit);
 
             validateQuantity(entry.quantity());
             validateWastage(entry.wastagePercent());

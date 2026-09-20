@@ -41,8 +41,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
               and (:supplierId is null or po.supplierId = :supplierId)
               and (:warehouseId is null or po.warehouseId = :warehouseId)
               and (:allowedWarehouseIds is null or po.warehouseId in :allowedWarehouseIds)
-              and (:fromDate is null or po.orderDate >= :fromDate)
-              and (:toDate is null or po.orderDate <= :toDate)
+              and po.orderDate >= :fromDate
+              and po.orderDate <= :toDate
             """)
     Page<PurchaseOrder> search(@Param("search") String search,
                                @Param("status") String status,

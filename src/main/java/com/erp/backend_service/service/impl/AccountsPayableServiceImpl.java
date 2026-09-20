@@ -398,7 +398,9 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     private String generateInvoiceNo() {
         return CodeGenerator.nextDailySequence(
                 "HDA-",
-                prefix -> accountsPayableRepository.findTopInvoiceNoByPrefix(prefix),
+                prefix -> accountsPayableRepository
+                        .findFirstByInvoiceNoStartingWithOrderByInvoiceNoDesc(prefix)
+                        .map(AccountsPayable::getInvoiceNo),
                 accountsPayableRepository::existsByInvoiceNo);
     }
 

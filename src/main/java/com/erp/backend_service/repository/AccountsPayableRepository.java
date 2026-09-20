@@ -167,7 +167,6 @@ public interface AccountsPayableRepository extends JpaRepository<AccountsPayable
     @Query("select distinct ap.purchaseOrderId from AccountsPayable ap where ap.purchaseOrderId is not null")
     Set<UUID> findExistingPurchaseOrderIds();
 
-    /** Tim invoiceNo cuoi cung bat dau bang prefix (de CodeGenerator tiep sequence). */
-    @Query("select ap.invoiceNo from AccountsPayable ap where ap.invoiceNo like concat(:prefix, '%') order by ap.invoiceNo desc")
-    Optional<String> findTopInvoiceNoByPrefix(@Param("prefix") String prefix);
+    /** Tim ban ghi co invoiceNo cuoi cung theo prefix (de CodeGenerator tiep sequence, limit 1). */
+    Optional<AccountsPayable> findFirstByInvoiceNoStartingWithOrderByInvoiceNoDesc(String prefix);
 }

@@ -14,6 +14,7 @@ import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.CustomUserDetails;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
+import com.erp.backend_service.service.AccountsPayableService;
 import com.erp.backend_service.service.NotificationResolverService;
 import com.erp.backend_service.service.NotificationService;
 import com.erp.backend_service.service.PurchaseOrderService;
@@ -89,6 +90,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final DataScopeHelper dataScopeHelper;
     private final NotificationService notificationService;
     private final NotificationResolverService notificationResolverService;
+    private final AccountsPayableService accountsPayableService;
 
     public PurchaseOrderServiceImpl(PurchaseOrderRepository purchaseOrderRepository,
                                     PurchaseOrderItemRepository purchaseOrderItemRepository,
@@ -101,7 +103,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                                     PurchaseOrderItemMapper purchaseOrderItemMapper,
                                     DataScopeHelper dataScopeHelper,
                                     NotificationService notificationService,
-                                    NotificationResolverService notificationResolverService) {
+                                    NotificationResolverService notificationResolverService,
+                                    AccountsPayableService accountsPayableService) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
         this.supplierRepository = supplierRepository;
@@ -114,6 +117,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         this.dataScopeHelper = dataScopeHelper;
         this.notificationService = notificationService;
         this.notificationResolverService = notificationResolverService;
+        this.accountsPayableService = accountsPayableService;
     }
 
     /** {@inheritDoc} */
@@ -496,6 +500,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
         po = purchaseOrderRepository.save(po);
         notifyPoReceived(po, allReceived);
+
+        // Tự động tạo công nợ khi nhận hàng (1 PO = 1 Payable)
+        accountsPayableService.createFromPo(po.getId());
+
         return toResponseWithNames(po, items);
     }
 

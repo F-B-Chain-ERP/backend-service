@@ -35,7 +35,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     private static final int MAX_PAGE_SIZE = 100;
 
-    private static final Set<String> ALLOWED_WAREHOUSE_TYPES = Set.of("CENTRAL", "MAIN", "BRANCH");
+    private static final Set<String> ALLOWED_WAREHOUSE_TYPES = Set.of("CENTRAL", "BRANCH");
     private static final Set<String> ALLOWED_WAREHOUSE_STATUSES = Set.of("ACTIVE", "INACTIVE");
 
     private final WarehouseRepository warehouseRepository;
@@ -141,6 +141,10 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new BaseException(ErrorCode.INV_409_WAREHOUSE_CODE_EXISTED);
         }
 
+        String normalizedType = request.warehouseType().trim().toUpperCase();
+        validateWarehouseType(normalizedType);
+        validateRequestStatus(request.status());
+
         validateBranchBinding(request.warehouseType(), request.branchId());
 
         Warehouse warehouse = warehouseMapper.toEntity(request);
@@ -157,6 +161,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     public WarehouseResponse update(UUID id, UpdateWarehouseRequest request) {
         Warehouse warehouse = findById(id);
         dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
+
+        String normalizedType = request.warehouseType().trim().toUpperCase();
+        validateWarehouseType(normalizedType);
+        validateRequestStatus(request.status());
 
         validateBranchBinding(request.warehouseType(), request.branchId());
 
@@ -226,6 +234,13 @@ public class WarehouseServiceImpl implements WarehouseService {
         }
     }
 
+    /** Chỉ chấp nhận trạng thái ACTIVE/INACTIVE ở create/update (kho mới mặc định ACTIVE). */
+    private void validateRequestStatus(String status) {
+        if (StringUtils.hasText(status) && !ALLOWED_WAREHOUSE_STATUSES.contains(status.trim().toUpperCase())) {
+            throw new BaseException(ErrorCode.INV_400_WAREHOUSE_INVALID_STATUS);
+        }
+    }
+
     private Warehouse findById(UUID id) {
         return warehouseRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
@@ -243,7 +258,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     /**
      * Ràng buộc giữa loại kho và chi nhánh:
      * - CENTRAL: không được gắn branchId.
-     * - MAIN/BRANCH: bắt buộc branchId thuộc chi nhánh đang hoạt động.
+     * - BRANCH: bắt buộc branchId thuộc chi nhánh đang hoạt động.
      */
     private void validateBranchBinding(String warehouseType, UUID branchId) {
         boolean isCentral = "CENTRAL".equals(warehouseType.trim().toUpperCase());

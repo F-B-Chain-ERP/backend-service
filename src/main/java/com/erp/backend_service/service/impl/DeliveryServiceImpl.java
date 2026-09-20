@@ -12,6 +12,8 @@ import com.erp.core.dto.request.pos.*;
 import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
+import com.erp.backend_service.event.OrderRealtimeEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,18 +30,20 @@ public class DeliveryServiceImpl implements DeliveryService {
     private final AccountRepository accountRepository;
     private final AccountRoleRepository accountRoleRepository;
     private final DataScopeHelper dataScopeHelper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public DeliveryServiceImpl(OrderDeliveryRepository deliveryRepository, OrderRepository orderRepository,
                                OrderStatusHistoryRepository historyRepository,
                                AccountRepository accountRepository,
                                AccountRoleRepository accountRoleRepository,
-                               DataScopeHelper dataScopeHelper) {
+                               DataScopeHelper dataScopeHelper, ApplicationEventPublisher eventPublisher) {
         this.deliveryRepository = deliveryRepository;
         this.orderRepository = orderRepository;
         this.historyRepository = historyRepository;
         this.accountRepository = accountRepository;
         this.accountRoleRepository = accountRoleRepository;
         this.dataScopeHelper = dataScopeHelper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -88,7 +92,12 @@ public class DeliveryServiceImpl implements DeliveryService {
         d.setStatus(PosFlow.Delivery.ASSIGNED.name());
         d.setFailReason(null);
         d.setFailedAt(null);
-        return toResponse(deliveryRepository.save(d));
+        OrderDelivery savedDelivery = deliveryRepository.save(d);
+        String shipperName = shipper.getFullName() != null ? shipper.getFullName() : shipper.getUsername();
+        publishRealtimeEvent(o, savedDelivery, OrderRealtimeEvent.TYPE_DELIVERY_ASSIGNED,
+            "Phân công giao hàng: #" + o.getOrderCode(),
+            "Đã phân công tài xế " + shipperName + " giao đơn #" + o.getOrderCode());
+        return toResponse(savedDelivery);
     }
 
     @Override
@@ -167,7 +176,10 @@ public class DeliveryServiceImpl implements DeliveryService {
             default -> {
             }
         }
-        deliveryRepository.save(d);
+        OrderDelivery savedDelivery = deliveryRepository.save(d);
+        publishRealtimeEvent(o, savedDelivery, OrderRealtimeEvent.TYPE_DELIVERY_STATUS_CHANGED,
+            "Cập nhật giao hàng: #" + o.getOrderCode(),
+            "Đơn hàng #" + o.getOrderCode() + " trạng thái giao: " + target.name());
         return new DeliveryStatusResponse(d.getId(), o.getId(), old, target.name(), now);
     }
 
@@ -211,6 +223,29 @@ public class DeliveryServiceImpl implements DeliveryService {
                                     d.getReceiverPhone(), d.getDeliveryAddress(), d.getDeliveryNote(),
                                     d.getDeliveryFee(), d.getStatus(), d.getAssignedAt(), d.getPickedUpAt(),
                                     d.getDeliveredAt(), d.getFailedAt(), d.getFailReason());
+    }
+
+    private void publishRealtimeEvent(Order o, OrderDelivery d, String eventType, String title, String message) {
+        if (eventPublisher == null || o == null) {
+            return;
+        }
+        try {
+            eventPublisher.publishEvent(new OrderRealtimeEvent(
+                eventType,
+                o.getId(),
+                o.getOrderCode(),
+                o.getBranchId(),
+                o.getCustomerId(),
+                d != null ? d.getShipperId() : null,
+                o.getStatus(),
+                d != null ? d.getStatus() : null,
+                o.getPaymentStatus(),
+                title,
+                message,
+                Instant.now()
+            ));
+        } catch (Exception ignored) {
+        }
     }
 
     private void writeHistory(Order order, String oldStatus, String newStatus, String note) {

@@ -249,6 +249,7 @@ public class VoucherServiceImpl implements VoucherService {
                        Integer usageLimit, Integer usageLimitPerCustomer, Instant startAt, Instant endAt,
                        String status) {
         validateDiscountConfig(discountType, discountValue, maxDiscountAmount);
+        validateUsageLimits(usageLimit, usageLimitPerCustomer);
         if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
             throw new BaseException(ErrorCode.INVALID_DATE);
         }
@@ -268,6 +269,22 @@ public class VoucherServiceImpl implements VoucherService {
         voucher.setStartAt(startAt);
         voucher.setEndAt(endAt);
         voucher.setStatus(status != null && !status.isBlank() ? status.trim().toUpperCase() : DEFAULT_STATUS);
+    }
+
+    private void validateUsageLimits(Integer usageLimit, Integer usageLimitPerCustomer) {
+        if (usageLimit != null && usageLimit <= 0) {
+            throw new BaseException(ErrorCode.VOUCHER_INVALID_USAGE_LIMIT,
+                    "Tổng lượt dùng tối đa phải lớn hơn 0");
+        }
+        if (usageLimitPerCustomer != null && usageLimitPerCustomer <= 0) {
+            throw new BaseException(ErrorCode.VOUCHER_INVALID_USAGE_LIMIT,
+                    "Lượt dùng tối đa mỗi khách phải lớn hơn 0");
+        }
+        if (usageLimitPerCustomer != null && usageLimit != null
+                && usageLimitPerCustomer > usageLimit) {
+            throw new BaseException(ErrorCode.VOUCHER_INVALID_USAGE_LIMIT,
+                    "Lượt dùng tối đa mỗi khách không được vượt quá tổng lượt dùng tối đa");
+        }
     }
 
     private void validateDiscountConfig(String discountType, BigDecimal discountValue, BigDecimal maxDiscountAmount) {

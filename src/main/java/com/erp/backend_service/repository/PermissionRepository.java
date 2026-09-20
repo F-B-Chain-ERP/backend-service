@@ -24,6 +24,9 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     /** Tìm danh sách quyền theo nhiều mã (code). */
     List<Permission> findByCodeIn(Collection<String> codes);
 
+    /** Tìm tất cả quyền theo trạng thái (ACTIVE / INACTIVE). */
+    List<Permission> findByStatus(EntityStatus status);
+
     /** Kiểm tra mã quyền đã tồn tại hay chưa (so khớp chính xác). */
     boolean existsByCode(String code);
 

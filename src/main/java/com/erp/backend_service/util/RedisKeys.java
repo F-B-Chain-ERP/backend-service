@@ -84,4 +84,12 @@ public final class RedisKeys {
         return NOTIFICATION_CHANNEL_PREFIX + accountId;
     }
 
+    public static final String BRANCH_NOTIFICATION_CHANNEL_PREFIX = "notification:branch:";
+
+    /** Kênh Redis Pub/Sub thông báo realtime cho toàn bộ nhân viên thuộc chi nhánh. */
+    public static String branchNotificationChannel(UUID branchId) {
+        return BRANCH_NOTIFICATION_CHANNEL_PREFIX + branchId;
+    }
+
 }
+

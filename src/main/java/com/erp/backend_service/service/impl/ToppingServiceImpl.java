@@ -62,7 +62,7 @@ public class ToppingServiceImpl implements ToppingService {
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Topping> result = toppingRepository.search(search, groupName, status, pageable);
         List<ToppingResponse> items = result.getContent().stream()
-                .map(toppingMapper::toResponse)
+                .map(t -> toppingMapper.toResponse(t, null))
                 .toList();
         return new PageResponse<>(result.getNumber(), result.getSize(),
                 result.getTotalElements(), result.getTotalPages(), items);
@@ -75,7 +75,8 @@ public class ToppingServiceImpl implements ToppingService {
         log.info("Lấy chi tiết topping: {}", id);
         Topping t = toppingRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_TOPPING_NOT_FOUND));
-        return toppingMapper.toResponse(t);
+        String materialName = resolveMaterialName(t.getMaterialId());
+        return toppingMapper.toResponse(t, materialName);
     }
 
     /** {@inheritDoc} */
@@ -91,7 +92,7 @@ public class ToppingServiceImpl implements ToppingService {
         Topping t = new Topping();
         applyFields(t, request);
         t.setStatus("ACTIVE");
-        return toppingMapper.toResponse(toppingRepository.save(t));
+        return toppingMapper.toResponse(toppingRepository.save(t), null);
     }
 
     /** {@inheritDoc} */
@@ -119,7 +120,7 @@ public class ToppingServiceImpl implements ToppingService {
             t.setStatus(normalized);
         }
 
-        return toppingMapper.toResponse(toppingRepository.save(t));
+        return toppingMapper.toResponse(toppingRepository.save(t), null);
     }
 
     /** {@inheritDoc} — hard delete, kiểm tra topping chưa được gán cho sản phẩm. */
@@ -150,6 +151,13 @@ public class ToppingServiceImpl implements ToppingService {
                         "Nguyên vật liệu liên kết phải ở trạng thái ACTIVE.");
             }
         }
+    }
+
+    private String resolveMaterialName(UUID materialId) {
+        if (materialId == null) return null;
+        return materialRepository.findById(materialId)
+                .map(Material::getName)
+                .orElse(null);
     }
 
     private void applyFields(Topping t, CreateToppingRequest request) {

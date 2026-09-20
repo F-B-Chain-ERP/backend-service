@@ -11,6 +11,9 @@ public interface NotificationService {
     /** Tạo thông báo in-app gửi tới một tài khoản (accountId) với tiêu đề & nội dung cho trước. */
     void notifyAccount(UUID accountId, String title, String body);
 
+    /** Tạo thông báo in-app gửi tới một khách hàng. */
+    void notifyCustomer(UUID customerId, String title, String body);
+
     /** Lấy danh sách thông báo chưa đọc của tài khoản. */
     List<NotificationResponse> getUnreadNotifications(UUID accountId);
 

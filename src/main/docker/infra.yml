@@ -14,10 +14,17 @@ services:
       file: minio.yml
       service: minio
 
+  rabbitmq:
+    extends:
+      file: rabbitmq.yml
+      service: rabbitmq
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
   minio_data:
+    driver: local
+  rabbitmq_data:
     driver: local

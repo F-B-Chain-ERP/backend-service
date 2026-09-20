@@ -288,6 +288,16 @@ public class ComboServiceImpl implements ComboService {
             Product newProduct = productRepository.findById(newVariant.getProductId())
                     .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
 
+            if (!"ACTIVE".equalsIgnoreCase(newProduct.getStatus())) {
+                throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND,
+                        "Sản phẩm '" + newProduct.getName() + "' đang ngừng hoạt động.");
+            }
+
+            if (request.comboProductId().equals(newProduct.getId())) {
+                throw new BaseException(ErrorCode.MENU_400_NOT_COMBO_PRODUCT,
+                        "Combo không thể tự tham chiếu chính nó.");
+            }
+
             BigDecimal originalVariantPrice = originalProduct.getBasePrice().add(originalVariant.getPriceDelta());
             BigDecimal newVariantPrice = newProduct.getBasePrice().add(newVariant.getPriceDelta());
 

@@ -1,6 +1,7 @@
 package com.erp.backend_service.service;
 
 import com.erp.backend_service.repository.AccountRoleRepository;
+import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.RoleRepository;
 import com.erp.core.domain.Role;
 import com.erp.core.enums.EntityStatus;
@@ -25,25 +26,30 @@ public class NotificationResolverService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationResolverService.class);
 
-    /** Các mã vai trò cấp quản lý chi nhánh cần nhận thông báo */
+    /**
+     * Các mã vai trò cấp quản lý chi nhánh cần nhận thông báo
+     */
     public static final Set<String> BRANCH_MANAGER_ROLE_CODES = Set.of("STORE_MANAGER", "PRODUCT_MANAGER");
 
     private final AccountRoleRepository accountRoleRepository;
     private final RoleRepository roleRepository;
+    private final AccountRepository accountRepository;
 
     public NotificationResolverService(
             AccountRoleRepository accountRoleRepository,
-            RoleRepository roleRepository
+            RoleRepository roleRepository,
+            AccountRepository accountRepository
     ) {
         this.accountRoleRepository = accountRoleRepository;
         this.roleRepository = roleRepository;
+        this.accountRepository = accountRepository;
     }
 
     /**
      * Tìm tất cả tài khoản quản lý của chi nhánh (STORE_MANAGER, PRODUCT_MANAGER)
      * và tất cả tài khoản quản trị hệ thống (ALL_SYSTEM).
      *
-     * @param branchId ID của chi nhánh (nếu có)
+     * @param branchId         ID của chi nhánh (nếu có)
      * @param excludeAccountId ID tài khoản cần loại trừ (ví dụ người thực hiện thao tác)
      * @return Tập hợp các accountId hợp lệ cần nhận thông báo
      */
@@ -75,6 +81,24 @@ public class NotificationResolverService {
 
         recipientIds.removeIf(Objects::isNull);
         log.debug("Resolved {} recipients for branchId={}: {}", recipientIds.size(), branchId, recipientIds);
+        return recipientIds;
+    }
+
+    /**
+     * Đồng bộ tập người nhận lưu DB với tập nhân viên nhận broadcast SSE của chi nhánh.
+     */
+    @Transactional(readOnly = true)
+    public Set<UUID> resolveBranchStaffAndAdmins(UUID branchId, UUID excludeAccountId) {
+        Set<UUID> recipientIds = new HashSet<>();
+        Instant now = Instant.now();
+        if (branchId != null) {
+            recipientIds.addAll(accountRepository.findActiveAccountIdsByBranch(branchId, EntityStatus.ACTIVE, now));
+        }
+        recipientIds.addAll(accountRoleRepository.findAccountIdsByAllSystemScope(EntityStatus.ACTIVE, now));
+        if (excludeAccountId != null) {
+            recipientIds.remove(excludeAccountId);
+        }
+        recipientIds.removeIf(Objects::isNull);
         return recipientIds;
     }
 }

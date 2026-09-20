@@ -122,7 +122,8 @@ public class ProductServiceImpl implements ProductService {
             UUID categoryId,
             Boolean isFeatured,
             Boolean isBestSeller,
-            String sortBy
+            String sortBy,
+            UUID branchId
     ) {
         // Chặn size để client không lôi cả bảng bằng size=Integer.MAX_VALUE (OOM).
         page = Math.max(page, 0);
@@ -130,8 +131,8 @@ public class ProductServiceImpl implements ProductService {
         if (search != null && search.trim().isEmpty()) {
             search = null;
         }
-        log.info("Get-list product for sale: page={}, size={}, search={}, categoryId={}, isFeatured={}, isBestSeller={}, sortBy={}",
-                page, size, search, categoryId, isFeatured, isBestSeller, sortBy);
+        log.info("Get-list product for sale: page={}, size={}, search={}, categoryId={}, isFeatured={}, isBestSeller={}, sortBy={}, branchId={}",
+                page, size, search, categoryId, isFeatured, isBestSeller, sortBy, branchId);
 
         Sort sort = Sort.by(Sort.Direction.DESC, "isFeatured")
                 .and(Sort.by(Sort.Direction.DESC, "isBestSeller"))
@@ -149,7 +150,7 @@ public class ProductServiceImpl implements ProductService {
 
         Pageable pageable = PageRequest.of(page, size, sort);
         // Slice thay vì Page: store không pager theo total nên bỏ query COUNT(*).
-        Slice<Product> sliceResult = productRepository.findActiveForSalesSlice(search, categoryId, isFeatured, isBestSeller, pageable);
+        Slice<Product> sliceResult = productRepository.findActiveForSalesSlice(search, categoryId, isFeatured, isBestSeller, branchId, pageable);
         List<Product> products = sliceResult.getContent();
 
         // Tránh lỗi N+1: Gom toàn bộ categoryId duy nhất, bulk-fetch bằng một câu query duy nhất

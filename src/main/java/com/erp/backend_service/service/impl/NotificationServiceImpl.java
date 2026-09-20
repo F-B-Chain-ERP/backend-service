@@ -16,7 +16,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** Thực hiện tạo và quản lý thông báo (notification), đẩy qua Redis Pub/Sub khi có sự kiện. */
+/**
+ * Thực hiện tạo và quản lý thông báo (notification), đẩy qua Redis Pub/Sub khi có sự kiện.
+ */
 @Service
 public class NotificationServiceImpl implements NotificationService {
 
@@ -41,12 +43,26 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public void notifyAccount(UUID accountId, String title, String body) {
-        if (accountId == null || title == null || title.isBlank()) {
+        notifyPrincipal(accountId, "ACCOUNT", title, body);
+    }
+
+    @Override
+    @Transactional
+    public void notifyCustomer(UUID customerId, String title, String body) {
+        notifyPrincipal(customerId, "CUSTOMER", title, body);
+    }
+
+    private void notifyPrincipal(UUID principalId, String recipientType, String title, String body) {
+        if (principalId == null || title == null || title.isBlank()) {
             return;
         }
         Notification notification = new Notification();
-        notification.setRecipientType("ACCOUNT");
-        notification.setAccountId(accountId);
+        notification.setRecipientType(recipientType);
+        if ("CUSTOMER".equals(recipientType)) {
+            notification.setCustomerId(principalId);
+        } else {
+            notification.setAccountId(principalId);
+        }
         notification.setChannel(CHANNEL_IN_APP);
         notification.setTitle(title);
         notification.setBody(body);
@@ -58,9 +74,9 @@ public class NotificationServiceImpl implements NotificationService {
         try {
             NotificationResponse response = toResponse(saved);
             String payload = objectMapper.writeValueAsString(response);
-            stringRedisTemplate.convertAndSend(RedisKeys.notificationChannel(accountId), payload);
+            stringRedisTemplate.convertAndSend(RedisKeys.notificationChannel(principalId), payload);
         } catch (Exception e) {
-            log.error("Không thể gửi thông báo realtime qua Redis cho account: {}", accountId, e);
+            log.error("Không thể gửi thông báo realtime qua Redis cho principal: {}", principalId, e);
         }
     }
 
@@ -191,7 +207,7 @@ public class NotificationServiceImpl implements NotificationService {
             return "REJECTED";
         }
         if (text.contains("bị huỷ") || text.contains("đã bị hủy") || text.contains("hủy đơn")) {
-            return "CANCELLED";
+            return text.contains("hd-") ? "ORDER_CANCELLED" : "PO_CANCELLED";
         }
         if (text.contains("nhập kho")) {
             return "PO_RECEIVED";

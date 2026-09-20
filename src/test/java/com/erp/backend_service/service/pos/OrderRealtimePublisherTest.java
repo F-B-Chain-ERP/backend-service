@@ -1,11 +1,10 @@
 package com.erp.backend_service.service.pos;
 
 import com.erp.backend_service.event.OrderRealtimeEvent;
-import com.erp.backend_service.repository.NotificationRepository;
 import com.erp.backend_service.util.RedisKeys;
-import com.erp.core.domain.Notification;
 import tools.jackson.databind.ObjectMapper;
 import com.erp.backend_service.service.NotificationResolverService;
+import com.erp.backend_service.service.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,7 +30,7 @@ class OrderRealtimePublisherTest {
     private StringRedisTemplate stringRedisTemplate;
 
     @Mock
-    private NotificationRepository notificationRepository;
+    private NotificationService notificationService;
 
     @Mock
     private NotificationResolverService notificationResolverService;
@@ -42,7 +41,7 @@ class OrderRealtimePublisherTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        publisher = new OrderRealtimePublisher(stringRedisTemplate, notificationRepository, objectMapper, notificationResolverService);
+        publisher = new OrderRealtimePublisher(stringRedisTemplate, notificationService, objectMapper, notificationResolverService);
     }
 
     @Test
@@ -54,7 +53,7 @@ class OrderRealtimePublisherTest {
         UUID shipperId = UUID.randomUUID();
         UUID managerId = UUID.randomUUID();
 
-        when(notificationResolverService.resolveManagersAndAdmins(eq(branchId), isNull()))
+        when(notificationResolverService.resolveBranchStaffAndAdmins(eq(branchId), isNull()))
                 .thenReturn(Set.of(managerId));
 
         OrderRealtimeEvent event = new OrderRealtimeEvent(
@@ -83,8 +82,10 @@ class OrderRealtimePublisherTest {
         // 3. Phải gửi tới kênh tài xế
         verify(stringRedisTemplate).convertAndSend(eq(RedisKeys.notificationChannel(shipperId)), any(String.class));
 
-        // 4. Phải lưu bản ghi notification trong DB cho khách hàng, shipper, và manager chi nhánh (3 lần)
-        verify(notificationRepository, times(3)).save(any(Notification.class));
+        // 4. Phải tạo notification cá nhân cho khách hàng, shipper và nhân viên chi nhánh.
+        verify(notificationService).notifyCustomer(eq(customerId), any(String.class), any(String.class));
+        verify(notificationService).notifyAccount(eq(shipperId), any(String.class), any(String.class));
+        verify(notificationService).notifyAccount(eq(managerId), any(String.class), any(String.class));
     }
 
     @Test
@@ -92,6 +93,6 @@ class OrderRealtimePublisherTest {
     void shouldHandleNullEventSafely() {
         publisher.onOrderRealtimeEvent(null);
         verifyNoInteractions(stringRedisTemplate);
-        verifyNoInteractions(notificationRepository);
+        verifyNoInteractions(notificationService);
     }
 }

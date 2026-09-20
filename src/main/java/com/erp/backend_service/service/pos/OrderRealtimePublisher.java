@@ -1,10 +1,9 @@
 package com.erp.backend_service.service.pos;
 
 import com.erp.backend_service.event.OrderRealtimeEvent;
-import com.erp.backend_service.repository.NotificationRepository;
 import com.erp.backend_service.service.NotificationResolverService;
+import com.erp.backend_service.service.NotificationService;
 import com.erp.backend_service.util.RedisKeys;
-import com.erp.core.domain.Notification;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.time.Instant;
 import java.util.Set;
+import java.util.HashSet;
 import java.util.UUID;
 
 /**
@@ -29,18 +28,13 @@ public class OrderRealtimePublisher {
     private static final Logger log = LoggerFactory.getLogger(OrderRealtimePublisher.class);
 
     private final StringRedisTemplate stringRedisTemplate;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final NotificationResolverService notificationResolverService;
 
-    public OrderRealtimePublisher(
-            StringRedisTemplate stringRedisTemplate,
-            NotificationRepository notificationRepository,
-            ObjectMapper objectMapper,
-            NotificationResolverService notificationResolverService
-    ) {
+    public OrderRealtimePublisher(StringRedisTemplate stringRedisTemplate, NotificationService notificationService, ObjectMapper objectMapper, NotificationResolverService notificationResolverService) {
         this.stringRedisTemplate = stringRedisTemplate;
-        this.notificationRepository = notificationRepository;
+        this.notificationService = notificationService;
         this.objectMapper = objectMapper;
         this.notificationResolverService = notificationResolverService;
     }
@@ -58,40 +52,44 @@ public class OrderRealtimePublisher {
         try {
             String payload = objectMapper.writeValueAsString(event);
 
-            // 1. Broadcast tới toàn bộ nhân viên tại chi nhánh & lưu Notification DB cho managers/admins
+            // Lưu và phát notification có ID thật trước, để chuông có thể đọc/xóa ngay khi nhận SSE.
+            Set<UUID> accountRecipients;
+            if (event.branchId() != null) {
+                accountRecipients = new HashSet<>(notificationResolverService.resolveBranchStaffAndAdmins(event.branchId(), null));
+            } else {
+                accountRecipients = new HashSet<>(notificationResolverService.resolveManagersAndAdmins(null, null));
+            }
+            if (event.shipperId() != null) {
+                accountRecipients.add(event.shipperId());
+            }
+            for (UUID accountId : accountRecipients) {
+                try {
+                    notificationService.notifyAccount(accountId, event.title(), event.message());
+                } catch (Exception e) {
+                    log.warn("Không thể lưu notification đơn hàng cho account {}: {}", accountId, e.getMessage());
+                }
+            }
+
+            if (event.customerId() != null) {
+                try {
+                    notificationService.notifyCustomer(event.customerId(), event.title(), event.message());
+                } catch (Exception e) {
+                    log.warn("Không thể lưu notification đơn hàng cho customer {}: {}", event.customerId(), e.getMessage());
+                }
+            }
+
+            // Broadcast event nghiệp vụ sau notification để các màn hình cập nhật trạng thái.
             if (event.branchId() != null) {
                 String branchChannel = RedisKeys.branchNotificationChannel(event.branchId());
                 stringRedisTemplate.convertAndSend(branchChannel, payload);
                 log.debug("Đã publish OrderRealtimeEvent tới branch channel {}: {}", branchChannel, event.orderCode());
-
-                Set<UUID> managersAndAdmins = notificationResolverService.resolveManagersAndAdmins(event.branchId(), null);
-                if (managersAndAdmins != null) {
-                    for (UUID adminOrManagerId : managersAndAdmins) {
-                        saveNotificationRecord(adminOrManagerId, "ACCOUNT", event.title(), event.message());
-                    }
-                }
-            } else {
-                Set<UUID> admins = notificationResolverService.resolveManagersAndAdmins(null, null);
-                if (admins != null) {
-                    for (UUID adminId : admins) {
-                        saveNotificationRecord(adminId, "ACCOUNT", event.title(), event.message());
-                    }
-                }
             }
-
-            // 2. Gửi tới Khách hàng (nếu có customerId)
             if (event.customerId() != null) {
-                String customerChannel = RedisKeys.notificationChannel(event.customerId());
-                stringRedisTemplate.convertAndSend(customerChannel, payload);
-                saveNotificationRecord(event.customerId(), "CUSTOMER", event.title(), event.message());
+                stringRedisTemplate.convertAndSend(RedisKeys.notificationChannel(event.customerId()), payload);
                 log.debug("Đã publish OrderRealtimeEvent tới customer {}: {}", event.customerId(), event.orderCode());
             }
-
-            // 3. Gửi tới Tài xế / Shipper (nếu có shipperId)
             if (event.shipperId() != null) {
-                String shipperChannel = RedisKeys.notificationChannel(event.shipperId());
-                stringRedisTemplate.convertAndSend(shipperChannel, payload);
-                saveNotificationRecord(event.shipperId(), "ACCOUNT", event.title(), event.message());
+                stringRedisTemplate.convertAndSend(RedisKeys.notificationChannel(event.shipperId()), payload);
                 log.debug("Đã publish OrderRealtimeEvent tới shipper {}: {}", event.shipperId(), event.orderCode());
             }
         } catch (Exception e) {
@@ -99,28 +97,4 @@ public class OrderRealtimePublisher {
         }
     }
 
-    private void saveNotificationRecord(UUID targetId, String recipientType, String title, String body) {
-        try {
-            if (title == null || title.isBlank() || targetId == null) {
-                return;
-            }
-            Notification notification = new Notification();
-            notification.setRecipientType(recipientType);
-            if ("CUSTOMER".equalsIgnoreCase(recipientType)) {
-                notification.setCustomerId(targetId);
-                notification.setAccountId(null);
-            } else {
-                notification.setAccountId(targetId);
-                notification.setCustomerId(null);
-            }
-            notification.setChannel("IN_APP");
-            notification.setTitle(title);
-            notification.setBody(body);
-            notification.setStatus("PENDING");
-            notification.setSentAt(Instant.now());
-            notificationRepository.save(notification);
-        } catch (Exception e) {
-            log.warn("Không thể lưu notification DB cho targetId={}: {}", targetId, e.getMessage());
-        }
-    }
 }

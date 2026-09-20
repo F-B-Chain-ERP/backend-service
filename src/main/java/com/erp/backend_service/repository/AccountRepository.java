@@ -13,30 +13,65 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 
-/** Truy vấn dữ liệu tài khoản (Account). */
+/**
+ * Truy vấn dữ liệu tài khoản (Account).
+ */
 @Repository
 public interface AccountRepository extends JpaRepository<Account, UUID> {
 
-    /** Tìm tài khoản theo tên đăng nhập. */
+    /**
+     * Tài khoản đang hoạt động thuộc chi nhánh qua chi nhánh chính hoặc scope vai trò còn hiệu lực.
+     */
+    @Query("""
+            select distinct a.id from Account a
+            where a.status = :status
+              and (a.primaryBranchId = :branchId
+                   or exists (select 1 from AccountRole ar, Scope s
+                              where ar.accountId = a.id and ar.scopeId = s.id
+                                and s.branchId = :branchId
+                                and ar.status = :status
+                                and s.status = :status
+                                and (ar.expiresAt is null or ar.expiresAt > :now)))
+            """)
+    List<UUID> findActiveAccountIdsByBranch(@Param("branchId") UUID branchId,
+                                            @Param("status") EntityStatus status,
+                                            @Param("now") Instant now);
+
+    /**
+     * Tìm tài khoản theo tên đăng nhập.
+     */
     Optional<Account> findByUsername(String username);
 
-    /** Tìm tài khoản theo email. */
+    /**
+     * Tìm tài khoản theo email.
+     */
     Optional<Account> findByEmail(String email);
 
-    /** Tìm tài khoản theo username hoặc email (dùng cho đăng nhập). */
+    /**
+     * Tìm tài khoản theo username hoặc email (dùng cho đăng nhập).
+     */
     Optional<Account> findByUsernameOrEmail(String username, String email);
 
-    /** Kiểm tra tồn tại theo số điện thoại. */
+    /**
+     * Kiểm tra tồn tại theo số điện thoại.
+     */
     boolean existsByPhone(String phone);
 
-    /** Kiểm tra username đã tồn tại ở một tài khoản khác (dùng khi cập nhật). */
+    /**
+     * Kiểm tra username đã tồn tại ở một tài khoản khác (dùng khi cập nhật).
+     */
     boolean existsByUsernameAndIdNot(String username, UUID id);
 
-    /** Kiểm tra email đã tồn tại ở một tài khoản khác (dùng khi cập nhật). */
+    /**
+     * Kiểm tra email đã tồn tại ở một tài khoản khác (dùng khi cập nhật).
+     */
     boolean existsByEmailAndIdNot(String email, UUID id);
 
-    /** Kiểm tra số điện thoại đã tồn tại ở một tài khoản khác (dùng khi cập nhật). */
+    /**
+     * Kiểm tra số điện thoại đã tồn tại ở một tài khoản khác (dùng khi cập nhật).
+     */
     boolean existsByPhoneAndIdNot(String phone, UUID id);
 
     /**
@@ -75,9 +110,9 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
                                 and (ar.expiresAt is null or ar.expiresAt > :now)))
             """)
     Page<Account> searchByBranches(@Param("search") String search,
-                                    @Param("branchIds") Collection<UUID> branchIds,
-                                    @Param("now") Instant now,
-                                    Pageable pageable);
+                                   @Param("branchIds") Collection<UUID> branchIds,
+                                   @Param("now") Instant now,
+                                   Pageable pageable);
 
     /**
      * Biến thể của {@link #search} có thêm lọc trạng thái + mở rộng search sang phone.

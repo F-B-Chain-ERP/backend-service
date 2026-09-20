@@ -29,3 +29,8 @@ databaseChangeLog:
       file: db/changelog/changeset/014-order-pickup-slot.sql
   - include:
       file: db/changelog/changeset/015-report-job.sql
+  - include:
+      file: db/changelog/changeset/015-fix-idempotency-table-mysql.sql
+  - include:
+      file: db/changelog/changeset/016-seed-pos-permissions-for-staff-roles.sql
+

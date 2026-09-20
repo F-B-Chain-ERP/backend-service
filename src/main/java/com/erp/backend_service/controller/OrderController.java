@@ -34,10 +34,10 @@ public class OrderController {
     public ResponseEntity<ApiResponse<PageResponse<OrderSummaryResponse>>> list(
         @RequestParam(required = false) UUID branchId, @RequestParam(required = false) String orderType,
         @RequestParam(required = false) String status, @RequestParam(required = false) LocalDate fromDate,
-        @RequestParam(required = false) LocalDate toDate, @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size) {
+        @RequestParam(required = false) LocalDate toDate, @RequestParam(required = false) String search,
+        @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(
-            ApiResponse.success(service.list(branchId, orderType, status, fromDate, toDate, page, size),
+            ApiResponse.success(service.list(branchId, orderType, status, fromDate, toDate, search, page, size),
                                 "Lấy danh sách đơn hàng thành công"));
     }
 

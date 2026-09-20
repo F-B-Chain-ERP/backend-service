@@ -127,6 +127,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
+        // Luôn truyền ngày hữu hiệu (giống StockIn): tránh nhánh ":fromDate is null" trong JPQL
+        // khiến Hibernate render param không kiểu -> PostgreSQL lỗi "could not determine data type".
+        LocalDate effectiveFromDate = fromDate != null ? fromDate : LocalDate.of(1, 1, 1);
+        LocalDate effectiveToDate = toDate != null ? toDate : LocalDate.of(9999, 12, 31);
+
         java.util.Collection<UUID> allowedWarehouseIds = dataScopeHelper.getAllowedWarehouseIds(warehouseId);
         if (allowedWarehouseIds != null && allowedWarehouseIds.isEmpty()) {
             return new PageResponse<>(page, safeSize, 0L, 0, List.of());
@@ -134,7 +139,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         Page<PurchaseOrder> pageResult = purchaseOrderRepository.search(
                 StringUtils.hasText(search) ? search.trim() : null, status,
-                supplierId, warehouseId, allowedWarehouseIds, fromDate, toDate, pageable);
+                supplierId, warehouseId, allowedWarehouseIds, effectiveFromDate, effectiveToDate, pageable);
 
         List<PurchaseOrder> pos = pageResult.getContent();
 

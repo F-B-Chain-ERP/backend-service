@@ -6,10 +6,13 @@ import com.erp.backend_service.mapper.SupplierMaterialMapper;
 import com.erp.backend_service.repository.MaterialRepository;
 import com.erp.backend_service.repository.SupplierMaterialRepository;
 import com.erp.backend_service.repository.SupplierRepository;
+import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.service.SupplierMaterialService;
+import com.erp.backend_service.util.CodeGenerator;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.Supplier;
 import com.erp.core.domain.SupplierMaterial;
+import com.erp.core.domain.Unit;
 import com.erp.core.dto.request.proc.SupplierMaterial.CreateSupplierMaterialRequest;
 import com.erp.core.dto.request.proc.SupplierMaterial.UpdateSupplierMaterialRequest;
 import com.erp.core.dto.response.PageResponse;
@@ -40,15 +43,18 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     private final SupplierMaterialRepository supplierMaterialRepository;
     private final SupplierRepository supplierRepository;
     private final MaterialRepository materialRepository;
+    private final UnitRepository unitRepository;
     private final SupplierMaterialMapper supplierMaterialMapper;
 
     public SupplierMaterialServiceImpl(SupplierMaterialRepository supplierMaterialRepository,
                                         SupplierRepository supplierRepository,
                                         MaterialRepository materialRepository,
+                                        UnitRepository unitRepository,
                                         SupplierMaterialMapper supplierMaterialMapper) {
         this.supplierMaterialRepository = supplierMaterialRepository;
         this.supplierRepository = supplierRepository;
         this.materialRepository = materialRepository;
+        this.unitRepository = unitRepository;
         this.supplierMaterialMapper = supplierMaterialMapper;
     }
 
@@ -94,7 +100,7 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
             supplierMaterialRepository.clearPreferredByMaterialId(request.materialId());
         }
         SupplierMaterial entity = new SupplierMaterial();
-        apply(entity, request.supplierId(), request.materialId(), request.supplierSku(),
+        apply(entity, request.supplierId(), request.materialId(), resolveSupplierSku(request.supplierSku()),
                 request.purchasePrice(), request.leadTimeDays(), request.isPreferred(), request.status());
         return toResponseWithNames(supplierMaterialRepository.save(entity));
     }
@@ -129,7 +135,7 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
                 entity,
                 request.supplierId(),
                 request.materialId(),
-                request.supplierSku(),
+                resolveSupplierSku(request.supplierSku()),
                 request.purchasePrice(),
                 request.leadTimeDays(),
                 request.isPreferred(),
@@ -155,6 +161,14 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
                 .orElseThrow(() -> new BaseException(ErrorCode.SUPPLIER_MATERIAL_NOT_FOUND));
     }
 
+    /** "Mã hàng NCC" để trống sẽ tự sinh bằng {@link CodeGenerator} (định dạng {@code SKU-XXXXXXXX}). */
+    private String resolveSupplierSku(String supplierSku) {
+        if (supplierSku != null && !supplierSku.isBlank()) {
+            return supplierSku.trim();
+        }
+        return CodeGenerator.random("SKU-", supplierMaterialRepository::existsBySupplierSku);
+    }
+
     private void apply(SupplierMaterial e, UUID supplierId, UUID materialId, String supplierSku,
                        BigDecimal purchasePrice, Integer leadTimeDays, Boolean isPreferred, String status) {
         e.setSupplierId(supplierId);
@@ -171,7 +185,9 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
                 supplierRepository::findAllById, Supplier::getId, Supplier::getName);
         Map<UUID, String> materialNames = resolveNames(List.of(e.getMaterialId()),
                 materialRepository::findAllById, Material::getId, Material::getName);
-        return supplierMaterialMapper.toResponse(e, supplierNames.get(e.getSupplierId()), materialNames.get(e.getMaterialId()));
+        return supplierMaterialMapper.toResponse(e, supplierNames.get(e.getSupplierId()),
+                materialNames.get(e.getMaterialId()),
+                resolveUnitNamesByMaterial(materialRepository.findAllById(List.of(e.getMaterialId()))).get(e.getMaterialId()));
     }
 
     private PageResponse<SupplierMaterialResponse> toPageResponse(Page<SupplierMaterial> pageResult) {
@@ -182,14 +198,33 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
         Map<UUID, String> materialNames = resolveNames(
                 items.stream().map(SupplierMaterial::getMaterialId).filter(Objects::nonNull).distinct().toList(),
                 materialRepository::findAllById, Material::getId, Material::getName);
+        Map<UUID, String> unitNamesByMaterial = resolveUnitNamesByMaterial(
+                materialRepository.findAllById(
+                        items.stream().map(SupplierMaterial::getMaterialId).filter(Objects::nonNull).distinct().toList()));
 
         List<SupplierMaterialResponse> content = items.stream()
                 .map(e -> supplierMaterialMapper.toResponse(
-                        e, supplierNames.get(e.getSupplierId()), materialNames.get(e.getMaterialId())))
+                        e, supplierNames.get(e.getSupplierId()), materialNames.get(e.getMaterialId()),
+                        unitNamesByMaterial.get(e.getMaterialId())))
                 .toList();
 
         return new PageResponse<>(pageResult.getNumber(), pageResult.getSize(),
                 pageResult.getTotalElements(), pageResult.getTotalPages(), content);
+    }
+
+    /** Map {@code materialId -> unitName} để gán đơn vị cho response. */
+    private Map<UUID, String> resolveUnitNamesByMaterial(List<Material> materials) {
+        Map<UUID, UUID> unitIdByMaterial = materials.stream()
+                .filter(m -> m != null && m.getBaseUnitId() != null)
+                .collect(Collectors.toMap(Material::getId, Material::getBaseUnitId, (a, b) -> a));
+        if (unitIdByMaterial.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> unitNames = unitRepository.findAllById(unitIdByMaterial.values()).stream()
+                .filter(u -> u != null)
+                .collect(Collectors.toMap(Unit::getId, Unit::getName, (a, b) -> a));
+        return unitIdByMaterial.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> unitNames.get(e.getValue())));
     }
 
     private <T> Map<UUID, String> resolveNames(

@@ -1,6 +1,7 @@
 package com.erp.backend_service.service;
 
 import com.erp.backend_service.repository.AccountRoleRepository;
+import com.erp.backend_service.repository.AccountRepository;
 import com.erp.backend_service.repository.RoleRepository;
 import com.erp.core.domain.Role;
 import com.erp.core.enums.EntityStatus;
@@ -32,11 +33,14 @@ class NotificationResolverServiceTest {
     @Mock
     private RoleRepository roleRepository;
 
+    @Mock
+    private AccountRepository accountRepository;
+
     private NotificationResolverService resolverService;
 
     @BeforeEach
     void setUp() {
-        resolverService = new NotificationResolverService(accountRoleRepository, roleRepository);
+        resolverService = new NotificationResolverService(accountRoleRepository, roleRepository, accountRepository);
     }
 
     @Test
@@ -69,5 +73,24 @@ class NotificationResolverServiceTest {
         assertTrue(recipients.contains(manager1Id));
         assertTrue(recipients.contains(admin1Id));
         assertFalse(recipients.contains(currentUserId), "Acting user must be excluded");
+    }
+
+    @Test
+    @DisplayName("Should resolve all active branch staff and ALL_SYSTEM admins without duplicates")
+    void testResolveBranchStaffAndAdmins() {
+        UUID branchId = UUID.randomUUID();
+        UUID staffId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        when(accountRepository.findActiveAccountIdsByBranch(
+                eq(branchId), eq(EntityStatus.ACTIVE), any(Instant.class)
+        )).thenReturn(List.of(staffId, adminId));
+        when(accountRoleRepository.findAccountIdsByAllSystemScope(
+                eq(EntityStatus.ACTIVE), any(Instant.class)
+        )).thenReturn(List.of(adminId));
+
+        Set<UUID> recipients = resolverService.resolveBranchStaffAndAdmins(branchId, null);
+
+        assertEquals(Set.of(staffId, adminId), recipients);
     }
 }

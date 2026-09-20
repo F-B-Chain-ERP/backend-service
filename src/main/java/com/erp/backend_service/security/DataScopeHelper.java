@@ -37,10 +37,11 @@ public class DataScopeHelper {
 
     /**
      * Kiểm tra xem người dùng hiện tại có quyền Quản trị toàn hệ thống (Scope ALL_SYSTEM) hay không.
+     * Admin hoặc tài khoản có ScopeType.ALL_SYSTEM đều có quyền toàn hệ thống.
      */
     public boolean isAllSystem() {
         return SecurityUtils.getCurrentUserDetails()
-                .map(u -> u.getScopes().stream().anyMatch(s -> s.scopeType() == ScopeType.ALL_SYSTEM))
+                .map(u -> u.isAdmin() || u.getScopes().stream().anyMatch(s -> s.scopeType() == ScopeType.ALL_SYSTEM))
                 .orElse(false);
     }
 

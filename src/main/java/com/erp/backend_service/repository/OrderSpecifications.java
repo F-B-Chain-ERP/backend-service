@@ -21,6 +21,11 @@ public final class OrderSpecifications {
 
     public static Specification<Order> filter(UUID branchId, UUID customerId, String orderType, String status,
                                               Instant fromDate, Instant toDate) {
+        return filter(branchId, customerId, orderType, status, fromDate, toDate, null);
+    }
+
+    public static Specification<Order> filter(UUID branchId, UUID customerId, String orderType, String status,
+                                              Instant fromDate, Instant toDate, String search) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (branchId != null) {
@@ -40,6 +45,14 @@ public final class OrderSpecifications {
             }
             if (toDate != null) {
                 predicates.add(cb.lessThan(root.<Instant>get("createdAt"), toDate));
+            }
+            if (search != null && !search.isBlank()) {
+                String pattern = "%" + search.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("orderCode")), pattern),
+                        cb.like(cb.lower(root.get("customerName")), pattern),
+                        cb.like(cb.lower(root.get("customerPhone")), pattern)
+                ));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };

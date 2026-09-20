@@ -18,11 +18,13 @@ import com.erp.core.dto.request.pos.*;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.PrincipalType;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.erp.backend_service.event.OrderRealtimeEvent;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,6 +35,12 @@ import java.util.*;
 public class OrderServiceImpl implements OrderService {
     private static final String ACTIVE = "ACTIVE";
     private static final BigDecimal DEFAULT_DELIVERY_FEE = BigDecimal.valueOf(15000);
+    private static final String VOUCHER_INVALID_MSG = "Mã giảm giá không hợp lệ hoặc không áp dụng cho đơn hàng này.";
+    /** Quyền CUSTOMER được phép trong luồng đọc/hủy đơn của chính mình. */
+    private static final Set<String> CUSTOMER_ALLOWED_PERMISSIONS = Set.of(
+        "pos:order:view",
+        "pos:order:cancel"
+    );
     private final OrderRepository orderRepository;
     private final OrderItemRepository itemRepository;
     private final OrderItemToppingRepository itemToppingRepository;
@@ -58,6 +66,7 @@ public class OrderServiceImpl implements OrderService {
     private final PosBranchOpenService posBranchOpenService;
     private final PosShipperAssignService posShipperAssignService;
     private final PickupTimeSlotRepository pickupTimeSlotRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
@@ -73,7 +82,7 @@ public class OrderServiceImpl implements OrderService {
                             RefundRepository refundRepository, PosIdempotencyService posIdempotencyService,
                             PosBranchOpenService posBranchOpenService,
                             PosShipperAssignService posShipperAssignService,
-                            PickupTimeSlotRepository pickupTimeSlotRepository) {
+                            PickupTimeSlotRepository pickupTimeSlotRepository, ApplicationEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -99,6 +108,7 @@ public class OrderServiceImpl implements OrderService {
         this.posBranchOpenService = posBranchOpenService;
         this.posShipperAssignService = posShipperAssignService;
         this.pickupTimeSlotRepository = pickupTimeSlotRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -211,17 +221,17 @@ public class OrderServiceImpl implements OrderService {
             // Check rẻ (chi nhánh, hạn, giá trị tối thiểu) đọc không lock để khỏi giữ lock lâu.
             Voucher preview =
                 voucherRepository.findByCodeIgnoreCaseAndStatus(request.voucherCode().trim(), ACTIVE).orElseThrow(
-                    () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
+                    () -> new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG));
             if (voucherBranchRepository.findByVoucherIdAndBranchIdAndStatus(preview.getId(), request.branchId(),
                 ACTIVE).isEmpty()) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không áp dụng tại chi nhánh này.");
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
             Instant now = Instant.now();
             if (now.isBefore(preview.getStartAt()) || now.isAfter(preview.getEndAt())) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher đã hết hạn hoặc chưa bắt đầu.");
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
             if (subtotal.compareTo(preview.getMinOrderAmount()) < 0) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Đơn hàng chưa đạt giá trị tối thiểu của voucher.");
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
             // Lock bi quan row voucher: check hạn mức + ghi usage + tăng usedCount thành 1 khối,
             // 2 đơn cùng lúc không thể cùng lọt (kể cả limit-theo-khách vì count nằm trong lock).
@@ -375,13 +385,16 @@ public class OrderServiceImpl implements OrderService {
         cart.setStatus("CONVERTED");
         cart.setSubtotalAmount(BigDecimal.ZERO);
         cartRepository.save(cart);
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_CREATED,
+            "Đơn hàng mới: #" + o.getOrderCode(),
+            "Đơn hàng mới từ " + (o.getCustomerName() != null ? o.getCustomerName() : "Khách hàng") + " (" + o.getTotalAmount() + "đ)");
         return toResponse(o);
     }
 
     @Override
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
-                                                   LocalDate toDate, int page, int size) {
+                                                   LocalDate toDate, String search, int page, int size) {
         requirePermission("pos:order:view");
         if (page < 0 || size < 1 || size > 100) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
@@ -396,7 +409,7 @@ public class OrderServiceImpl implements OrderService {
         Instant from = fromDate == null ? null : fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant to = toDate == null ? null : toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
         Page<Order> p = orderRepository.findAll(
-            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status, from, to),
+            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status, from, to, search),
             PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
         return new PageResponse<>(p.getNumber(), p.getSize(), p.getTotalElements(), p.getTotalPages(),
                                   p.getContent().stream().map(
@@ -476,6 +489,9 @@ public class OrderServiceImpl implements OrderService {
         orderRepository.save(o);
         UUID by = currentPrincipalId();
         writeHistory(o, old, target.name(), request.note());
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Cập nhật đơn hàng: #" + o.getOrderCode(),
+            "Đơn hàng #" + o.getOrderCode() + " đã chuyển sang trạng thái " + target.name());
         return new OrderStatusResponse(o.getId(), o.getOrderCode(), old, target.name(), by, now);
     }
 
@@ -503,6 +519,9 @@ public class OrderServiceImpl implements OrderService {
         // Giả thiết D1: hủy đơn đã PAID phải sinh refund PENDING cho kế toán, tránh mất tiền khách.
         refundIfPaid(o, request.reason());
         writeHistory(o, old, PosFlow.Order.CANCELLED.name(), request.note() != null ? request.note() : request.reason());
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Đơn hàng #" + o.getOrderCode() + " đã bị hủy",
+            "Lý do: " + (request.reason() != null ? request.reason() : "Khách hủy"));
         return toResponse(o);
     }
 
@@ -527,12 +546,17 @@ public class OrderServiceImpl implements OrderService {
         o.setCompletedAt(now);
         orderRepository.save(o);
         writeHistory(o, old, PosFlow.Order.COMPLETED.name(), request.note());
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Đơn hàng #" + o.getOrderCode() + " đã hoàn tất",
+            "Đơn hàng đã được hoàn tất thành công.");
         return toResponse(o);
     }
 
     @Override
     @Transactional
     public OrderResponse updatePaymentStatus(UUID id, UpdatePaymentStatusRequest request) {
+        // TODO [VNPay Sprint]: Thay requirePermission("pos:order:update") bằng requirePaymentPermission()
+        // để CUSTOMER có thể tự cập nhật sau khi VNPay callback. Xem chi tiết trong implementation_plan.md Fix 3.
         // Luật tiền 1 chiều: chỉ UNPAID -> PAID (thu tiền). PAID muốn đảo phải hủy đơn
         // để sinh refund PENDING (payment -> REFUNDED do hệ thống set), cấm un-thu tay
         // và cấm set REFUNDED tay (không có chứng từ refund đi kèm).
@@ -564,6 +588,9 @@ public class OrderServiceImpl implements OrderService {
         orderRepository.save(o);
         writeHistory(o, o.getStatus(), o.getStatus(),
             "Thu tiền -> " + target.name() + (request.note() != null ? ": " + request.note() : ""));
+        publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
+            "Thanh toán đơn hàng: #" + o.getOrderCode(),
+            "Trạng thái thanh toán: " + target.name());
         return toResponse(o);
     }
 
@@ -742,7 +769,7 @@ public class OrderServiceImpl implements OrderService {
 
     private void requirePermission(String permission) {
         if (isCustomer()) {
-            if (!"pos:order:view".equals(permission) && !"pos:order:cancel".equals(permission)) {
+            if (!CUSTOMER_ALLOWED_PERMISSIONS.contains(permission)) {
                 throw new BaseException(ErrorCode.UNAUTHORIZED);
             }
             return;
@@ -757,7 +784,40 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private UUID currentPrincipalId() {
-        return SecurityUtils.getCurrentPrincipalId().orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        return SecurityUtils.getCurrentPrincipalId()
+            .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+    }
+
+    private void publishRealtimeEvent(Order o, String eventType, String title, String message) {
+        if (eventPublisher == null || o == null) {
+            return;
+        }
+        try {
+            UUID shipperId = null;
+            String deliveryStatus = null;
+            if ("DELIVERY".equals(o.getOrderType())) {
+                var dOpt = deliveryRepository.findByOrderId(o.getId());
+                if (dOpt.isPresent()) {
+                    shipperId = dOpt.get().getShipperId();
+                    deliveryStatus = dOpt.get().getStatus();
+                }
+            }
+            eventPublisher.publishEvent(new OrderRealtimeEvent(
+                eventType,
+                o.getId(),
+                o.getOrderCode(),
+                o.getBranchId(),
+                o.getCustomerId(),
+                shipperId,
+                o.getStatus(),
+                deliveryStatus,
+                o.getPaymentStatus(),
+                title,
+                message,
+                Instant.now()
+            ));
+        } catch (Exception ignored) {
+        }
     }
 
     private UUID currentCustomerId() {

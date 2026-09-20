@@ -19,6 +19,7 @@ import com.erp.backend_service.service.AuditService;
 import com.erp.backend_service.service.PermissionService;
 import com.erp.backend_service.service.ScopeService;
 import com.erp.backend_service.util.RedisKeys;
+import com.erp.core.domain.Account;
 import com.erp.core.domain.AccountRole;
 import com.erp.core.domain.Permission;
 import com.erp.core.domain.Role;
@@ -101,7 +102,11 @@ public class PermissionServiceImpl implements PermissionService {
         if (!isActive(accountId)) {
             return false;
         }
-        return getSnapshot(accountId).permissions().contains(permissionCode);
+        PermissionSnapshot snapshot = getSnapshot(accountId);
+        if (isAdmin(accountId, snapshot)) {
+            return true;
+        }
+        return snapshot.permissions().contains(permissionCode);
     }
 
     /** {@inheritDoc} */
@@ -113,8 +118,26 @@ public class PermissionServiceImpl implements PermissionService {
             return false;
         }
         PermissionSnapshot snapshot = getSnapshot(accountId);
+        if (isAdmin(accountId, snapshot)) {
+            return true;
+        }
         return snapshot.permissions().contains(permissionCode) && snapshot.scopes().stream()
                 .anyMatch(scope -> scopeService.covers(scope, branchId));
+    }
+
+    private boolean isAdmin(UUID accountId, PermissionSnapshot snapshot) {
+        if (snapshot != null) {
+            if (snapshot.roles().stream().anyMatch(r -> "ROLE_ADMIN".equalsIgnoreCase(r) || "ADMIN".equalsIgnoreCase(r))
+                    || snapshot.permissions().contains("FULL_PERMISSION")) {
+                return true;
+            }
+        }
+        if (accountId != null) {
+            return accountRepository.findById(accountId)
+                    .map(a -> "admin".equalsIgnoreCase(a.getUsername()))
+                    .orElse(false);
+        }
+        return false;
     }
 
     /** {@inheritDoc} */
@@ -260,16 +283,43 @@ public class PermissionServiceImpl implements PermissionService {
      * bản ghi gán vai trò, ánh xạ vai trò-quyền và phạm vi đang active.
      */
     private List<Grant> readGrants(UUID accountId) {
+        Account account = accountId != null ? accountRepository.findById(accountId).orElse(null) : null;
+        boolean isSuperAdmin = account != null && "admin".equalsIgnoreCase(account.getUsername());
+
         List<AccountRole> assignments = accountRoleRepository
                 .findEffectiveByAccountId(accountId, EntityStatus.ACTIVE, Instant.now());
-        if (assignments.isEmpty()) {
-            return List.of();
-        }
 
-        Map<UUID, Role> roles = roleRepository.findAllById(
+        Map<UUID, Role> roles = assignments.isEmpty() ? Map.of() : roleRepository.findAllById(
                         assignments.stream().map(AccountRole::getRoleId).distinct().toList()
                 ).stream().filter(role -> role.getStatus() == EntityStatus.ACTIVE)
                 .collect(Collectors.toMap(Role::getId, Function.identity()));
+
+        boolean hasAdminRole = roles.values().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getCode()) || "ROLE_ADMIN".equalsIgnoreCase(r.getCode()));
+
+        if (isSuperAdmin || hasAdminRole) {
+            List<Permission> allPermissions = permissionRepository.findByStatus(EntityStatus.ACTIVE);
+            Scope allSystemScope = assignments.isEmpty() ? null : scopeService.findAllById(
+                    assignments.stream().map(AccountRole::getScopeId).distinct().toList()
+            ).values().stream().filter(s -> s.getScopeType() == ScopeType.ALL_SYSTEM).findFirst().orElse(null);
+
+            if (allSystemScope == null) {
+                allSystemScope = new Scope();
+                allSystemScope.setId(UUID.fromString("d0000000-0000-0000-0000-000000000001"));
+                allSystemScope.setScopeType(ScopeType.ALL_SYSTEM);
+            }
+
+            List<Grant> grants = new java.util.ArrayList<>();
+            for (Permission p : allPermissions) {
+                grants.add(new Grant("ADMIN", p.getCode(), allSystemScope));
+            }
+            grants.add(new Grant("ADMIN", "FULL_PERMISSION", allSystemScope));
+            return grants;
+        }
+
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
         List<RolePermission> mappings = rolePermissionRepository.findByRoleIdIn(
                 roles.keySet());
         Map<UUID, Permission> permissions = permissionRepository.findAllById(

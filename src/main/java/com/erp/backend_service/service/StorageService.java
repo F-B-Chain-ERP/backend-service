@@ -31,4 +31,20 @@ public interface StorageService {
      * @return Resource chứa nội dung file (streaming từ object storage, không tải toàn bộ vào RAM)
      */
     Resource download(String fileUrl);
+
+    /**
+     * Tải về một file báo cáo đã xuất (thuộc bucket báo cáo {@code erp-reports}, nơi
+     * queue-worker đã upload), stream trực tiếp tới client.
+     *
+     * @param fileUrl URL công khai của file báo cáo
+     * @return Resource chứa nội dung file báo cáo
+     */
+    Resource downloadReport(String fileUrl);
+
+    /**
+     * Xóa file báo cáo khỏi bucket báo cáo.
+     *
+     * @param fileUrl URL công khai của file báo cáo cần xóa
+     */
+    void deleteReport(String fileUrl);
 }

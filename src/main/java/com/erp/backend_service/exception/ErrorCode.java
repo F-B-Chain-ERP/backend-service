@@ -238,6 +238,11 @@ public enum ErrorCode {
     STORE_400_INVALID_CASH(400, "STORE_400_INVALID_CASH", "Số tiền mặt không hợp lệ."),
     STORE_403_OUT_OF_SCOPE(403, "STORE_403_OUT_OF_SCOPE", "Bạn không có quyền truy cập dữ liệu ca của chi nhánh này."),
 
+    // REPORT module (report export)
+    REPORT_400_SYNC_LIMIT_EXCEEDED(400, "REPORT_400_SYNC_LIMIT_EXCEEDED", "Dữ liệu vượt quá giới hạn an toàn cho xử lý đồng bộ. Vui lòng dùng chế độ ASYNC hoặc thu hẹp phạm vi báo cáo."),
+    REPORT_400_UNSUPPORTED_TYPE(400, "REPORT_400_UNSUPPORTED_TYPE", "Loại báo cáo không được hỗ trợ cho phân hệ này."),
+    REPORT_400_INVALID_FORMAT(400, "REPORT_400_INVALID_FORMAT", "Định dạng xuất file không được hỗ trợ."),
+
     // ORG & BRANCH module (002-branch & pickup slot)
     BRANCH_400_CODE_EXISTS(400, "BRANCH_400_CODE_EXISTS", "Mã chi nhánh đã tồn tại."),
     BRANCH_400_CANNOT_DELETE_ACTIVE_RESOURCES(400, "BRANCH_400_CANNOT_DELETE_ACTIVE_RESOURCES", "Không thể xóa chi nhánh đã phát sinh đơn hàng, kho hoặc ca làm việc."),

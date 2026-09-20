@@ -13,17 +13,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.report")
 public class ReportProperties {
 
-    /** Ngưỡng phân chia xử lý đồng bộ và bất đồng bộ (mặc định 500 bản ghi) */
-    private int syncThreshold = 500;
+    /** Ngưỡng chuyển Async: từ số bản ghi này trở lên sẽ xử lý bất đồng bộ */
+    private int asyncThresholdRecords = ReportExportConstants.DEFAULT_ASYNC_THRESHOLD_RECORDS;
 
     /** Tên bucket MinIO lưu trữ các file báo cáo đã xuất */
     private String minioBucketName = "erp-reports";
 
     /** Thời gian chờ tối đa cho tác vụ bất đồng bộ (phút) */
     private int asyncTimeoutMinutes = 30;
-
-    /** Ngưỡng chuyển Async: từ số bản ghi này trở lên sẽ xử lý bất đồng bộ */
-    private int asyncThresholdRecords = ReportExportConstants.DEFAULT_ASYNC_THRESHOLD_RECORDS;
 
     /** Giới hạn an toàn tối đa cho luồng xử lý đồng bộ (chống OOM) */
     private int maxHardSyncRecords = ReportExportConstants.MAX_HARD_SYNC_RECORDS;
@@ -36,14 +33,6 @@ public class ReportProperties {
 
     /** Bất đồng bộ có đẩy trạng thái realtime qua SSE hay không */
     private boolean sseEnabled = false;
-
-    public int getSyncThreshold() {
-        return syncThreshold;
-    }
-
-    public void setSyncThreshold(int syncThreshold) {
-        this.syncThreshold = syncThreshold;
-    }
 
     public String getMinioBucketName() {
         return minioBucketName;

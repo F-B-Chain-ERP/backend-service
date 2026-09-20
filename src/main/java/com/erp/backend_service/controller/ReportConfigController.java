@@ -36,7 +36,8 @@ public class ReportConfigController {
         ReportConfigResponse config = new ReportConfigResponse(
                 reportProperties.getAsyncThresholdRecords(),
                 reportProperties.getMaxHardSyncRecords(),
-                List.of("EXCEL", "PDF", "CSV"),
+                List.of("EXCEL", "PDF"),
+                List.of("AUTO", "SYNC", "ASYNC"),
                 reportProperties.getPollIntervalMs(),
                 reportProperties.isSseEnabled()
         );

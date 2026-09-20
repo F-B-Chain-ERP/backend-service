@@ -72,12 +72,17 @@ public class ReportJobController {
                 || job.fileUrl() == null || job.fileUrl().isBlank()) {
             throw new BaseException(ErrorCode.BAD_REQUEST, "Tác vụ chưa hoàn thành hoặc chưa có file báo cáo");
         }
-        String fileName = "bao-cao-" + jobId + ".xlsx";
+        String extension = ".xlsx";
+        int dot = job.fileUrl().lastIndexOf('.');
+        if (dot != -1 && dot < job.fileUrl().length() - 1) {
+            extension = job.fileUrl().substring(dot);
+        }
+        String fileName = "bao-cao-" + jobId + extension;
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + fileName + "\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(storageService.download(job.fileUrl()));
+                .body(storageService.downloadReport(job.fileUrl()));
     }
 
     /**

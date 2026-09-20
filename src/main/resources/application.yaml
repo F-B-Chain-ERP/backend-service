@@ -77,7 +77,6 @@ app:
     bucket-name: ${MINIO_BUCKET_NAME:erp-products}
     public-url: ${MINIO_PUBLIC_URL:/storage}
   report:
-    sync-threshold: ${REPORT_SYNC_THRESHOLD:500}
     minio-bucket-name: ${MINIO_REPORT_BUCKET:erp-reports}
     async-threshold-records: ${REPORT_ASYNC_THRESHOLD:100}
     max-hard-sync-records: ${REPORT_MAX_HARD_SYNC_RECORDS:500}

@@ -1,7 +1,5 @@
 package com.erp.backend_service.service.impl;
 
-import com.erp.backend_service.export.ReportColumnDefinition;
-import com.erp.backend_service.export.ReportDataContext;
 import com.erp.backend_service.repository.PurchaseOrderRepository;
 import com.erp.backend_service.repository.SupplierRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
@@ -11,8 +9,11 @@ import com.erp.backend_service.service.report.ReportRequestHandler;
 import com.erp.core.domain.PurchaseOrder;
 import com.erp.core.domain.Supplier;
 import com.erp.core.domain.Warehouse;
+import com.erp.core.constants.ReportExportConstants;
 import com.erp.core.dto.request.report.proc.ExportPurchaseOrderReportRequest;
 import com.erp.core.enums.ReportModule;
+import com.erp.core.report.ReportColumnDefinition;
+import com.erp.core.report.ReportDataContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -65,8 +66,9 @@ public class ProcReportServiceImpl implements ProcReportService {
 
         return reportRequestHandler.handleExport(
                 ReportModule.PROC,
-                "PROC_PO_EXPORT",
+                ReportExportConstants.REPORT_TYPE_PROC_PO_EXPORT,
                 request.format(),
+                request.mode(),
                 currentUserId,
                 null,
                 params,
@@ -84,7 +86,7 @@ public class ProcReportServiceImpl implements ProcReportService {
 
     private ReportDataContext buildPoReportContext(String search, ExportPurchaseOrderReportRequest request, Collection<UUID> allowedWarehouseIds) {
         if (allowedWarehouseIds != null && allowedWarehouseIds.isEmpty()) {
-            return new ReportDataContext("BÁO CÁO ĐƠN MUA HÀNG (PO)", "", List.of(), List.of());
+            return ReportDataContext.simple("BÁO CÁO ĐƠN MUA HÀNG (PO)", "", List.of(), List.of());
         }
 
         Page<PurchaseOrder> allPos = purchaseOrderRepository.search(
@@ -130,6 +132,6 @@ public class ProcReportServiceImpl implements ProcReportService {
         }
 
         String subtitle = "Thời gian xuất: " + java.time.LocalDate.now();
-        return new ReportDataContext("BÁO CÁO TỔNG HỢP ĐƠN MUA HÀNG (PO)", subtitle, columns, rows);
+        return ReportDataContext.simple("BÁO CÁO TỔNG HỢP ĐƠN MUA HÀNG (PO)", subtitle, columns, rows);
     }
 }

@@ -212,9 +212,9 @@
         "legend": { "displayMode": "table", "placement": "bottom" }
       },
       "targets": [
-        { "expr": "sum(hikaricp_connections_active{application=~\"$application\"}) by (pool, application)", "legendFormat": "Active (Đang thực thi) - {{pool}}" },
-        { "expr": "sum(hikaricp_connections_pending{application=~\"$application\"}) by (pool, application)", "legendFormat": "Pending Queue (Đang xếp hàng chờ kết nối) - {{pool}}" },
-        { "expr": "sum(hikaricp_connections_idle{application=~\"$application\"}) by (pool, application)", "legendFormat": "Idle (Rảnh rỗi) - {{pool}}" }
+        { "expr": "sum(hikaricp_connections_active) by (pool, application)", "legendFormat": "Active - {{application}} ({{pool}})" },
+        { "expr": "sum(hikaricp_connections_pending) by (pool, application)", "legendFormat": "Pending Queue - {{application}} ({{pool}})" },
+        { "expr": "sum(hikaricp_connections_idle) by (pool, application)", "legendFormat": "Idle - {{application}} ({{pool}})" }
       ],
       "title": "HikariCP Connections: Active vs Pending Queue vs Idle",
       "type": "timeseries"
@@ -263,9 +263,9 @@
         "legend": { "displayMode": "table", "placement": "bottom" }
       },
       "targets": [
-        { "expr": "jvm_memory_used_bytes{application=~\"$application\", area=\"heap\"}", "legendFormat": "Heap Memory Used - {{application}}" },
-        { "expr": "jvm_memory_committed_bytes{application=~\"$application\", area=\"heap\"}", "legendFormat": "Heap Committed - {{application}}" },
-        { "expr": "jvm_memory_max_bytes{application=~\"$application\", area=\"heap\"}", "legendFormat": "Heap Memory Max - {{application}}" }
+        { "expr": "jvm_memory_used_bytes{area=\"heap\"}", "legendFormat": "Heap Used - {{application}}" },
+        { "expr": "jvm_memory_committed_bytes{area=\"heap\"}", "legendFormat": "Heap Committed - {{application}}" },
+        { "expr": "jvm_memory_max_bytes{area=\"heap\"}", "legendFormat": "Heap Max - {{application}}" }
       ],
       "title": "JVM Heap Memory Usage",
       "type": "timeseries"
@@ -421,11 +421,15 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(erp_queue_jobs_total[1m])) by (status, module)",
-          "legendFormat": "{{status}} - Module: {{module}}"
+          "expr": "sum(rate(erp_queue_jobs_total[1m])) by (status, module) or rate(rabbitmq_queue_messages_delivered_total{queue=\"erp.report.queue\"}[1m]) or on() vector(0)",
+          "legendFormat": "Jobs / Message Throughput"
+        },
+        {
+          "expr": "rabbitmq_queue_messages_ready{queue=\"erp.report.queue\"} or on() vector(0)",
+          "legendFormat": "Messages Chờ Trong Hàng Đợi (Backlog)"
         }
       ],
-      "title": "Queue Job Processing Throughput (Jobs/sec by Status & Module)",
+      "title": "Queue Job & Message Processing (Throughput & Backlog)",
       "type": "timeseries"
     },
     {
@@ -444,15 +448,15 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(erp_queue_job_duration_seconds_bucket[1m])) by (le, module))",
+          "expr": "histogram_quantile(0.50, sum(rate(erp_queue_job_duration_seconds_bucket[1m])) by (le, module)) or on() vector(0)",
           "legendFormat": "P50 Latency - {{module}}"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(erp_queue_job_duration_seconds_bucket[1m])) by (le, module))",
+          "expr": "histogram_quantile(0.95, sum(rate(erp_queue_job_duration_seconds_bucket[1m])) by (le, module)) or on() vector(0)",
           "legendFormat": "P95 Latency - {{module}}"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(erp_queue_job_duration_seconds_bucket[1m])) by (le, module))",
+          "expr": "histogram_quantile(0.99, sum(rate(erp_queue_job_duration_seconds_bucket[1m])) by (le, module)) or on() vector(0)",
           "legendFormat": "P99 Latency - {{module}}"
         }
       ],
@@ -485,7 +489,7 @@
         "showThresholdMarkers": true
       },
       "targets": [
-        { "expr": "erp_queue_active_jobs", "legendFormat": "Active In-Flight Jobs" }
+        { "expr": "erp_queue_active_jobs or rabbitmq_queue_messages_unacknowledged{queue=\"erp.report.queue\"} or vector(0)", "legendFormat": "Active In-Flight Jobs" }
       ],
       "title": "Active Jobs In-Flight",
       "type": "gauge"

@@ -1,9 +1,10 @@
 package com.erp.backend_service.service.report;
 
 import com.erp.backend_service.configuration.ReportProperties;
+import com.erp.backend_service.exception.BaseException;
+import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.export.ExportStrategy;
 import com.erp.backend_service.export.ExportStrategyFactory;
-import com.erp.backend_service.export.ReportDataContext;
 import com.erp.backend_service.mapper.ReportJobMapper;
 import com.erp.backend_service.messaging.ReportMessage;
 import com.erp.backend_service.messaging.ReportMessagePublisher;
@@ -12,7 +13,10 @@ import com.erp.core.domain.ReportJob;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.report.ReportJobResponse;
 import com.erp.core.enums.ExportFormat;
+import com.erp.core.enums.ExportReportMode;
 import com.erp.core.enums.ReportModule;
+import com.erp.core.enums.ReportType;
+import com.erp.core.report.ReportDataContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -33,8 +37,9 @@ import java.util.function.Supplier;
 
 /**
  * Bộ xử lý trung tâm điều phối yêu cầu xuất báo cáo:
- * - Khi số lượng dòng dữ liệu <= ngưỡng cấu hình (mặc định 500): Xử lý đồng bộ (Sync), trả về file nhị phân ngay lập tức (HTTP 200).
- * - Khi số lượng dòng dữ liệu > ngưỡng: Tạo tác vụ PENDING, đẩy message vào RabbitMQ và trả về thông tin tác vụ (HTTP 202 ACCEPTED).
+ * - {@code AUTO}: số dòng <= ngưỡng chuyển Async (mặc định 100) xử lý đồng bộ (HTTP 200), ngược lại bất đồng bộ (HTTP 202).
+ * - {@code SYNC}: ép xử lý đồng bộ; nếu số dòng vượt quá giới hạn an toàn (mặc định 500) sẽ bị từ chối.
+ * - {@code ASYNC}: luôn tạo tác vụ PENDING, đẩy message vào RabbitMQ và trả về thông tin tác vụ (HTTP 202).
  */
 @Component
 public class ReportRequestHandler {
@@ -61,11 +66,12 @@ public class ReportRequestHandler {
     }
 
     /**
-     * Điều phối xuất báo cáo đồng bộ hoặc bất đồng bộ.
+     * Điều phối xuất báo cáo đồng bộ hoặc bất đồng bộ theo {@code mode}.
      *
      * @param module        Phân hệ (STORE, POS, PROC, INV, FIN, SYSTEM)
      * @param reportType    Mã loại báo cáo
      * @param format        Định dạng xuất (EXCEL, PDF)
+     * @param mode          Chế độ điều phối (AUTO, SYNC, ASYNC) — null được xem như AUTO
      * @param currentUserId ID người dùng yêu cầu
      * @param branchId      ID chi nhánh (nếu có)
      * @param params        Các tham số lọc
@@ -78,6 +84,7 @@ public class ReportRequestHandler {
             ReportModule module,
             String reportType,
             ExportFormat format,
+            ExportReportMode mode,
             UUID currentUserId,
             UUID branchId,
             Map<String, Object> params,
@@ -88,16 +95,36 @@ public class ReportRequestHandler {
         if (format == null) {
             format = ExportFormat.EXCEL;
         }
+        if (mode == null) {
+            mode = ExportReportMode.AUTO;
+        }
+
+        // Chuẩn hoá reportType về mã chuẩn (chấp nhận cả tên thiết kế như ORDER_LIST/SALES_SUMMARY).
+        reportType = ReportType.normalize(reportType);
 
         int estimatedRows = countSupplier.getAsInt();
-        int threshold = reportProperties.getSyncThreshold();
+        int asyncThreshold = reportProperties.getAsyncThresholdRecords();
+        int maxHardSync = reportProperties.getMaxHardSyncRecords();
 
-        log.info("[Report] Processing export request for module: {}, type: {}, format: {}, estimated rows: {}, threshold: {}",
-                module, reportType, format, estimatedRows, threshold);
+        boolean sync = switch (mode) {
+            case SYNC -> {
+                if (estimatedRows > maxHardSync) {
+                    log.warn("[Report] mode=SYNC rejected: estimated rows ({}) > max hard sync ({}).",
+                            estimatedRows, maxHardSync);
+                    throw new BaseException(ErrorCode.REPORT_400_SYNC_LIMIT_EXCEEDED);
+                }
+                yield true;
+            }
+            case ASYNC -> false;
+            default -> estimatedRows < asyncThreshold;
+        };
 
-        if (estimatedRows <= threshold) {
+        log.info("[Report] Export request module: {}, type: {}, format: {}, mode: {}, estimated rows: {}, async threshold: {}, max sync: {}",
+                module, reportType, format, mode, estimatedRows, asyncThreshold, maxHardSync);
+
+        if (sync) {
             // === LUỒNG ĐỒNG BỘ (SYNC) ===
-            log.info("[Report] Row count ({}) <= threshold ({}). Running SYNCHRONOUS export.", estimatedRows, threshold);
+            log.info("[Report] Running SYNCHRONOUS export for {} rows.", estimatedRows);
             ExportStrategy strategy = strategyFactory.getStrategy(format);
             ReportDataContext context = dataSupplier.get();
             byte[] fileBytes = strategy.export(context);
@@ -113,7 +140,7 @@ public class ReportRequestHandler {
                     .body(fileBytes);
         } else {
             // === LUỒNG BẤT ĐỒNG BỘ (ASYNC) ===
-            log.info("[Report] Row count ({}) > threshold ({}). Dispatching ASYNCHRONOUS job to RabbitMQ.", estimatedRows, threshold);
+            log.info("[Report] Dispatching ASYNCHRONOUS job to RabbitMQ for {} rows.", estimatedRows);
             ReportJob job = reportJobService.createJob(module, reportType, format, currentUserId, branchId, params, estimatedRows);
 
             ReportMessage message = new ReportMessage(

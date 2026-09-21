@@ -1,7 +1,5 @@
 package com.erp.backend_service.service.impl;
 
-import com.erp.backend_service.export.ReportColumnDefinition;
-import com.erp.backend_service.export.ReportDataContext;
 import com.erp.backend_service.repository.MaterialRepository;
 import com.erp.backend_service.repository.MaterialStockBalanceRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
@@ -11,8 +9,11 @@ import com.erp.backend_service.service.report.ReportRequestHandler;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.MaterialStockBalance;
 import com.erp.core.domain.Warehouse;
+import com.erp.core.constants.ReportExportConstants;
 import com.erp.core.dto.request.report.inv.ExportStockReportRequest;
 import com.erp.core.enums.ReportModule;
+import com.erp.core.report.ReportColumnDefinition;
+import com.erp.core.report.ReportDataContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -60,8 +61,9 @@ public class InvReportServiceImpl implements InvReportService {
 
         return reportRequestHandler.handleExport(
                 ReportModule.INV,
-                "INV_STOCK_BALANCE",
+                ReportExportConstants.REPORT_TYPE_INV_STOCK_BALANCE,
                 request.format(),
+                request.mode(),
                 currentUserId,
                 null,
                 params,
@@ -78,7 +80,7 @@ public class InvReportServiceImpl implements InvReportService {
 
     private ReportDataContext buildStockReportContext(ExportStockReportRequest request, Collection<UUID> allowedWarehouseIds) {
         if (allowedWarehouseIds != null && allowedWarehouseIds.isEmpty()) {
-            return new ReportDataContext("BÁO CÁO TỒN KHO NGUYÊN VẬT LIỆU", "", List.of(), List.of());
+            return ReportDataContext.simple("BÁO CÁO TỒN KHO NGUYÊN VẬT LIỆU", "", List.of(), List.of());
         }
 
         Page<MaterialStockBalance> pageResult = balanceRepository.searchPaged(
@@ -119,6 +121,6 @@ public class InvReportServiceImpl implements InvReportService {
         }
 
         String subtitle = "Thời gian xuất: " + java.time.LocalDate.now();
-        return new ReportDataContext("BÁO CÁO SỐ DƯ TỒN KHO NGUYÊN VẬT LIỆU", subtitle, columns, rows);
+        return ReportDataContext.simple("BÁO CÁO SỐ DƯ TỒN KHO NGUYÊN VẬT LIỆU", subtitle, columns, rows);
     }
 }

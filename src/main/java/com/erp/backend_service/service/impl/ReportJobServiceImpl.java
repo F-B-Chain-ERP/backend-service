@@ -66,7 +66,7 @@ public class ReportJobServiceImpl implements ReportJobService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public ReportJob createJob(ReportModule module, String reportType, ExportFormat format,
                                UUID currentUserId, UUID branchId, Map<String, Object> params, int estimatedRows) {
         ReportJob job = new ReportJob();
@@ -123,8 +123,9 @@ public class ReportJobServiceImpl implements ReportJobService {
             throw new BaseException(ErrorCode.BAD_REQUEST, "Chỉ có thể hủy tác vụ khi đang ở trạng thái chờ (PENDING)");
         }
 
-        job.setStatus(ReportStatus.FAILED.name());
+        job.setStatus("CANCELLED");
         job.setErrorMessage("Người dùng đã hủy tác vụ");
+        job.setCancelledAt(Instant.now());
         job.setCompletedAt(Instant.now());
         reportJobRepository.save(job);
     }

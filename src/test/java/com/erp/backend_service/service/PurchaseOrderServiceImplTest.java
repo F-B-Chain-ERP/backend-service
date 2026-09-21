@@ -13,7 +13,6 @@ import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.service.impl.PurchaseOrderServiceImpl;
-import com.erp.backend_service.service.AccountsPayableService;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.PurchaseOrder;
 import com.erp.core.domain.Supplier;
@@ -65,7 +64,6 @@ class PurchaseOrderServiceImplTest {
 
     private PurchaseOrderServiceImpl purchaseOrderService;
 
-    private final UUID branchA = UUID.randomUUID();
     private final UUID warehouseA = UUID.randomUUID();
     private final UUID warehouseB = UUID.randomUUID();
     private final UUID supplierId = UUID.randomUUID();

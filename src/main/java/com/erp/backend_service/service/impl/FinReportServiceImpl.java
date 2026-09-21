@@ -1,7 +1,5 @@
 package com.erp.backend_service.service.impl;
 
-import com.erp.backend_service.export.ReportColumnDefinition;
-import com.erp.backend_service.export.ReportDataContext;
 import com.erp.backend_service.repository.BranchDailyFinancialSummaryRepository;
 import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.security.DataScopeHelper;
@@ -9,8 +7,11 @@ import com.erp.backend_service.service.FinReportService;
 import com.erp.backend_service.service.report.ReportRequestHandler;
 import com.erp.core.domain.Branch;
 import com.erp.core.domain.BranchDailyFinancialSummary;
+import com.erp.core.constants.ReportExportConstants;
 import com.erp.core.dto.request.report.fin.ExportFinancialReportRequest;
 import com.erp.core.enums.ReportModule;
+import com.erp.core.report.ReportColumnDefinition;
+import com.erp.core.report.ReportDataContext;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -68,8 +69,9 @@ public class FinReportServiceImpl implements FinReportService {
 
         return reportRequestHandler.handleExport(
                 ReportModule.FIN,
-                "FIN_SUMMARY_EXPORT",
+                ReportExportConstants.REPORT_TYPE_FIN_SUMMARY_EXPORT,
                 request.format(),
+                request.mode(),
                 currentUserId,
                 effectiveBranchId,
                 params,
@@ -123,6 +125,6 @@ public class FinReportServiceImpl implements FinReportService {
             subtitle += " | Chi nhánh: " + branchMap.get(branchId).getName();
         }
 
-        return new ReportDataContext("BÁO CÁO TỔNG HỢP TÀI CHÍNH CHI NHÁNH", subtitle, columns, rows);
+        return ReportDataContext.simple("BÁO CÁO TỔNG HỢP TÀI CHÍNH CHI NHÁNH", subtitle, columns, rows);
     }
 }

@@ -91,9 +91,9 @@ public enum ErrorCode {
     INV_404_WAREHOUSE_NOT_FOUND(404, "INV_404_WAREHOUSE_NOT_FOUND", "Không tìm thấy kho hàng."),
     INV_409_WAREHOUSE_CODE_EXISTED(409, "INV_409_WAREHOUSE_CODE_EXISTED", "Mã kho đã tồn tại."),
     INV_400_WAREHOUSE_IN_USE(400, "INV_400_WAREHOUSE_IN_USE", "Kho đã phát sinh dữ liệu (đơn mua hàng/tồn kho) và không thể xóa. Vui lòng chuyển sang INACTIVE."),
-    INV_400_WAREHOUSE_INVALID_TYPE(400, "INV_400_WAREHOUSE_INVALID_TYPE", "Loại kho không hợp lệ. Chỉ chấp nhận CENTRAL, MAIN hoặc BRANCH."),
+    INV_400_WAREHOUSE_INVALID_TYPE(400, "INV_400_WAREHOUSE_INVALID_TYPE", "Loại kho không hợp lệ. Chỉ chấp nhận CENTRAL hoặc BRANCH."),
     INV_400_WAREHOUSE_CENTRAL_NO_BRANCH(400, "INV_400_WAREHOUSE_CENTRAL_NO_BRANCH", "Kho loại CENTRAL không được gắn chi nhánh."),
-    INV_400_WAREHOUSE_BRANCH_REQUIRED(400, "INV_400_WAREHOUSE_BRANCH_REQUIRED", "Kho loại MAIN/BRANCH phải thuộc một chi nhánh đang hoạt động."),
+    INV_400_WAREHOUSE_BRANCH_REQUIRED(400, "INV_400_WAREHOUSE_BRANCH_REQUIRED", "Kho loại BRANCH phải thuộc một chi nhánh đang hoạt động."),
     INV_400_WAREHOUSE_INVALID_STATUS(400, "INV_400_WAREHOUSE_INVALID_STATUS", "Trạng thái kho không hợp lệ."),
     INV_404_BRANCH_NOT_FOUND(404, "INV_404_BRANCH_NOT_FOUND", "Không tìm thấy chi nhánh."),
     INV_400_BRANCH_INACTIVE(400, "INV_400_BRANCH_INACTIVE", "Chi nhánh đang ngừng hoạt động."),
@@ -252,7 +252,25 @@ public enum ErrorCode {
     PICKUP_SLOT_404_NOT_FOUND(404, "PICKUP_SLOT_404_NOT_FOUND", "Không tìm thấy khung giờ pickup."),
     PICKUP_SLOT_409_CODE_EXISTS(409, "PICKUP_SLOT_409_CODE_EXISTS", "Mã khung giờ pickup đã tồn tại trong chi nhánh."),
     ORDER_400_SLOT_FULL(400, "ORDER_400_SLOT_FULL", "Khung giờ này đã kín đơn, vui lòng chọn khung giờ khác."),
-    ORDER_400_BRANCH_CLOSED(400, "ORDER_400_BRANCH_CLOSED", "Chi nhánh hiện đang ngoài giờ hoạt động.");
+    ORDER_400_BRANCH_CLOSED(400, "ORDER_400_BRANCH_CLOSED", "Chi nhánh hiện đang ngoài giờ hoạt động."),
+    FIN_404_PAYABLE_NOT_FOUND(404, "FIN_404_PAYABLE_NOT_FOUND", "Không tìm thấy công nợ"),
+    FIN_400_PAYABLE_INVALID_STATUS(400, "FIN_400_PAYABLE_INVALID_STATUS", "Trạng thái công nợ không cho phép thao tác này"),
+    FIN_400_PAYABLE_AMOUNT_EXCEED(400, "FIN_400_PAYABLE_AMOUNT_EXCEED", "Số tiền thanh toán vượt quá số nợ còn lại"),
+    FIN_400_PAYABLE_INVALID_AMOUNT(400, "FIN_400_PAYABLE_INVALID_AMOUNT", "Số tiền không hợp lệ"),
+    FIN_404_SUPPLIER_NOT_FOUND(404, "FIN_404_SUPPLIER_NOT_FOUND", "Không tìm thấy nhà cung cấp"),
+    FIN_404_PO_NOT_FOUND(404, "FIN_404_PO_NOT_FOUND", "Không tìm thấy đơn mua hàng"),
+    FIN_400_PAYABLE_PO_NOT_RECEIVABLE(400, "FIN_400_PAYABLE_PO_NOT_RECEIVABLE",
+            "Đơn mua hàng chưa ở trạng thái duyệt/nhận hàng, không thể liên kết công nợ"),
+    FIN_400_PAYABLE_EXISTS_FOR_PO(409, "FIN_400_PAYABLE_EXISTS_FOR_PO",
+            "Đơn mua hàng này đã được liên kết với công nợ khác"),
+    FIN_400_PAYABLE_HAS_PAYMENTS(400, "FIN_400_PAYABLE_HAS_PAYMENTS",
+            "Công nợ đã có lịch sử thanh toán, không thể xóa"),
+    FIN_400_PAYABLE_CANNOT_EDIT(400, "FIN_400_PAYABLE_CANNOT_EDIT",
+            "Chỉ có thể chỉnh sửa công nợ UNPAID chưa có hóa đơn và chưa có thanh toán"),
+    FIN_400_PAYABLE_SUPPLIER_INACTIVE(400, "FIN_400_PAYABLE_SUPPLIER_INACTIVE",
+            "Nhà cung cấp đang ngừng hoạt động"),
+    FIN_400_PAYABLE_INVOICE_NO_DUPLICATE(409, "FIN_400_PAYABLE_INVOICE_NO_DUPLICATE",
+            "Số hóa đơn đã tồn tại trong hệ thống");
 
 
     private final int statusCode;

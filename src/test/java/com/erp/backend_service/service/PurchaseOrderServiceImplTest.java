@@ -13,6 +13,7 @@ import com.erp.backend_service.repository.UnitRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.service.impl.PurchaseOrderServiceImpl;
+import com.erp.backend_service.service.AccountsPayableService;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.PurchaseOrder;
 import com.erp.core.domain.Supplier;
@@ -60,6 +61,7 @@ class PurchaseOrderServiceImplTest {
     @Mock private DataScopeHelper dataScopeHelper;
     @Mock private NotificationService notificationService;
     @Mock private NotificationResolverService notificationResolverService;
+    @Mock private AccountsPayableService accountsPayableService;
 
     private PurchaseOrderServiceImpl purchaseOrderService;
 
@@ -85,7 +87,8 @@ class PurchaseOrderServiceImplTest {
                 purchaseOrderItemMapper,
                 dataScopeHelper,
                 notificationService,
-                notificationResolverService
+                notificationResolverService,
+                accountsPayableService
         );
         // Mặc định cho qua kiểm tra scope (test sinh mã không test phân quyền).
         warehouseStub = new Warehouse();
@@ -98,7 +101,7 @@ class PurchaseOrderServiceImplTest {
         when(dataScopeHelper.getAllowedWarehouseIds(null)).thenReturn(List.of(warehouseA));
 
         Page<PurchaseOrder> emptyPage = new PageImpl<>(List.of());
-        when(purchaseOrderRepository.search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), isNull(), isNull(), any(Pageable.class)))
+        when(purchaseOrderRepository.search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), eq(LocalDate.of(1, 1, 1)), eq(LocalDate.of(9999, 12, 31)), any(Pageable.class)))
                 .thenReturn(emptyPage);
 
         PageResponse<PurchaseOrderResponse> result = purchaseOrderService.list(
@@ -106,7 +109,7 @@ class PurchaseOrderServiceImplTest {
 
         assertNotNull(result);
         verify(dataScopeHelper).getAllowedWarehouseIds(null);
-        verify(purchaseOrderRepository).search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), isNull(), isNull(), any(Pageable.class));
+        verify(purchaseOrderRepository).search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), eq(LocalDate.of(1, 1, 1)), eq(LocalDate.of(9999, 12, 31)), any(Pageable.class));
     }
 
     @Test

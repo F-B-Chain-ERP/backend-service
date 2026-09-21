@@ -35,4 +35,6 @@ databaseChangeLog:
       file: db/changelog/changeset/016-seed-pos-permissions-for-staff-roles.sql
   - include:
       file: db/changelog/changeset/018-unit-conversion.sql
+  - include:
+      file: db/changelog/changeset/019-stock-transfer-request-approve.sql
 

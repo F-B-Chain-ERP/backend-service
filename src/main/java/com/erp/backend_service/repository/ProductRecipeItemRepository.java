@@ -55,6 +55,11 @@ public interface ProductRecipeItemRepository extends JpaRepository<ProductRecipe
     long countByVariantIdAndStatus(UUID variantId, String status);
 
     /**
+     * Lấy dòng công thức của nhiều biến thể một lần (đối soát NVL, tránh N+1).
+     */
+    List<ProductRecipeItem> findByVariantIdInAndStatus(java.util.Collection<UUID> variantIds, String status);
+
+    /**
      * Xóa các dòng công thức theo variantId.
      */
     void deleteByVariantId(UUID variantId);

@@ -94,7 +94,9 @@ public class StockTransferServiceImpl implements StockTransferService {
         Warehouse from = getActiveWarehouse(request.fromWarehouseId());
         Warehouse to = getActiveWarehouse(request.toWarehouseId());
 
-        dataScopeHelper.enforceWarehouseAccess(from.getId());
+        // Phe quán tạo yêu cầu: chỉ cần quyền kho đích (kho quán), kho nguồn (kho tổng)
+        // để admin phe kho duyệt sau. Đủ quyền 2 kho (admin/thủ kho) thì vào thẳng PENDING.
+        boolean canSource = hasWarehouseAccess(from.getId());
         dataScopeHelper.enforceWarehouseAccess(to.getId());
 
         validateItems(request.items());
@@ -113,7 +115,8 @@ public class StockTransferServiceImpl implements StockTransferService {
         transfer.setToWarehouseId(to.getId());
         transfer.setTransferDate(request.transferDate() == null ? LocalDate.now() : request.transferDate());
         transfer.setNote(request.note());
-        transfer.setStatus(PENDING);
+        transfer.setStatus(canSource ? PENDING : "REQUESTED");
+        transfer.setRequestedBy(currentUserId());
 
         transfer = transferRepository.save(transfer);
 
@@ -125,13 +128,14 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional
     public StockTransferResponse update(UUID id, UpdateStockTransferRequest request) {
-        StockTransfer transfer = findAccessibleForUpdate(id);
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
+        boolean requestedEdit = "REQUESTED".equals(transfer.getStatus());
 
         if (request == null || request.fromWarehouseId() == null || request.toWarehouseId() == null) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
 
-        if (!PENDING.equals(transfer.getStatus())) {
+        if (!PENDING.equals(transfer.getStatus()) && !requestedEdit) {
             throw new BaseException(ErrorCode.INV_400_TRANSFER_CANNOT_EDIT);
         }
 
@@ -142,8 +146,16 @@ public class StockTransferServiceImpl implements StockTransferService {
         Warehouse from = getActiveWarehouse(request.fromWarehouseId());
         Warehouse to = getActiveWarehouse(request.toWarehouseId());
 
-        dataScopeHelper.enforceWarehouseAccess(from.getId());
-        dataScopeHelper.enforceWarehouseAccess(to.getId());
+        if (requestedEdit) {
+            UUID me = currentUserId();
+            if (transfer.getRequestedBy() == null || !transfer.getRequestedBy().equals(me)) {
+                throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
+            }
+            dataScopeHelper.enforceWarehouseAccess(to.getId());
+        } else {
+            dataScopeHelper.enforceWarehouseAccess(from.getId());
+            dataScopeHelper.enforceWarehouseAccess(to.getId());
+        }
 
         validateItems(request.items());
 
@@ -162,6 +174,46 @@ public class StockTransferServiceImpl implements StockTransferService {
 
         saveItems(transfer, request.items());
 
+        return toResponse(transfer);
+    }
+
+    /**
+     * Duyệt yêu cầu điều chuyển (nhị phân, phe kho).
+     * Duyệt -&gt; PENDING để xuất; từ chối -&gt; CANCELLED (bắt buộc lý do).
+     * Người duyệt được trùng người xuất (cùng phe kho) nhưng phải khác người tạo (phe quán).
+     */
+    @Override
+    @Transactional
+    public StockTransferResponse approve(UUID id, ApproveStockTransferRequest request) {
+        if (request == null || request.approved() == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST);
+        }
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id)
+            .orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
+        if (!"REQUESTED".equals(transfer.getStatus())) {
+            throw new BaseException(ErrorCode.INV_400_INVALID_STATUS);
+        }
+        // Phe kho: duyệt trên kho nguồn.
+        dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
+        UUID me = currentUserId();
+        if (request.approved()) {
+            if (transfer.getRequestedBy() != null && transfer.getRequestedBy().equals(me)) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST,
+                    "Người duyệt phải khác người tạo yêu cầu.");
+            }
+            getActiveWarehouse(transfer.getFromWarehouseId());
+            getActiveWarehouse(transfer.getToWarehouseId());
+            transfer.setStatus(PENDING);
+            transfer.setApprovedBy(me);
+            transfer.setApprovedAt(Instant.now());
+        } else {
+            if (request.reason() == null || request.reason().isBlank()) {
+                throw new BaseException(ErrorCode.INV_400_TRANSFER_CANCEL_REASON_REQUIRED);
+            }
+            transfer.setStatus(CANCELLED);
+            transfer.setNote(buildRejectNote(request.reason(), transfer.getNote()));
+        }
+        transferRepository.save(transfer);
         return toResponse(transfer);
     }
 
@@ -249,6 +301,8 @@ public class StockTransferServiceImpl implements StockTransferService {
         }
 
         transfer.setStatus(IN_TRANSIT);
+        transfer.setDispatchedBy(currentUserId());
+        transfer.setDispatchedAt(Instant.now());
 
         transferRepository.save(transfer);
 
@@ -262,6 +316,13 @@ public class StockTransferServiceImpl implements StockTransferService {
 
         if (!IN_TRANSIT.equals(transfer.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_TRANSFER_NOT_RECEIVABLE);
+        }
+
+        // Tách phe: người nhận (quán) phải khác người xuất (kho).
+        UUID receiverId = currentUserId();
+        if (transfer.getDispatchedBy() != null && transfer.getDispatchedBy().equals(receiverId)) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Người nhận hàng phải khác người xuất kho.");
         }
 
         // Kho đích có thể đã bị khóa giữa đường — không nhập vào kho ngừng hoạt động.
@@ -387,6 +448,22 @@ public class StockTransferServiceImpl implements StockTransferService {
             return toResponse(transfer);
         }
 
+        // Yêu cầu của quán: người tạo được rút, phe kho được từ chối nhanh (đều cần lý do).
+        if ("REQUESTED".equals(transfer.getStatus())) {
+            UUID me = currentUserId();
+            boolean owner = transfer.getRequestedBy() != null && transfer.getRequestedBy().equals(me);
+            if (!owner) {
+                dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
+            }
+            if (reason == null || reason.isBlank()) {
+                throw new BaseException(ErrorCode.INV_400_TRANSFER_CANCEL_REASON_REQUIRED);
+            }
+            transfer.setStatus(CANCELLED);
+            transfer.setNote(buildRejectNote(reason, transfer.getNote()));
+            transferRepository.save(transfer);
+            return toResponse(transfer);
+        }
+
         if (!IN_TRANSIT.equals(transfer.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_INVALID_STATUS);
         }
@@ -446,6 +523,17 @@ public class StockTransferServiceImpl implements StockTransferService {
             trimmed = trimmed.substring(0, Math.max(maxReason, 0));
         }
         return "Void in-transit [" + trimmed + "]" + suffix;
+    }
+
+    /** Ghi lý do từ chối yêu cầu vào note (varchar 500), cắt ngắn để không vỡ DB. */
+    private String buildRejectNote(String reason, String existingNote) {
+        String suffix = (existingNote == null || existingNote.isBlank()) ? "" : " | " + existingNote;
+        int maxReason = 500 - "Từ chối yêu cầu []".length() - suffix.length();
+        String trimmed = reason.trim();
+        if (trimmed.length() > maxReason) {
+            trimmed = trimmed.substring(0, Math.max(maxReason, 0));
+        }
+        return "Từ chối yêu cầu [" + trimmed + "]" + suffix;
     }
 
     private void saveItems(StockTransfer transfer, List<StockTransferItemRequest> requests) {
@@ -622,7 +710,7 @@ public class StockTransferServiceImpl implements StockTransferService {
             return new StockTransferItemResponse(item.getId(), item.getMaterialId(), material == null ? null : material.getCode(), material == null ? null : material.getName(), quantity, received, quantity.subtract(received), item.getUnitPrice());
         }).toList();
 
-        return new StockTransferResponse(transfer.getId(), transfer.getCode(), transfer.getFromWarehouseId(), from == null ? null : from.getCode(), from == null ? null : from.getName(), transfer.getToWarehouseId(), to == null ? null : to.getCode(), to == null ? null : to.getName(), transfer.getTransferDate(), transfer.getStatus(), transfer.getNote(), transfer.getReceivedBy(), transfer.getReceivedAt(), itemResponses);
+        return new StockTransferResponse(transfer.getId(), transfer.getCode(), transfer.getFromWarehouseId(), from == null ? null : from.getCode(), from == null ? null : from.getName(), transfer.getToWarehouseId(), to == null ? null : to.getCode(), to == null ? null : to.getName(), transfer.getTransferDate(), transfer.getStatus(), transfer.getNote(), transfer.getRequestedBy(), transfer.getApprovedBy(), transfer.getApprovedAt(), transfer.getDispatchedBy(), transfer.getDispatchedAt(), transfer.getReceivedBy(), transfer.getReceivedAt(), itemResponses);
     }
 
     private UUID currentUserId() {

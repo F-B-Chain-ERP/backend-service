@@ -1,6 +1,7 @@
 package com.erp.backend_service.controller;
 
 import com.erp.backend_service.service.StockTransferService;
+import com.erp.core.dto.request.inv.ApproveStockTransferRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.request.inv.CreateStockTransferRequest;
 import com.erp.core.dto.request.inv.ReceiveStockTransferRequest;
@@ -51,7 +52,16 @@ public class StockTransferController {
     @PostMapping("/{id}/dispatch")
     @PreAuthorize("hasAuthority('inv:stock_transfer:update')")
     public ResponseEntity<ApiResponse<StockTransferResponse>> dispatch(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(stockTransferService.dispatch(id)));
+        return ResponseEntity.ok(ApiResponse.success(stockTransferService.dispatch(id), "Xuất hàng thành công"));
+    }
+
+    @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('inv:stock_transfer:approve')")
+    public ResponseEntity<ApiResponse<StockTransferResponse>> approve(@PathVariable UUID id,
+                                                                      @Valid @RequestBody ApproveStockTransferRequest request) {
+        boolean approved = Boolean.TRUE.equals(request.approved());
+        return ResponseEntity.ok(ApiResponse.success(stockTransferService.approve(id, request),
+            approved ? "Duyệt yêu cầu điều chuyển thành công" : "Từ chối yêu cầu điều chuyển thành công"));
     }
 
     @PostMapping("/{id}/receive")

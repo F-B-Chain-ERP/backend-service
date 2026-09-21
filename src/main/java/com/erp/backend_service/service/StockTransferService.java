@@ -1,5 +1,6 @@
 package com.erp.backend_service.service;
 
+import com.erp.core.dto.request.inv.ApproveStockTransferRequest;
 import com.erp.core.dto.request.inv.CreateStockTransferRequest;
 import com.erp.core.dto.request.inv.ReceiveStockTransferRequest;
 import com.erp.core.dto.request.inv.UpdateStockTransferRequest;
@@ -17,6 +18,12 @@ public interface StockTransferService {
     StockTransferResponse create(CreateStockTransferRequest request);
 
     StockTransferResponse update(UUID id, UpdateStockTransferRequest request);
+
+    /**
+     * Duyệt yêu cầu (nhị phân): duyệt -&gt; PENDING để xuất, hoặc từ chối -&gt; CANCELLED.
+     * Người duyệt (phe kho) phải khác người tạo yêu cầu (phe quán).
+     */
+    StockTransferResponse approve(UUID id, ApproveStockTransferRequest request);
 
     StockTransferResponse dispatch(UUID id);
 

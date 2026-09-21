@@ -2,15 +2,57 @@ package com.erp.backend_service.service.pos;
 
 import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.repository.BranchVariantDailyStockRepository;
 import com.erp.backend_service.repository.BranchVariantStockLogRepository;
+import com.erp.backend_service.repository.MaterialRepository;
+import com.erp.backend_service.repository.MaterialStockBalanceRepository;
+import com.erp.backend_service.repository.OrderItemRepository;
+import com.erp.backend_service.repository.ProductRepository;
+import com.erp.backend_service.repository.ProductRecipeItemRepository;
+import com.erp.backend_service.repository.ProductVariantRepository;
+import com.erp.backend_service.repository.UnitRepository;
+import com.erp.backend_service.repository.WarehouseRepository;
+import com.erp.backend_service.security.DataScopeHelper;
+import com.erp.backend_service.service.StockTransferService;
+import com.erp.backend_service.service.UnitConversionService;
 import com.erp.core.domain.BranchVariantDailyStock;
 import com.erp.core.domain.BranchVariantStockLog;
+import com.erp.core.domain.Material;
+import com.erp.core.domain.MaterialStockBalance;
+import com.erp.core.domain.OrderItem;
+import com.erp.core.domain.Product;
+import com.erp.core.domain.ProductRecipeItem;
+import com.erp.core.domain.ProductVariant;
+import com.erp.core.domain.Unit;
+import com.erp.core.domain.Warehouse;
+import com.erp.core.dto.request.inv.CreateStockTransferRequest;
+import com.erp.core.dto.request.inv.StockTransferItemRequest;
+import com.erp.core.dto.response.PageResponse;
+import com.erp.core.dto.response.inv.StockTransferResponse;
+import com.erp.core.dto.response.pos.DailyStockLineResponse;
+import com.erp.core.dto.response.pos.DailyStockLogResponse;
+import com.erp.core.dto.response.pos.MaterialShortageLineResponse;
+import com.erp.core.dto.response.pos.MaterialShortageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Gom mọi check/trừ/hoàn tồn bán trong ngày về một chỗ (A2, A3).
@@ -31,13 +73,49 @@ public class PosStockService {
     private final BranchVariantDailyStockRepository stockRepository;
     private final BranchVariantStockLogRepository logRepository;
     private final PosBusinessDay businessDay;
+    private final BranchRepository branchRepository;
+    private final DataScopeHelper dataScopeHelper;
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
+    private final MaterialRepository materialRepository;
+    private final UnitRepository unitRepository;
+    private final MaterialStockBalanceRepository balanceRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final ProductRecipeItemRepository recipeRepository;
+    private final StockTransferService stockTransferService;
+    private final UnitConversionService unitConversionService;
 
     public PosStockService(BranchVariantDailyStockRepository stockRepository,
                            BranchVariantStockLogRepository logRepository,
-                           PosBusinessDay businessDay) {
+                           PosBusinessDay businessDay,
+                           BranchRepository branchRepository,
+                           DataScopeHelper dataScopeHelper,
+                           ProductRepository productRepository,
+                           ProductVariantRepository variantRepository,
+                           MaterialRepository materialRepository,
+                           UnitRepository unitRepository,
+                           MaterialStockBalanceRepository balanceRepository,
+                           WarehouseRepository warehouseRepository,
+                           OrderItemRepository orderItemRepository,
+                           ProductRecipeItemRepository recipeRepository,
+                           StockTransferService stockTransferService,
+                           UnitConversionService unitConversionService) {
         this.stockRepository = stockRepository;
         this.logRepository = logRepository;
         this.businessDay = businessDay;
+        this.branchRepository = branchRepository;
+        this.dataScopeHelper = dataScopeHelper;
+        this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
+        this.materialRepository = materialRepository;
+        this.unitRepository = unitRepository;
+        this.balanceRepository = balanceRepository;
+        this.warehouseRepository = warehouseRepository;
+        this.orderItemRepository = orderItemRepository;
+        this.recipeRepository = recipeRepository;
+        this.stockTransferService = stockTransferService;
+        this.unitConversionService = unitConversionService;
     }
 
     /**
@@ -155,5 +233,289 @@ public class PosStockService {
         log.setNote(note);
         log.setStatus("ACTIVE");
         logRepository.save(log);
+    }
+
+    /**
+     * Màn Tồn sản phẩm: mọi dòng tồn của chi nhánh trong 1 ngày kinh doanh,
+     * kèm tên SP/biến thể, lọc search theo mã/tên, phân trang trong bộ nhớ
+     * (1 chi nhánh 1 ngày chỉ vài nghìn dòng).
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<DailyStockLineResponse> list(UUID branchId, LocalDate date, String search,
+                                                     int page, int size) {
+        if (branchId == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Chi nhánh không được để trống.");
+        }
+        if (page < 0 || size < 1 || size > 100) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
+        }
+        UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(branchId);
+        LocalDate businessDate = date != null ? date : businessDay.today(effectiveBranch);
+        List<BranchVariantDailyStock> lines =
+            stockRepository.findByBranchIdAndBusinessDateAndStatus(effectiveBranch, businessDate, "ACTIVE");
+        Map<UUID, ProductVariant> variants = variantRepository.findAllById(
+            lines.stream().map(BranchVariantDailyStock::getVariantId).filter(Objects::nonNull)
+                .distinct().toList()).stream()
+            .collect(Collectors.toMap(ProductVariant::getId, Function.identity(), (a, b) -> a));
+        Map<UUID, Product> products = productRepository.findAllById(
+            variants.values().stream().map(ProductVariant::getProductId).filter(Objects::nonNull)
+                .distinct().toList()).stream()
+            .collect(Collectors.toMap(Product::getId, Function.identity(), (a, b) -> a));
+        String keyword = search == null ? null : search.trim().toLowerCase();
+        List<DailyStockLineResponse> filtered = new ArrayList<>();
+        for (BranchVariantDailyStock s : lines) {
+            ProductVariant v = variants.get(s.getVariantId());
+            Product p = v == null ? null : products.get(v.getProductId());
+            if (keyword != null && !keyword.isEmpty()) {
+                String haystack = ((v == null ? "" : nvl(v.getVariantCode()) + " " + nvl(v.getVariantName())) + " "
+                    + (p == null ? "" : nvl(p.getCode()) + " " + nvl(p.getName()))).toLowerCase();
+                if (!haystack.contains(keyword)) {
+                    continue;
+                }
+            }
+            filtered.add(new DailyStockLineResponse(
+                s.getVariantId(),
+                v == null ? null : v.getVariantCode(),
+                v == null ? null : v.getVariantName(),
+                p == null ? null : p.getId(),
+                p == null ? null : p.getCode(),
+                p == null ? null : p.getName(),
+                s.getBusinessDate(),
+                s.getOpeningQuantity(), s.getSoldQuantity(), s.getRemainingQuantity()));
+        }
+        filtered.sort((a, b) -> compareNullLast(a.productName(), b.productName()));
+        int total = filtered.size();
+        int fromIndex = Math.min(page * size, total);
+        int toIndex = Math.min(fromIndex + size, total);
+        int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / size);
+        return new PageResponse<>(page, size, total, totalPages, filtered.subList(fromIndex, toIndex));
+    }
+
+    /**
+     * Lịch sử biến động tồn (mới nhất trước). variantId null = mọi variant của chi nhánh.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<DailyStockLogResponse> history(UUID branchId, UUID variantId,
+                                                       Instant from, Instant to, int page, int size) {
+        if (branchId == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Chi nhánh không được để trống.");
+        }
+        if (page < 0 || size < 1 || size > 100) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
+        }
+        UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(branchId);
+        Instant fromInstant = from != null ? from : Instant.EPOCH;
+        Instant toInstant = to != null ? to : Instant.now();
+        Page<BranchVariantStockLog> result = variantId == null
+            ? logRepository.findByBranchIdAndStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                effectiveBranch, "ACTIVE", fromInstant, toInstant, PageRequest.of(page, size))
+            : logRepository.findByBranchIdAndVariantIdAndStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                effectiveBranch, variantId, "ACTIVE", fromInstant, toInstant, PageRequest.of(page, size));
+        Map<UUID, ProductVariant> variants = variantRepository.findAllById(
+            result.getContent().stream().map(BranchVariantStockLog::getVariantId).filter(Objects::nonNull)
+                .distinct().toList()).stream()
+            .collect(Collectors.toMap(ProductVariant::getId, Function.identity(), (a, b) -> a));
+        List<DailyStockLogResponse> content = result.getContent().stream().map(l -> {
+            ProductVariant v = variants.get(l.getVariantId());
+            return new DailyStockLogResponse(l.getId(), l.getVariantId(),
+                v == null ? null : v.getVariantCode(), v == null ? null : v.getVariantName(),
+                l.getChangeType(), l.getQuantityChange(), l.getReferenceId(), l.getNote(), l.getCreatedAt());
+        }).toList();
+        return new PageResponse<>(result.getNumber(), result.getSize(), result.getTotalElements(),
+            result.getTotalPages(), content);
+    }
+
+    /**
+     * Bảng đối soát NVL ngày của chi nhánh cho màn Tồn sản phẩm (tab NVL &amp; Cấp hàng).
+     * Kế hoạch = mở bán × BOM, đã dùng = đã bán × BOM (quy về đơn vị gốc),
+     * tồn = khả dụng tại kho bán hàng, thiếu = max(0, kế hoạch - tồn).
+     */
+    @Transactional(readOnly = true)
+    public MaterialShortageResponse materialShortage(UUID branchId, LocalDate date) {
+        ShortageComputed computed = computeShortage(branchId, date);
+        return new MaterialShortageResponse(branchId, computed.businessDate(),
+            computed.warehouse().getId(), computed.warehouse().getCode(),
+            computed.central().getId(), computed.central().getCode(), computed.lines());
+    }
+
+    /**
+     * Tạo yêu cầu cấp hàng từ kho tổng về kho quán theo số thiếu (trạng thái REQUESTED,
+     * đi tiếp luồng duyệt 2 phe). Không thiếu gì thì từ chối để khỏi phiếu rỗng.
+     */
+    @Transactional
+    public StockTransferResponse requestReplenishment(UUID branchId, LocalDate date) {
+        ShortageComputed computed = computeShortage(branchId, date);
+        List<StockTransferItemRequest> items = computed.lines().stream()
+            .filter(l -> l.shortageQuantity() != null && l.shortageQuantity().signum() > 0)
+            .map(l -> new StockTransferItemRequest(l.materialId(), l.shortageQuantity(), null))
+            .toList();
+        if (items.isEmpty()) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Kho quán đủ NVL cho kế hoạch ngày " + computed.businessDate() + ", không cần xin cấp.");
+        }
+        String note = "Xin cấp NVL ngày " + computed.businessDate() + " cho "
+            + computed.warehouse().getCode() + " (" + items.size() + " NVL thiếu)";
+        // Người quán thiếu quyền kho tổng -> create() tự rẽ REQUESTED (phe quán xin, phe kho duyệt).
+        return stockTransferService.create(new CreateStockTransferRequest(
+            null, computed.central().getId(), computed.warehouse().getId(),
+            computed.businessDate(), note, items));
+    }
+
+    private ShortageComputed computeShortage(UUID branchId, LocalDate date) {
+        if (branchId == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Chi nhánh không được để trống.");
+        }
+        UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(branchId);
+        var branch = branchRepository.findById(effectiveBranch)
+            .orElseThrow(() -> new BaseException(ErrorCode.INV_404_BRANCH_NOT_FOUND));
+        if (!"ACTIVE".equals(branch.getStatus())) {
+            throw new BaseException(ErrorCode.INV_400_BRANCH_INACTIVE);
+        }
+        LocalDate businessDate = date != null ? date : businessDay.today(effectiveBranch);
+        Warehouse warehouse = resolveSellingWarehouse(effectiveBranch);
+        Warehouse central = resolveCentralWarehouse();
+        List<BranchVariantDailyStock> lines =
+            stockRepository.findByBranchIdAndBusinessDateAndStatus(effectiveBranch, businessDate, "ACTIVE");
+        Map<UUID, List<ProductRecipeItem>> recipesByVariant = Map.of();
+        Set<UUID> materialIds = Set.of();
+        if (!lines.isEmpty()) {
+            Set<UUID> variantIds = lines.stream().map(BranchVariantDailyStock::getVariantId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+            if (!variantIds.isEmpty()) {
+                recipesByVariant = recipeRepository.findByVariantIdInAndStatus(variantIds, "ACTIVE")
+                    .stream().collect(Collectors.groupingBy(ProductRecipeItem::getVariantId));
+                materialIds = recipesByVariant.values().stream().flatMap(List::stream)
+                    .map(ProductRecipeItem::getMaterialId).filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            }
+        }
+        Map<UUID, Material> materials = materialIds.isEmpty() ? Map.of()
+            : materialRepository.findAllById(materialIds).stream()
+                .collect(Collectors.toMap(Material::getId, Function.identity(), (a, b) -> a));
+        Map<UUID, String> unitCodes = unitRepository.findAll().stream()
+            .collect(Collectors.toMap(Unit::getId, Unit::getCode, (a, b) -> a));
+        Map<UUID, BigDecimal> availableByMaterial = balanceRepository.findByWarehouseId(warehouse.getId())
+            .stream().collect(Collectors.toMap(MaterialStockBalance::getMaterialId,
+                b -> nvlDecimal(b.getQuantityOnHand()).subtract(nvlDecimal(b.getQuantityReserved())),
+                BigDecimal::add));
+        Map<UUID, BigDecimal> planned = new HashMap<>();
+        Map<UUID, BigDecimal> consumed = new HashMap<>();
+        Map<UUID, Boolean> unitMismatch = new HashMap<>();
+        for (BranchVariantDailyStock s : lines) {
+            List<ProductRecipeItem> recipeLines = recipesByVariant.get(s.getVariantId());
+            if (recipeLines == null) {
+                continue;
+            }
+            for (ProductRecipeItem recipe : recipeLines) {
+                Material material = materials.get(recipe.getMaterialId());
+                if (material == null) {
+                    continue;
+                }
+                BigDecimal bomQuantity = recipe.getQuantity() != null ? recipe.getQuantity() : BigDecimal.ZERO;
+                BigDecimal wastage = recipe.getWastagePercent() != null ? recipe.getWastagePercent() : BigDecimal.ZERO;
+                BigDecimal factor = BigDecimal.ONE.add(
+                    wastage.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP));
+                BigDecimal perCup = bomQuantity.multiply(factor);
+                BigDecimal plannedAdd = toBaseUnit(perCup, recipe.getUnitId(), material,
+                    recipe.getMaterialId(), unitMismatch);
+                BigDecimal consumedAdd = toBaseUnit(perCup, recipe.getUnitId(), material,
+                    recipe.getMaterialId(), unitMismatch);
+                planned.merge(recipe.getMaterialId(),
+                    plannedAdd.multiply(BigDecimal.valueOf(nvlInt(s.getOpeningQuantity()))), BigDecimal::add);
+                consumed.merge(recipe.getMaterialId(),
+                    consumedAdd.multiply(BigDecimal.valueOf(nvlInt(s.getSoldQuantity()))), BigDecimal::add);
+            }
+        }
+        Set<UUID> allMaterialIds = new HashSet<>(planned.keySet());
+        allMaterialIds.addAll(consumed.keySet());
+        List<MaterialShortageLineResponse> result = new ArrayList<>();
+        for (UUID materialId : allMaterialIds) {
+            Material material = materials.get(materialId);
+            if (material == null) {
+                continue;
+            }
+            BigDecimal plannedQty = planned.getOrDefault(materialId, BigDecimal.ZERO)
+                .setScale(3, RoundingMode.HALF_UP);
+            BigDecimal consumedQty = consumed.getOrDefault(materialId, BigDecimal.ZERO)
+                .setScale(3, RoundingMode.HALF_UP);
+            BigDecimal onHand = availableByMaterial.getOrDefault(materialId, BigDecimal.ZERO)
+                .setScale(3, RoundingMode.HALF_UP);
+            BigDecimal shortage = plannedQty.subtract(onHand);
+            if (shortage.signum() < 0) {
+                shortage = BigDecimal.ZERO;
+            }
+            result.add(new MaterialShortageLineResponse(material.getId(), material.getCode(),
+                material.getName(), unitCodes.get(material.getBaseUnitId()), plannedQty, consumedQty,
+                onHand, shortage.setScale(3, RoundingMode.HALF_UP),
+                unitMismatch.getOrDefault(materialId, false)));
+        }
+        result.sort((a, b) -> compareNullLast(a.materialCode(), b.materialCode()));
+        return new ShortageComputed(businessDate, warehouse, central, result);
+    }
+
+    /** Số lượng quy về đơn vị gốc; không quy được thì cộng thô + gắn cờ để đối chiếu tay. */
+    private BigDecimal toBaseUnit(BigDecimal quantity, UUID unitId, Material material,
+                                  UUID materialId, Map<UUID, Boolean> unitMismatch) {
+        try {
+            return unitConversionService.convertToBaseUnit(quantity, unitId, material);
+        } catch (BaseException e) {
+            unitMismatch.put(materialId, true);
+            return quantity;
+        }
+    }
+
+    /** Kho bán hàng của chi nhánh: ACTIVE, không phải CENTRAL, bắt buộc đúng 1 kho. */
+    private Warehouse resolveSellingWarehouse(UUID branchId) {
+        List<Warehouse> candidates = warehouseRepository.findByBranchId(branchId).stream()
+            .filter(w -> "ACTIVE".equals(w.getStatus()) && !"CENTRAL".equals(w.getWarehouseType()))
+            .toList();
+        if (candidates.size() != 1) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Chi nhánh có " + candidates.size()
+                    + " kho bán hàng khả dụng, cần đúng 1 kho (ACTIVE, không phải CENTRAL) để đối soát NVL.");
+        }
+        return candidates.get(0);
+    }
+
+    /** Kho tổng cấp hàng: ACTIVE loại CENTRAL, bắt buộc đúng 1 kho. */
+    private Warehouse resolveCentralWarehouse() {
+        List<Warehouse> candidates = warehouseRepository.findByStatus("ACTIVE").stream()
+            .filter(w -> "CENTRAL".equals(w.getWarehouseType()))
+            .toList();
+        if (candidates.size() != 1) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Cần đúng 1 kho tổng (CENTRAL, ACTIVE) đang hoạt động để xin cấp hàng, hiện có "
+                    + candidates.size() + ".");
+        }
+        return candidates.get(0);
+    }
+
+    private record ShortageComputed(LocalDate businessDate, Warehouse warehouse, Warehouse central,
+                                    List<MaterialShortageLineResponse> lines) {
+    }
+
+    private static String nvl(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static BigDecimal nvlDecimal(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private static int nvlInt(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private static int compareNullLast(String a, String b) {
+        if (a == null && b == null) {
+            return 0;
+        }
+        if (a == null) {
+            return 1;
+        }
+        if (b == null) {
+            return -1;
+        }
+        return a.compareToIgnoreCase(b);
     }
 }

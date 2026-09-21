@@ -63,3 +63,12 @@ scrape_configs:
         labels:
           application: 'queue-service'
           environment: 'production'
+
+  # 8. Thu thập dữ liệu từ RabbitMQ Broker (Built-in Prometheus Plugin)
+  - job_name: 'erp-rabbitmq'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['rabbitmq:15692']
+        labels:
+          application: 'rabbitmq'
+          tier: 'broker'

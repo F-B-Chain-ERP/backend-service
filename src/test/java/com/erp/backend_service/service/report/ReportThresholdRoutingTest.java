@@ -148,9 +148,35 @@ class ReportThresholdRoutingTest {
     }
 
     @Test
+    @DisplayName("AUTO: 99 dòng (< 100) → xử lý đồng bộ, HTTP 200, không tạo job")
+    void auto_99Rows_runsSync() {
+        ResponseEntity<?> response = autoWithRows(99);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isInstanceOf(byte[].class);
+        verify(strategy).export(any(ReportDataContext.class));
+        verify(reportJobService, never()).createJob(any(), any(), any(), any(), any(), any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("AUTO: đúng 100 dòng (>= 100) → tạo job, push RabbitMQ, HTTP 202")
+    void auto_100Rows_dispatchesAsyncJob() {
+        when(reportJobService.createJob(eq(ReportModule.POS), eq("POS_ORDER_LIST"), eq(ExportFormat.EXCEL),
+                eq(USER_ID), eq(BRANCH_ID), any(), eq(100))).thenReturn(pendingJob());
+        when(reportJobMapper.toResponse(any(ReportJob.class))).thenReturn(jobResponse());
+
+        ResponseEntity<?> response = autoWithRows(100);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody()).isInstanceOf(ApiResponse.class);
+        verify(messagePublisher).publishReportJob(any(ReportMessage.class));
+        verify(strategy, never()).export(any());
+    }
+
+    @Test
     @DisplayName("AUTO: số dòng vượt ngưỡng Async → tạo job, push RabbitMQ, HTTP 202")
     void auto_aboveThreshold_dispatchesAsyncJob() {
-        when(reportJobService.createJob(eq(ReportModule.POS), eq("POS_ORDER_EXPORT"), eq(ExportFormat.EXCEL),
+        when(reportJobService.createJob(eq(ReportModule.POS), eq("POS_ORDER_LIST"), eq(ExportFormat.EXCEL),
                 eq(USER_ID), eq(BRANCH_ID), any(), eq(150))).thenReturn(pendingJob());
         when(reportJobMapper.toResponse(any(ReportJob.class))).thenReturn(jobResponse());
 
@@ -169,6 +195,30 @@ class ReportThresholdRoutingTest {
                 ReportModule.POS, "POS_ORDER_EXPORT", ExportFormat.EXCEL, ExportReportMode.SYNC,
                 USER_ID, BRANCH_ID, Collections.emptyMap(),
                 () -> 600, () -> buildContext(), "bao-cao"))
+                .isInstanceOf(BaseException.class)
+                .satisfies(ex -> assertThat(((BaseException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.REPORT_400_SYNC_LIMIT_EXCEEDED));
+    }
+
+    @Test
+    @DisplayName("SYNC: đúng 500 dòng (== maxHardSync) → HTTP 200 và xuất thẳng")
+    void sync_exactHardSyncLimit_runsSync() {
+        ResponseEntity<?> response = handler.handleExport(
+                ReportModule.POS, "POS_ORDER_EXPORT", ExportFormat.EXCEL, ExportReportMode.SYNC,
+                USER_ID, BRANCH_ID, Collections.emptyMap(),
+                () -> 500, () -> buildContext(), "bao-cao");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(strategy).export(any(ReportDataContext.class));
+    }
+
+    @Test
+    @DisplayName("SYNC: 501 dòng (> maxHardSync) → từ chối REPORT_400_SYNC_LIMIT_EXCEEDED")
+    void sync_501Rows_isRejected() {
+        assertThatThrownBy(() -> handler.handleExport(
+                ReportModule.POS, "POS_ORDER_EXPORT", ExportFormat.EXCEL, ExportReportMode.SYNC,
+                USER_ID, BRANCH_ID, Collections.emptyMap(),
+                () -> 501, () -> buildContext(), "bao-cao"))
                 .isInstanceOf(BaseException.class)
                 .satisfies(ex -> assertThat(((BaseException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.REPORT_400_SYNC_LIMIT_EXCEEDED));

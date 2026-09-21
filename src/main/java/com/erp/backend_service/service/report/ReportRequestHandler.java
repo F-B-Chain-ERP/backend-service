@@ -116,7 +116,7 @@ public class ReportRequestHandler {
                 yield true;
             }
             case ASYNC -> false;
-            default -> estimatedRows <= asyncThreshold;
+            default -> estimatedRows < asyncThreshold;
         };
 
         log.info("[Report] Export request module: {}, type: {}, format: {}, mode: {}, estimated rows: {}, async threshold: {}, max sync: {}",

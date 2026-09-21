@@ -27,6 +27,10 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.erp.backend_service.repository.OrderItemRepository;
+import com.erp.core.domain.OrderItem;
+import java.math.RoundingMode;
+
 /**
  * Hiện thực dịch vụ trích xuất và kết xuất báo cáo bán hàng phân hệ POS.
  *
@@ -37,15 +41,18 @@ import java.util.stream.Collectors;
 public class PosReportServiceImpl implements PosReportService {
 
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final BranchRepository branchRepository;
     private final DataScopeHelper dataScopeHelper;
     private final ReportRequestHandler reportRequestHandler;
 
     public PosReportServiceImpl(OrderRepository orderRepository,
+                                OrderItemRepository orderItemRepository,
                                 BranchRepository branchRepository,
                                 DataScopeHelper dataScopeHelper,
                                 ReportRequestHandler reportRequestHandler) {
         this.orderRepository = orderRepository;
+        this.orderItemRepository = orderItemRepository;
         this.branchRepository = branchRepository;
         this.dataScopeHelper = dataScopeHelper;
         this.reportRequestHandler = reportRequestHandler;
@@ -231,42 +238,117 @@ public class PosReportServiceImpl implements PosReportService {
                                                        Map<String, Object> params, UUID branchId) {
         List<Order> orders = orderRepository.findAll(spec);
         Map<UUID, Branch> branchMap = loadBranchMap(orders);
+        List<OrderItem> orderItems = loadActiveItems(orders);
 
         List<ReportColumnDefinition> columns = List.of(
-                ReportColumnDefinition.date("businessDate", "Ngày KD", 12),
-                ReportColumnDefinition.number("orderCount", "Số đơn", 10),
-                ReportColumnDefinition.currency("subtotalAmount", "Tạm tính", 14),
-                ReportColumnDefinition.currency("discountAmount", "Giảm giá", 12),
-                ReportColumnDefinition.currency("deliveryFee", "Phí giao", 12),
-                ReportColumnDefinition.currency("totalAmount", "Tổng tiền", 16)
+                ReportColumnDefinition.text("productCode", "Mã SP", 14),
+                ReportColumnDefinition.text("productName", "Tên sản phẩm", 24),
+                ReportColumnDefinition.text("variantName", "Biến thể", 16),
+                ReportColumnDefinition.number("quantity", "Số lượng", 10),
+                ReportColumnDefinition.currency("unitPrice", "Đơn giá TB", 14),
+                ReportColumnDefinition.currency("revenue", "Doanh thu", 16),
+                ReportColumnDefinition.currency("cogs", "Giá vốn (COGS)", 16),
+                ReportColumnDefinition.currency("grossProfit", "Lãi gộp", 16),
+                ReportColumnDefinition.text("profitMargin", "Biên LN", 10)
         );
 
-        List<Map<String, Object>> rows = new ArrayList<>();
-        orders.stream()
-                .collect(Collectors.groupingBy(PosReportServiceImpl::businessDateOf,
-                        LinkedHashMap::new, Collectors.toList()))
-                .forEach((businessDate, dayOrders) -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("businessDate", businessDate);
-                    row.put("orderCount", dayOrders.size());
-                    row.put("subtotalAmount", sum(dayOrders, Order::getSubtotalAmount));
-                    row.put("discountAmount", sum(dayOrders, Order::getDiscountAmount));
-                    row.put("deliveryFee", sum(dayOrders, Order::getDeliveryFee));
-                    row.put("totalAmount", sum(dayOrders, Order::getTotalAmount));
-                    rows.add(row);
-                });
-
-        rows.sort(Comparator.comparing(r -> (LocalDate) r.get("businessDate")));
+        List<Map<String, Object>> rows = buildProductSummaryRows(orderItems);
 
         return new ReportDataContext(
                 "BÁO CÁO TỔNG HỢP DOANH THU POS",
                 buildSubtitle(params, branchId, branchMap),
                 null,
-                Map.of("rowCount", orders.size()),
+                Map.of("rowCount", rows.size(), "orderCount", orders.size()),
                 columns,
                 rows,
-                buildSummary(orders),
+                buildProductSummaryTotal(orders, orderItems),
                 paymentMethodBreakdown(orders)
         );
+    }
+
+    private List<OrderItem> loadActiveItems(List<Order> orders) {
+        if (orders.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<UUID> orderIds = orders.stream().map(Order::getId).collect(Collectors.toList());
+        return orderItemRepository.findByOrderIdIn(orderIds).stream()
+                .filter(item -> item.getStatus() == null || "ACTIVE".equalsIgnoreCase(item.getStatus()))
+                .toList();
+    }
+
+    private List<Map<String, Object>> buildProductSummaryRows(List<OrderItem> orderItems) {
+        Map<String, List<OrderItem>> grouped = orderItems.stream()
+                .collect(Collectors.groupingBy(PosReportServiceImpl::productKey,
+                        LinkedHashMap::new, Collectors.toList()));
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        grouped.forEach((key, items) -> {
+            int quantity = items.stream().mapToInt(PosReportServiceImpl::quantityOf).sum();
+            BigDecimal revenue = sumAmount(items, OrderItem::getTotalPrice);
+            BigDecimal cogs = sumAmount(items, PosReportServiceImpl::itemCogs);
+            BigDecimal grossProfit = revenue.subtract(cogs);
+            BigDecimal unitPrice = revenue.divide(BigDecimal.valueOf(Math.max(quantity, 1)),
+                    2, RoundingMode.HALF_UP);
+            BigDecimal profitMargin = revenue.signum() != 0
+                    ? grossProfit.multiply(BigDecimal.valueOf(100)).divide(revenue, 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
+            OrderItem first = items.get(0);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("productCode", first.getProductCode());
+            row.put("productName", first.getProductName());
+            row.put("variantName", first.getVariantName() != null ? first.getVariantName() : "");
+            row.put("quantity", quantity);
+            row.put("unitPrice", unitPrice);
+            row.put("revenue", revenue);
+            row.put("cogs", cogs);
+            row.put("grossProfit", grossProfit);
+            row.put("profitMargin", profitMargin.setScale(1, RoundingMode.HALF_UP).toPlainString() + "%");
+            rows.add(row);
+        });
+        return rows;
+    }
+
+    private Map<String, Object> buildProductSummaryTotal(List<Order> orders, List<OrderItem> orderItems) {
+        BigDecimal revenue = sumAmount(orderItems, OrderItem::getTotalPrice);
+        BigDecimal cogs = sumAmount(orderItems, PosReportServiceImpl::itemCogs);
+        BigDecimal grossProfit = revenue.subtract(cogs);
+        BigDecimal profitMargin = revenue.signum() != 0
+                ? grossProfit.multiply(BigDecimal.valueOf(100)).divide(revenue, 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("label", "TỔNG CỘNG");
+        summary.put("orderCount", orders.size());
+        summary.put("quantity", orderItems.stream().mapToInt(PosReportServiceImpl::quantityOf).sum());
+        summary.put("revenue", revenue);
+        summary.put("cogs", cogs);
+        summary.put("grossProfit", grossProfit);
+        summary.put("profitMargin", profitMargin);
+        return summary;
+    }
+
+    private static BigDecimal itemCogs(OrderItem item) {
+        if (item.getUnitCogsAmount() == null || item.getQuantity() == null) {
+            return BigDecimal.ZERO;
+        }
+        return item.getUnitCogsAmount().multiply(BigDecimal.valueOf(item.getQuantity()));
+    }
+
+    private static int quantityOf(OrderItem item) {
+        return item.getQuantity() != null ? item.getQuantity() : 0;
+    }
+
+    private static String productKey(OrderItem item) {
+        return (item.getProductCode() == null ? "" : item.getProductCode())
+                + "|"
+                + (item.getVariantName() == null ? "" : item.getVariantName());
+    }
+
+    private BigDecimal sumAmount(List<OrderItem> items, Function<OrderItem, BigDecimal> extractor) {
+        return items.stream()
+                .map(extractor)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

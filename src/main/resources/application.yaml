@@ -80,9 +80,9 @@ app:
     minio-bucket-name: ${MINIO_REPORT_BUCKET:erp-reports}
     async-threshold-records: ${REPORT_ASYNC_THRESHOLD:100}
     max-hard-sync-records: ${REPORT_MAX_HARD_SYNC_RECORDS:500}
-    logo-path: ${REPORT_LOGO_PATH:C:/ERP-UTT/image.png}
-    poll-interval-ms: ${REPORT_POLL_INTERVAL_MS:3000}
-    sse-enabled: ${REPORT_SSE_ENABLED:false}
+    logo-path: ${REPORT_LOGO_PATH:classpath:/report/logo-erp.png}
+    poll-interval-ms: ${REPORT_POLL_INTERVAL_MS:5000}
+    sse-enabled: ${REPORT_SSE_ENABLED:true}
     async-timeout-minutes: ${REPORT_ASYNC_TIMEOUT_MINUTES:30}
   rabbitmq:
     report:

@@ -98,7 +98,7 @@ class PurchaseOrderServiceImplTest {
         when(dataScopeHelper.getAllowedWarehouseIds(null)).thenReturn(List.of(warehouseA));
 
         Page<PurchaseOrder> emptyPage = new PageImpl<>(List.of());
-        when(purchaseOrderRepository.search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), isNull(), isNull(), any(Pageable.class)))
+        when(purchaseOrderRepository.search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
                 .thenReturn(emptyPage);
 
         PageResponse<PurchaseOrderResponse> result = purchaseOrderService.list(
@@ -106,7 +106,7 @@ class PurchaseOrderServiceImplTest {
 
         assertNotNull(result);
         verify(dataScopeHelper).getAllowedWarehouseIds(null);
-        verify(purchaseOrderRepository).search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), isNull(), isNull(), any(Pageable.class));
+        verify(purchaseOrderRepository).search(isNull(), isNull(), isNull(), isNull(), eq(List.of(warehouseA)), any(LocalDate.class), any(LocalDate.class), any(Pageable.class));
     }
 
     @Test

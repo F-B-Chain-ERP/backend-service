@@ -182,6 +182,9 @@ public class StoreReportServiceImpl implements StoreReportService {
 
         Specification<ShiftReport> spec = (root, query, cb) -> {
             var predicates = cb.conjunction();
+            if (request.shiftReportId() != null) {
+                predicates = cb.and(predicates, cb.equal(root.get("id"), request.shiftReportId()));
+            }
             if (effectiveBranchId != null) {
                 predicates = cb.and(predicates, cb.equal(root.get("branchId"), effectiveBranchId));
             }
@@ -201,6 +204,7 @@ public class StoreReportServiceImpl implements StoreReportService {
         };
 
         Map<String, Object> params = new HashMap<>();
+        if (request.shiftReportId() != null) params.put("shiftReportId", request.shiftReportId().toString());
         if (effectiveBranchId != null) params.put("branchId", effectiveBranchId.toString());
         if (request.businessDate() != null) params.put("businessDate", request.businessDate().toString());
         if (request.startDate() != null) params.put("startDate", request.startDate().toString());
@@ -351,7 +355,7 @@ public class StoreReportServiceImpl implements StoreReportService {
     }
 
     private List<Map<String, Object>> collectDenominations(List<ShiftReport> reports) {
-        List<Map<String, Object>> rows = new ArrayList<>();
+        Map<Long, Long> counts = new LinkedHashMap<>();
         for (ShiftReport r : reports) {
             if (r.getCashDenominations() == null || r.getCashDenominations().isBlank()) {
                 continue;
@@ -359,33 +363,45 @@ public class StoreReportServiceImpl implements StoreReportService {
             try {
                 JsonNode node = objectMapper.readTree(r.getCashDenominations());
                 if (node.isObject()) {
-                    node.fields().forEachRemaining(entry -> rows.add(denominationRow(entry.getKey(), entry.getValue().asInt(0))));
+                    node.fields().forEachRemaining(entry -> addDenominationCount(counts, entry.getKey(), entry.getValue().asInt(0)));
                 } else if (node.isArray()) {
                     for (JsonNode item : node) {
                         String denom = item.path("denomination").asText(
                                 item.path("value").asText(item.path("menhGia").asText("")));
                         int count = item.path("count").asInt(item.path("quantity").asInt(0));
-                        rows.add(denominationRow(denom, count));
+                        addDenominationCount(counts, denom, count);
                     }
                 }
-            } catch (Exception e) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("denomination", "-");
-                row.put("count", null);
-                row.put("amount", new BigDecimal(r.getCashDenominations().trim().replaceAll("[^0-9.]", "")));
-                rows.add(row);
+            } catch (Exception ignored) {
             }
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Long denomination : ReportExportConstants.VND_DENOMINATIONS) {
+            long count = counts.getOrDefault(denomination, 0L);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("denomination", ReportExportConstants.denominationLabel(denomination));
+            row.put("value", denomination);
+            row.put("count", count);
+            row.put("amount", BigDecimal.valueOf(denomination).multiply(BigDecimal.valueOf(count)));
+            rows.add(row);
         }
         return rows;
     }
 
-    private Map<String, Object> denominationRow(String value, int count) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        String normalized = value != null ? value.trim() : "";
-        BigDecimal denom = normalized.matches("\\d+") ? new BigDecimal(normalized) : ZERO;
-        row.put("denomination", normalized);
-        row.put("count", count);
-        row.put("amount", denom.multiply(BigDecimal.valueOf(count)));
-        return row;
+    private void addDenominationCount(Map<Long, Long> counts, String rawDenomination, int count) {
+        if (rawDenomination == null || count <= 0) {
+            return;
+        }
+        String digitsOnly = rawDenomination.replaceAll("[^0-9]", "");
+        if (!digitsOnly.isBlank()) {
+            try {
+                long value = Long.parseLong(digitsOnly);
+                if (ReportExportConstants.VND_DENOMINATIONS.contains(value)) {
+                    counts.merge(value, (long) count, Long::sum);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
     }
 }

@@ -32,7 +32,7 @@ public class ReportProperties {
     private int pollIntervalMs = ReportExportConstants.DEFAULT_POLL_INTERVAL_MS;
 
     /** Bất đồng bộ có đẩy trạng thái realtime qua SSE hay không */
-    private boolean sseEnabled = false;
+    private boolean sseEnabled = true;
 
     public String getMinioBucketName() {
         return minioBucketName;

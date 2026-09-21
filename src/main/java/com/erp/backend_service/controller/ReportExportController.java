@@ -16,6 +16,8 @@ import com.erp.core.dto.request.report.pos.ExportOrderReportRequest;
 import com.erp.core.dto.request.report.proc.ExportPurchaseOrderReportRequest;
 import com.erp.core.dto.request.report.store.ExportDailyReportRequest;
 import com.erp.core.dto.request.report.store.ExportShiftReportRequest;
+import com.erp.backend_service.security.ReportPermissionRegistry;
+import com.erp.core.enums.ReportType;
 import com.erp.core.enums.ReportModule;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -44,17 +46,20 @@ public class ReportExportController {
     private final FinReportService finReportService;
     private final InvReportService invReportService;
     private final ProcReportService procReportService;
+    private final ReportPermissionRegistry reportPermissionRegistry;
 
     public ReportExportController(PosReportService posReportService,
                                   StoreReportService storeReportService,
                                   FinReportService finReportService,
                                   InvReportService invReportService,
-                                  ProcReportService procReportService) {
+                                  ProcReportService procReportService,
+                                  ReportPermissionRegistry reportPermissionRegistry) {
         this.posReportService = posReportService;
         this.storeReportService = storeReportService;
         this.finReportService = finReportService;
         this.invReportService = invReportService;
         this.procReportService = procReportService;
+        this.reportPermissionRegistry = reportPermissionRegistry;
     }
 
     /**
@@ -69,6 +74,10 @@ public class ReportExportController {
         if (request.module() == null) {
             throw new BaseException(ErrorCode.BAD_REQUEST, "Phân hệ báo cáo không được để trống");
         }
+
+        // Kiểm tra quyền hạn chuyên biệt theo loại báo cáo
+        ReportType reportType = ReportType.from(request.reportType());
+        reportPermissionRegistry.checkPermission(reportType);
 
         return switch (request.module()) {
             case POS -> exportPos(request, currentUserId);
@@ -108,13 +117,13 @@ public class ReportExportController {
     }
 
     private ResponseEntity<?> exportPos(ExportReportRequest request, UUID currentUserId) {
-        String reportType = request.reportType() != null
-                ? request.reportType()
-                : ReportExportConstants.REPORT_TYPE_POS_ORDER_EXPORT;
-        if (!ReportExportConstants.REPORT_TYPE_POS_ORDER_EXPORT.equals(reportType)
-                && !ReportExportConstants.REPORT_TYPE_POS_SALES_SUMMARY.equals(reportType)) {
+        ReportType resolvedType = ReportType.from(request.reportType());
+        if (resolvedType == null) {
+            resolvedType = ReportType.POS_ORDER_LIST;
+        }
+        if (resolvedType != ReportType.POS_ORDER_LIST && resolvedType != ReportType.POS_SALES_SUMMARY) {
             throw new BaseException(ErrorCode.REPORT_400_UNSUPPORTED_TYPE,
-                    "Loại báo cáo POS không được hỗ trợ: " + reportType);
+                    "Loại báo cáo POS không được hỗ trợ: " + request.reportType());
         }
         return posReportService.exportOrderReport(
                 new ExportOrderReportRequest(
@@ -125,12 +134,13 @@ public class ReportExportController {
                         request.toDate(),
                         request.format(),
                         request.mode(),
-                        reportType),
+                        resolvedType.getCode()),
                 currentUserId);
     }
 
     private ResponseEntity<?> exportStore(ExportReportRequest request, UUID currentUserId) {
-        if (ReportExportConstants.REPORT_TYPE_STORE_DAILY_REPORT.equals(request.reportType())) {
+        ReportType resolvedType = ReportType.from(request.reportType());
+        if (resolvedType == ReportType.STORE_DAILY_CLOSING || resolvedType == ReportType.STORE_DAILY_LIST) {
             return storeReportService.exportDailyReport(
                     new ExportDailyReportRequest(
                             request.branchId(),
@@ -141,7 +151,7 @@ public class ReportExportController {
                             request.mode()),
                     currentUserId);
         }
-        if (ReportExportConstants.REPORT_TYPE_STORE_SHIFT_REPORT.equals(request.reportType())) {
+        if (resolvedType == ReportType.STORE_SHIFT_HANDOVER || resolvedType == ReportType.STORE_SHIFT_LIST) {
             return storeReportService.exportShiftReport(
                     new ExportShiftReportRequest(
                             request.branchId(),

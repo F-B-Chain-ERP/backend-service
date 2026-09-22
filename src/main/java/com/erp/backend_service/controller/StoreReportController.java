@@ -7,6 +7,8 @@ import com.erp.backend_service.service.StoreReportService;
 import com.erp.core.dto.request.report.store.ExportDailyReportRequest;
 import com.erp.core.dto.request.report.store.ExportShiftReportRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +23,7 @@ import java.util.UUID;
 public class StoreReportController {
 
     private final StoreReportService storeReportService;
+    private static final Logger log = LoggerFactory.getLogger(StoreReportController.class);
 
     public StoreReportController(StoreReportService storeReportService) {
         this.storeReportService = storeReportService;
@@ -34,6 +37,7 @@ public class StoreReportController {
     public ResponseEntity<?> exportDailyReport(@Valid @RequestBody ExportDailyReportRequest request) {
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        log.info("Export daily report: branchId={}, from={}, to={}, format={}, userId={}", request.branchId(), request.startDate(), request.endDate(), request.format(), currentUserId);
         return storeReportService.exportDailyReport(request, currentUserId);
     }
 
@@ -45,6 +49,7 @@ public class StoreReportController {
     public ResponseEntity<?> exportShiftReport(@Valid @RequestBody ExportShiftReportRequest request) {
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        log.info("Export shift report: branchId={}, businessDate={}, format={}, userId={}", request.branchId(), request.businessDate(), request.format(), currentUserId);
         return storeReportService.exportShiftReport(request, currentUserId);
     }
 }

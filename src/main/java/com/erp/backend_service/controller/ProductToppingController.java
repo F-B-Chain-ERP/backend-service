@@ -6,6 +6,8 @@ import com.erp.core.dto.request.menu.UpdateProductToppingRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.menu.ProductToppingResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +26,8 @@ public class ProductToppingController {
 
     private final ProductToppingService service;
 
+    private static final Logger log = LoggerFactory.getLogger(ProductToppingController.class);
+
     public ProductToppingController(ProductToppingService service) {
         this.service = service;
     }
@@ -33,6 +37,7 @@ public class ProductToppingController {
     @PreAuthorize("hasAuthority('menu:product_topping:view')")
     public ResponseEntity<ApiResponse<List<ProductToppingResponse>>> listByProduct(
             @PathVariable UUID productId) {
+        log.info("Get list: productId={}", productId);
         return ResponseEntity.ok(ApiResponse.success(service.listByProduct(productId)));
     }
 
@@ -42,6 +47,7 @@ public class ProductToppingController {
     public ResponseEntity<ApiResponse<ProductToppingResponse>> add(
             @PathVariable UUID productId,
             @Valid @RequestBody AddProductToppingRequest request) {
+        log.info("Add topping to product: productId={}, toppingId={}", productId, request.toppingId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(service.add(productId, request), "Thêm topping vào sản phẩm thành công"));
     }
@@ -52,6 +58,7 @@ public class ProductToppingController {
     public ResponseEntity<ApiResponse<ProductToppingResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateProductToppingRequest request) {
+        log.info("Update product-topping id={}", id);
         return ResponseEntity.ok(ApiResponse.success(service.update(id, request)));
     }
 
@@ -59,6 +66,7 @@ public class ProductToppingController {
     @DeleteMapping("/api/v1/menu/product-toppings/{id}")
     @PreAuthorize("hasAuthority('menu:product_topping:delete')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        log.info("Delete product-topping id={}", id);
         service.delete(id);
         return ResponseEntity.noContent().build();
     }

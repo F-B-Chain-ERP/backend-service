@@ -22,6 +22,8 @@ import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.ClosingSummaryResponse;
 import com.erp.core.dto.response.store.ShiftAssignmentResponse;
 import com.erp.core.dto.response.store.ShiftReportResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,8 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
     private final ShiftReportMapper shiftReportMapper;
     private final DataScopeHelper dataScopeHelper;
 
+    private static final Logger log = LoggerFactory.getLogger(ShiftOperationServiceImpl.class);
+
     public ShiftOperationServiceImpl(ShiftAssignmentRepository shiftAssignmentRepository,
                                      ShiftRepository shiftRepository,
                                      ShiftReportRepository shiftReportRepository,
@@ -70,6 +74,7 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
     @Override
     @Transactional(readOnly = true)
     public ShiftAssignmentResponse getMyActiveShift(UUID accountId) {
+        log.info("Get my active shift: accountId={}", accountId);
         // Tìm ca đang CHECKED_IN của nhân viên
         ShiftAssignment activeAssignment = shiftAssignmentRepository
                 .findFirstByAccountIdAndStatus(accountId, "CHECKED_IN")
@@ -93,6 +98,7 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
 
     @Override
     public ShiftAssignmentResponse openShift(UUID assignmentId, OpenShiftRequest request, UUID currentUserId) {
+        log.info("Open shift: assignmentId={}, currentUserId={}", assignmentId, currentUserId);
         ShiftAssignment assignment = shiftAssignmentRepository.findById(assignmentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_ASSIGNMENT_NOT_FOUND));
 
@@ -127,6 +133,7 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
     @Override
     @Transactional(readOnly = true)
     public ClosingSummaryResponse getClosingSummary(UUID assignmentId, UUID currentUserId) {
+        log.info("Get closing summary: assignmentId={}, currentUserId={}", assignmentId, currentUserId);
         ShiftAssignment assignment = shiftAssignmentRepository.findById(assignmentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_ASSIGNMENT_NOT_FOUND));
 
@@ -194,6 +201,7 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
 
     @Override
     public ShiftReportResponse closeShift(UUID assignmentId, CloseShiftRequest request, UUID currentUserId) {
+        log.info("Close shift: assignmentId={}, currentUserId={}", assignmentId, currentUserId);
         ShiftAssignment assignment = shiftAssignmentRepository.findById(assignmentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_ASSIGNMENT_NOT_FOUND));
 
@@ -285,6 +293,7 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
 
     @Override
     public ShiftReportResponse confirmShiftReport(UUID reportId, UUID managerId, String note) {
+        log.info("Confirm shift report: reportId={}, managerId={}", reportId, managerId);
         ShiftReport report = shiftReportRepository.findById(reportId)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_REPORT_NOT_FOUND));
 
@@ -307,6 +316,7 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
     @Override
     @Transactional(readOnly = true)
     public ShiftReportResponse getShiftReportByAssignmentId(UUID assignmentId) {
+        log.info("Get shift report by assignmentId={}", assignmentId);
         ShiftReport report = shiftReportRepository.findByAssignmentId(assignmentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_REPORT_NOT_FOUND));
 
@@ -321,6 +331,8 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<ShiftReportResponse> searchShiftReports(UUID branchId, LocalDate businessDate, Pageable pageable) {
+        log.info("Search shift reports: branchId={}, businessDate={}, page={}, size={}",
+                branchId, businessDate, pageable.getPageNumber(), pageable.getPageSize());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         Page<ShiftReport> page;

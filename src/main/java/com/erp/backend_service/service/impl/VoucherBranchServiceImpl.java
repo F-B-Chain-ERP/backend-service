@@ -11,6 +11,8 @@ import com.erp.core.domain.Branch;
 import com.erp.core.domain.VoucherBranch;
 import com.erp.core.dto.request.menu.AssignVoucherBranchRequest;
 import com.erp.core.dto.response.menu.VoucherBranchResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,8 @@ public class VoucherBranchServiceImpl implements VoucherBranchService {
     private final BranchRepository branchRepository;
     private final VoucherBranchMapper voucherBranchMapper;
 
+    private static final Logger log = LoggerFactory.getLogger(VoucherBranchServiceImpl.class);
+
     public VoucherBranchServiceImpl(VoucherRepository voucherRepository,
                                     VoucherBranchRepository voucherBranchRepository,
                                     BranchRepository branchRepository,
@@ -47,6 +51,7 @@ public class VoucherBranchServiceImpl implements VoucherBranchService {
     @Override
     @Transactional(readOnly = true)
     public List<VoucherBranchResponse> getBranches(UUID voucherId) {
+        log.info("Get branches assigned to voucherId={}", voucherId);
         ensureVoucherExists(voucherId);
         return toResponses(voucherBranchRepository.findByVoucherId(voucherId));
     }
@@ -54,6 +59,7 @@ public class VoucherBranchServiceImpl implements VoucherBranchService {
     @Override
     @Transactional
     public List<VoucherBranchResponse> assign(UUID voucherId, AssignVoucherBranchRequest request) {
+        log.info("Assign voucherId={} to branches={}", voucherId, request.branchIds());
         ensureVoucherExists(voucherId);
         List<VoucherBranch> created = new ArrayList<>();
         for (UUID branchId : request.branchIds()) {
@@ -72,17 +78,20 @@ public class VoucherBranchServiceImpl implements VoucherBranchService {
         if (!created.isEmpty()) {
             voucherBranchRepository.saveAll(created);
         }
+        log.info("Voucher branches assigned: voucherId={}, assignedCount={}", voucherId, created.size());
         return toResponses(voucherBranchRepository.findByVoucherId(voucherId));
     }
 
     @Override
     @Transactional
     public void remove(UUID voucherId, UUID branchId) {
+        log.info("Remove voucherId={} from branchId={}", voucherId, branchId);
         ensureVoucherExists(voucherId);
         VoucherBranch mapping = voucherBranchRepository.findByVoucherIdAndBranchId(voucherId, branchId)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND,
                         "Voucher chưa được gán cho chi nhánh này"));
         voucherBranchRepository.delete(mapping);
+        log.info("Voucher removed from branch: voucherId={}, branchId={}", voucherId, branchId);
     }
 
     private void ensureVoucherExists(UUID voucherId) {

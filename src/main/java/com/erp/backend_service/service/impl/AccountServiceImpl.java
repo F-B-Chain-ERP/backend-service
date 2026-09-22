@@ -29,6 +29,8 @@ import com.erp.core.enums.AuthProvider;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
 import com.erp.core.enums.ScopeType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -63,6 +65,7 @@ public class AccountServiceImpl implements AccountService {
 
     // Màn account cố định 10 dòng/trang: kẹp size tối đa 10 để không ai xin quá tay.
     private static final int MAX_PAGE_SIZE = 10;
+    private static final Logger log = LoggerFactory.getLogger(AccountServiceImpl.class);
     private final AccountRepository accountRepository;
     private final BranchRepository branchRepository;
     private final ScopeRepository scopeRepository;
@@ -102,6 +105,7 @@ public class AccountServiceImpl implements AccountService {
     /** {@inheritDoc} */
     @Override
     public AccountResponse createAccount(CreateAccountRequest request) {
+        log.info("Create account: username={}, email={}", request.username(), request.email());
         assertInternalAdmin();
         if (accountRepository.findByUsername(request.username()).isPresent()) {
             throw new BaseException(ErrorCode.USER_EXISTED);
@@ -143,6 +147,7 @@ public class AccountServiceImpl implements AccountService {
     @Override
     @Transactional(readOnly = true)
     public AccountResponse getAccount(UUID id) {
+        log.info("Get account id={}", id);
         assertInternalAdmin();
         Account account = findById(id);
         enforceAccountVisible(account);
@@ -188,6 +193,7 @@ public class AccountServiceImpl implements AccountService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<AccountResponse> listAccounts(int page, int size, String search) {
+        log.info("Get list accounts: keyword={}, page={}, size={}", search, page, size);
         assertInternalAdmin();
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
@@ -220,6 +226,7 @@ public class AccountServiceImpl implements AccountService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<AccountResponse> listAccounts(int page, int size, String search, UUID branchId, EntityStatus status) {
+        log.info("Get list accounts: keyword={}, page={}, size={}, branchId={}, status={}", search, page, size, branchId, status);
         // Không có filter mở rộng -> dùng đường cũ để giữ nguyên hành vi.
         if (branchId == null && status == null) {
             return listAccounts(page, size, search);
@@ -259,6 +266,7 @@ public class AccountServiceImpl implements AccountService {
     /** {@inheritDoc} */
     @Override
     public AccountResponse updateAccount(UUID id, UpdateAccountRequest request) {
+        log.info("Update account id={}", id);
         assertInternalAdmin();
         Account account = findById(id);
         verifyCanModify(account);
@@ -366,6 +374,7 @@ public class AccountServiceImpl implements AccountService {
     /** {@inheritDoc} */
     @Override
     public void deleteAccount(UUID id) {
+        log.info("Delete account id={}", id);
         assertInternalAdmin();
         Account account = findById(id);
         verifyCanModify(account);
@@ -378,6 +387,7 @@ public class AccountServiceImpl implements AccountService {
     /** {@inheritDoc} */
     @Override
     public AccountResponse resetPassword(UUID id, ResetPasswordRequest request) {
+        log.info("Reset password account id={}", id);
         assertInternalAdmin();
         Account account = findById(id);
         verifyCanModify(account);

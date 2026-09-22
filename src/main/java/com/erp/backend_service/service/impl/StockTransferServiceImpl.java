@@ -16,6 +16,8 @@ import jakarta.persistence.PersistenceContext;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -49,6 +51,8 @@ public class StockTransferServiceImpl implements StockTransferService {
     @PersistenceContext
     private EntityManager entityManager;
 
+    private static final Logger log = LoggerFactory.getLogger(StockTransferServiceImpl.class);
+
     public StockTransferServiceImpl(StockTransferRepository transferRepository, StockTransferItemRepository itemRepository, WarehouseRepository warehouseRepository, MaterialRepository materialRepository, StockInRepository stockInRepository, StockOutRepository stockOutRepository, StockCountRepository stockCountRepository, DataScopeHelper dataScopeHelper, StockBalanceMutationService balanceMutationService) {
         this.transferRepository = transferRepository;
         this.itemRepository = itemRepository;
@@ -64,6 +68,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<StockTransferResponse> list(int page, int size, String search, String status, UUID warehouseId) {
+        log.info("Get list transfers: keyword={}, page={}, size={}", search, page, size);
         page = Math.max(page, 0);
         size = Math.min(Math.max(size, 1), 100);
 
@@ -83,6 +88,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional(readOnly = true)
     public StockTransferResponse get(UUID id) {
+        log.info("Get transfer {}", id);
         return toResponse(findAccessible(id));
     }
 
@@ -118,6 +124,7 @@ public class StockTransferServiceImpl implements StockTransferService {
         transfer = transferRepository.save(transfer);
 
         saveItems(transfer, request.items());
+        log.info("Create transfer: code={}, fromWarehouseId={}, toWarehouseId={}", transfer.getCode(), transfer.getFromWarehouseId(), transfer.getToWarehouseId());
 
         return toResponse(transfer);
     }
@@ -125,6 +132,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional
     public StockTransferResponse update(UUID id, UpdateStockTransferRequest request) {
+        log.info("Update transfer id={}", id);
         StockTransfer transfer = findAccessibleForUpdate(id);
 
         if (request == null || request.fromWarehouseId() == null || request.toWarehouseId() == null) {
@@ -168,6 +176,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional
     public StockTransferResponse dispatch(UUID id) {
+        log.info("Dispatch transfer id={}", id);
         StockTransfer transfer = findFromForUpdate(id);
 
         /*
@@ -248,6 +257,7 @@ public class StockTransferServiceImpl implements StockTransferService {
             balanceMutationService.decrease(transfer.getFromWarehouseId(), transferItem.getMaterialId(), transferItem.getQuantity());
         }
 
+        log.info("Dispatch transfer: code={}, {} -> {}", transfer.getCode(), transfer.getStatus(), IN_TRANSIT);
         transfer.setStatus(IN_TRANSIT);
 
         transferRepository.save(transfer);
@@ -258,6 +268,7 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional
     public StockTransferResponse receive(UUID id, ReceiveStockTransferRequest request) {
+        log.info("Receive transfer id={}", id);
         StockTransfer transfer = findToForUpdate(id);
 
         if (!IN_TRANSIT.equals(transfer.getStatus())) {
@@ -359,6 +370,7 @@ public class StockTransferServiceImpl implements StockTransferService {
         boolean fullyReceived = itemMap.values().stream().allMatch(item -> nvl(item.getReceivedQuantity()).compareTo(item.getQuantity()) >= 0);
 
         if (fullyReceived) {
+            log.info("Receive transfer: code={}, {} -> {}", transfer.getCode(), transfer.getStatus(), RECEIVED);
             transfer.setStatus(RECEIVED);
             transfer.setReceivedBy(currentUserId());
             transfer.setReceivedAt(Instant.now());
@@ -376,12 +388,14 @@ public class StockTransferServiceImpl implements StockTransferService {
     @Override
     @Transactional
     public StockTransferResponse cancel(UUID id, String reason) {
+        log.info("Cancel transfer id={}", id);
         StockTransfer transfer = transferRepository.findByIdForUpdate(id).orElseThrow(() -> new BaseException(ErrorCode.INV_404_TRANSFER_NOT_FOUND));
 
         if (PENDING.equals(transfer.getStatus())) {
             if (!hasWarehouseAccess(transfer.getFromWarehouseId()) && !hasWarehouseAccess(transfer.getToWarehouseId())) {
                 throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
             }
+            log.info("Cancel transfer: code={}, {} -> {}", transfer.getCode(), transfer.getStatus(), CANCELLED);
             transfer.setStatus(CANCELLED);
             transferRepository.save(transfer);
             return toResponse(transfer);
@@ -429,6 +443,7 @@ public class StockTransferServiceImpl implements StockTransferService {
             }
         }
 
+        log.info("Cancel transfer: code={}, {} -> {}", transfer.getCode(), transfer.getStatus(), CANCELLED);
         transfer.setStatus(CANCELLED);
         transfer.setNote(buildVoidNote(reason, transfer.getNote()));
 

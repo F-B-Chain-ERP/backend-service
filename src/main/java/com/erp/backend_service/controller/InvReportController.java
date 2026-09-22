@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class InvReportController {
 
     private final InvReportService invReportService;
+    private static final Logger log = LoggerFactory.getLogger(InvReportController.class);
 
     public InvReportController(InvReportService invReportService) {
         this.invReportService = invReportService;
@@ -34,6 +37,7 @@ public class InvReportController {
     @PostMapping("/stock/export")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> exportStockReport(@Valid @RequestBody ExportStockReportRequest request) {
+        log.info("Create report export: module=INV, type={}, format={}", request.reportType(), request.format());
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return invReportService.exportStockReport(request, currentUserId);

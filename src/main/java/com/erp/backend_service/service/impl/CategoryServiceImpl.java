@@ -12,6 +12,8 @@ import com.erp.core.dto.request.menu.CreateCategoryRequest;
 import com.erp.core.dto.request.menu.UpdateCategoryRequest;
 import com.erp.core.dto.response.menu.CategoryResponse;
 import com.erp.core.dto.response.PageResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +33,8 @@ public class CategoryServiceImpl implements CategoryService {
 
     private static final int MAX_PAGE_SIZE = 100;
 
+    private static final Logger log = LoggerFactory.getLogger(CategoryServiceImpl.class);
+
     private final CategoryRepository categoryRepository;
     private final MaterialRepository materialRepository;
     private final ProductRepository productRepository;
@@ -49,6 +53,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<CategoryResponse> list(int page, int size, String search, String categoryType, String status) {
+        log.info("Get list: keyword={}, page={}, size={}, categoryType={}, status={}", search, page, size, categoryType, status);
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
@@ -73,12 +78,14 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional(readOnly = true)
     public CategoryResponse get(UUID id) {
+        log.info("Get category {}", id);
         return categoryMapper.toResponse(findById(id));
     }
 
     @Override
     @Transactional
     public CategoryResponse create(CreateCategoryRequest request) {
+        log.info("Create category: code={}", request.code());
         String categoryType = request.categoryType().trim().toUpperCase();
         String code = request.code().trim().toUpperCase();
         if (categoryRepository.existsByCategoryTypeAndCode(categoryType, code)) {
@@ -93,6 +100,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public CategoryResponse update(UUID id, UpdateCategoryRequest request) {
+        log.info("Update category id={}", id);
         Category category = findById(id);
         String categoryType = request.categoryType().trim().toUpperCase();
         String code = request.code().trim().toUpperCase();
@@ -113,6 +121,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public CategoryResponse updateStatus(UUID id, String status) {
+        log.info("Update category id={}, status={}", id, status);
         Category category = findById(id);
         if (!StringUtils.hasText(status)) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
@@ -128,6 +137,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete category id={}", id);
         Category category = findById(id);
         long children = countChildren(id);
         if (children > 0) {

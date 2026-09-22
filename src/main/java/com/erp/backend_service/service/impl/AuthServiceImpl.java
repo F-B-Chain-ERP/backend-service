@@ -111,6 +111,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse login(LoginRequest request) {
         PrincipalType type = resolvePrincipalType(request.type(), request.usernameOrEmail());
+        log.info("Login attempt: identifier={}, type={}", request.usernameOrEmail(), type);
         CustomUserDetails userDetails;
         try {
             userDetails = authenticate(type, request.usernameOrEmail(), request.password());
@@ -154,6 +155,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse registerCustomer(RegisterCustomerRequest request) {
+        log.info("Register customer: email={}, username={}", request.email(), request.username());
         if (request.phone() != null && customerRepository.existsByPhone(request.phone())) {
             throw new BadRequestException(ErrorCode.PHONE_EXISTED);
         }
@@ -222,6 +224,7 @@ public class AuthServiceImpl implements AuthService {
         }
         UUID customerId = jwtProvider.extractPrincipalId(verifyToken);
         String email = jwtProvider.extractEmail(verifyToken);
+        log.info("Verify email OTP: customerId={}", customerId);
 
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
@@ -246,6 +249,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException(ErrorCode.INVALID_TOKEN);
         }
         UUID customerId = jwtProvider.extractPrincipalId(verifyToken);
+        log.info("Resend registration OTP: customerId={}", customerId);
 
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
@@ -267,6 +271,7 @@ public class AuthServiceImpl implements AuthService {
         if (email == null || email.isBlank()) {
             throw new BadRequestException(ErrorCode.EMAIL_REQUIRED);
         }
+        log.info("Forgot password requested: type={}, email={}", type, email);
 
         UUID principalId;
         String fullName;
@@ -300,6 +305,7 @@ public class AuthServiceImpl implements AuthService {
         PrincipalType type = jwtProvider.extractPrincipalType(resetToken);
         UUID principalId = jwtProvider.extractPrincipalId(resetToken);
         String email = jwtProvider.extractEmail(resetToken);
+        log.info("Reset password: type={}, principalId={}", type, principalId);
 
         otpService.verifyOtp(principalId, request.otp(), OtpPurpose.PASSWORD_RESET);
 
@@ -336,6 +342,7 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new BadRequestException(ErrorCode.UNAUTHENTICATED));
         PrincipalType type = current.getPrincipalType();
         UUID principalId = current.getPrincipalId();
+        log.info("Change password: type={}, principalId={}", type, principalId);
 
         if (type == PrincipalType.ACCOUNT) {
             Account account = accountRepository.findById(principalId)
@@ -384,6 +391,7 @@ public class AuthServiceImpl implements AuthService {
         Customer customer = customerRepository.findByProviderId(info.sub())
                 .or(() -> customerRepository.findByEmail(info.email()))
                 .orElse(null);
+        log.info("Google OAuth2 authenticate: email={}", info.email());
 
         if (customer == null) {
             customer = new Customer();
@@ -445,6 +453,7 @@ public class AuthServiceImpl implements AuthService {
 
         PrincipalType type = jwtProvider.extractPrincipalType(currentToken);
         UUID principalId = jwtProvider.extractPrincipalId(currentToken);
+        log.info("Refresh token: type={}, principalId={}", type, principalId);
 
         refreshTokenService.consume(type, principalId, currentToken);
 
@@ -473,6 +482,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void logout(String accessToken, String refreshToken) {
+        log.info("Logout requested");
         if (accessToken != null && !accessToken.isBlank()) {
             String token = accessToken.startsWith("Bearer ") ? accessToken.substring(7).trim() : accessToken.trim();
             if (jwtProvider.validateToken(token) && jwtProvider.isAccessToken(token)) {
@@ -501,6 +511,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException(ErrorCode.INVALID_TOKEN);
         }
         UUID branchId = request.branchId();
+        log.info("Select branch: accountId={}, branchId={}", current.getPrincipalId(), branchId);
         Account account = accountRepository.findById(current.getPrincipalId())
                 .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_EXISTED));
 

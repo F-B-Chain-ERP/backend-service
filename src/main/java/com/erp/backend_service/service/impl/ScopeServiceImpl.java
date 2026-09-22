@@ -14,6 +14,8 @@ import com.erp.core.dto.request.scope.CreateScopeRequest;
 import com.erp.core.dto.request.scope.UpdateScopeRequest;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ScopeServiceImpl implements ScopeService {
+    private static final Logger log = LoggerFactory.getLogger(ScopeServiceImpl.class);
     private final ScopeRepository scopeRepository;
     private final BranchRepository branchRepository;
     private final AccountRoleRepository accountRoleRepository;
@@ -46,6 +49,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional(readOnly = true)
     public Scope getActive(UUID scopeId) {
+        log.info("Get active scope id={}", scopeId);
         return scopeRepository.findById(scopeId)
                 .filter(scope -> scope.getStatus() == EntityStatus.ACTIVE)
                 .orElseThrow(() -> new BaseException(ErrorCode.SCOPE_NOT_FOUND));
@@ -55,6 +59,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional(readOnly = true)
     public Map<UUID, Scope> findAllById(Iterable<UUID> scopeIds) {
+        log.info("Get scopes by ids");
         return scopeRepository.findAllById(scopeIds).stream()
                 .filter(scope -> scope.getStatus() == EntityStatus.ACTIVE)
                 .collect(Collectors.toMap(Scope::getId, Function.identity()));
@@ -72,6 +77,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional(readOnly = true)
     public List<ScopeAdminResponse> findAll() {
+        log.info("Get list scopes");
         List<Scope> scopes = scopeRepository.findAll();
         Map<UUID, String> branchNames = resolveBranchNames(
                 scopes.stream().map(Scope::getBranchId).filter(Objects::nonNull).distinct().toList());
@@ -84,6 +90,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional(readOnly = true)
     public ScopeAdminResponse getById(UUID id) {
+        log.info("Get scope id={}", id);
         Scope scope = scopeRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.SCOPE_NOT_FOUND));
         return toResponse(scope, resolveBranchNames(
@@ -94,6 +101,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional
     public ScopeAdminResponse create(CreateScopeRequest request) {
+        log.info("Create scope: scopeType={}, branchId={}", request.scopeType(), request.branchId());
         validateBranchRequirement(request.scopeType(), request.branchId());
         validateBranchExists(request.branchId());
         ensureNotDuplicated(request.scopeType(), request.branchId(), null);
@@ -109,6 +117,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional
     public ScopeAdminResponse update(UUID id, UpdateScopeRequest request) {
+        log.info("Update scope id={}", id);
         Scope scope = scopeRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.SCOPE_NOT_FOUND));
 
@@ -128,6 +137,7 @@ public class ScopeServiceImpl implements ScopeService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete scope id={}", id);
         if (!scopeRepository.existsById(id)) {
             throw new BaseException(ErrorCode.SCOPE_NOT_FOUND);
         }
@@ -178,6 +188,7 @@ public class ScopeServiceImpl implements ScopeService {
         try {
             return scopeRepository.save(scope);
         } catch (DataIntegrityViolationException ex) {
+            log.error("Save scope failed (duplicate): scopeType={}, branchId={}", scope.getScopeType(), scope.getBranchId(), ex);
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
         }
     }

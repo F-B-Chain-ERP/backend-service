@@ -21,6 +21,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.function.Function;
@@ -31,6 +33,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ProcReportServiceImpl implements ProcReportService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProcReportServiceImpl.class);
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final SupplierRepository supplierRepository;
@@ -53,6 +57,7 @@ public class ProcReportServiceImpl implements ProcReportService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<?> exportPurchaseOrderReport(ExportPurchaseOrderReportRequest request, UUID currentUserId) {
+        log.info("Export PROC report: format={}, mode={}, supplierId={}, warehouseId={}", request.format(), request.mode(), request.supplierId(), request.warehouseId());
         Collection<UUID> allowedWarehouseIds = dataScopeHelper.getAllowedWarehouseIds(request.warehouseId());
         String search = StringUtils.hasText(request.search()) ? request.search().trim() : null;
 

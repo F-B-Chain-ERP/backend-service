@@ -18,6 +18,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -30,6 +32,8 @@ public class StockBalanceServiceImpl implements StockBalanceService {
     private final MaterialRepository materialRepository;
     private final WarehouseRepository warehouseRepository;
     private final DataScopeHelper dataScopeHelper;
+
+    private static final Logger log = LoggerFactory.getLogger(StockBalanceServiceImpl.class);
 
     public StockBalanceServiceImpl(
             MaterialStockBalanceRepository balanceRepository,
@@ -52,6 +56,7 @@ public class StockBalanceServiceImpl implements StockBalanceService {
             UUID materialId,
             String search
     ) {
+        log.info("Get list stock balances: page={}, size={}, warehouseId={}, materialId={}", page, size, warehouseId, materialId);
         if (page < 0) {
             throw new BaseException(ErrorCode.INV_400_INVALID_PAGE);
         }
@@ -180,6 +185,7 @@ public class StockBalanceServiceImpl implements StockBalanceService {
             UUID warehouseId,
             UUID materialId
     ) {
+        log.info("Get stock balance: warehouseId={}, materialId={}", warehouseId, materialId);
         dataScopeHelper.enforceWarehouseAccess(
                 warehouseId
         );

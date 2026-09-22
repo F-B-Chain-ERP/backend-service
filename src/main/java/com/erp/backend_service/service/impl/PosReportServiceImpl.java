@@ -17,6 +17,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -40,6 +42,8 @@ import java.math.RoundingMode;
 @Service
 public class PosReportServiceImpl implements PosReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(PosReportServiceImpl.class);
+
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final BranchRepository branchRepository;
@@ -61,6 +65,7 @@ public class PosReportServiceImpl implements PosReportService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<?> exportOrderReport(ExportOrderReportRequest request, UUID currentUserId) {
+        log.info("Export POS report: type={}, format={}, mode={}, branchId={}", request.reportType(), request.format(), request.mode(), request.branchId());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(request.branchId());
 
         Instant fromInstant = request.fromDate() != null

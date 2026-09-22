@@ -54,6 +54,7 @@ public class OtpServiceImpl implements OtpService {
     /** {@inheritDoc} */
     @Override
     public void generateAndSendOtp(UUID principalId, String email, String fullName, OtpPurpose purpose) {
+        log.info("Generate and send OTP: purpose={}, principalId={}, email={}", purpose, principalId, email);
         if (email == null || email.isBlank()) {
             throw new BadRequestException(ErrorCode.EMAIL_REQUIRED);
         }
@@ -86,6 +87,7 @@ public class OtpServiceImpl implements OtpService {
     /** {@inheritDoc} */
     @Override
     public void verifyOtp(UUID principalId, String otp, OtpPurpose purpose) {
+        log.info("Verify OTP: purpose={}, principalId={}", purpose, principalId);
         String otpKey = otpKey(purpose, principalId);
         String stored = stringRedisTemplate.opsForValue().get(otpKey);
         if (stored == null) {

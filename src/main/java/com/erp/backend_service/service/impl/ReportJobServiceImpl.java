@@ -47,6 +47,7 @@ public class ReportJobServiceImpl implements ReportJobService {
     @Override
     @Transactional(readOnly = true)
     public ReportJobResponse getJob(UUID jobId, UUID currentUserId) {
+        log.info("Get report job id={}, userId={}", jobId, currentUserId);
         ReportJob job = reportJobRepository.findByIdAndRequestedBy(jobId, currentUserId)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy tác vụ báo cáo hoặc bạn không có quyền xem"));
         return reportJobMapper.toResponse(job);
@@ -55,6 +56,7 @@ public class ReportJobServiceImpl implements ReportJobService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<ReportJobSummaryResponse> listMyJobs(UUID currentUserId, Pageable pageable) {
+        log.info("List report jobs: userId={}, page={}, size={}", currentUserId, pageable.getPageNumber(), pageable.getPageSize());
         Page<ReportJob> page = reportJobRepository.findByRequestedByOrderByCreatedAtDesc(currentUserId, pageable);
         return new PageResponse<>(
                 page.getNumber(),
@@ -92,6 +94,7 @@ public class ReportJobServiceImpl implements ReportJobService {
     @Override
     @Transactional
     public ReportJob updateStatus(UUID jobId, ReportStatus status, String fileUrl, String errorMessage) {
+        log.info("Update report job status: jobId={}, status={}", jobId, status);
         ReportJob job = reportJobRepository.findById(jobId)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy tác vụ báo cáo: " + jobId));
 
@@ -110,12 +113,15 @@ public class ReportJobServiceImpl implements ReportJobService {
             job.setErrorMessage(errorMessage);
         }
 
-        return reportJobRepository.save(job);
+        job = reportJobRepository.save(job);
+        log.info("Report job status updated: jobId={}, status={}", job.getId(), job.getStatus());
+        return job;
     }
 
     @Override
     @Transactional
     public void cancelJob(UUID jobId, UUID currentUserId) {
+        log.info("Cancel report job id={}, userId={}", jobId, currentUserId);
         ReportJob job = reportJobRepository.findByIdAndRequestedBy(jobId, currentUserId)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy tác vụ báo cáo"));
 

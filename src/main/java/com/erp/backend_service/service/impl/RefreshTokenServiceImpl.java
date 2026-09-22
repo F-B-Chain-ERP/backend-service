@@ -7,6 +7,8 @@ import com.erp.backend_service.service.RefreshTokenService;
 import com.erp.core.domain.RefreshToken;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ import java.util.UUID;
 @Service
 public class RefreshTokenServiceImpl implements RefreshTokenService {
 
+    private static final Logger log = LoggerFactory.getLogger(RefreshTokenServiceImpl.class);
     private final RefreshTokenRepository refreshTokenRepository;
     private final long refreshTokenExpiry;
 
@@ -39,6 +42,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     @Transactional
     public void issue(PrincipalType principalType, UUID principalId, String rawToken,
                       String deviceInfo, String ipAddress) {
+        log.info("Issue refresh token: type={}, principalId={}", principalType, principalId);
         RefreshToken token = new RefreshToken();
         token.setPrincipalType(principalType);
         token.setPrincipalId(principalId);
@@ -54,6 +58,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     @Override
     @Transactional
     public void consume(PrincipalType principalType, UUID principalId, String rawToken) {
+        log.info("Consume refresh token: type={}, principalId={}", principalType, principalId);
         RefreshToken token = refreshTokenRepository
                 .findByTokenHashAndStatus(hash(rawToken), EntityStatus.ACTIVE)
                 .orElseThrow(() -> new BadRequestException(ErrorCode.INVALID_TOKEN));
@@ -72,6 +77,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     @Override
     @Transactional
     public void revoke(PrincipalType principalType, UUID principalId, String rawToken) {
+        log.info("Revoke refresh token: type={}, principalId={}", principalType, principalId);
         refreshTokenRepository.findByTokenHashAndStatus(hash(rawToken), EntityStatus.ACTIVE)
                 .ifPresent(token -> {
                     token.setStatus(EntityStatus.INACTIVE);
@@ -84,6 +90,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     @Override
     @Transactional
     public void revokeAll(PrincipalType principalType, UUID principalId) {
+        log.info("Revoke all refresh tokens: type={}, principalId={}", principalType, principalId);
         refreshTokenRepository.revokeAll(principalType, principalId, EntityStatus.ACTIVE, EntityStatus.INACTIVE);
     }
 

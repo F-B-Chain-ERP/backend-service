@@ -6,6 +6,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.BranchProductAvailabilityResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -19,6 +21,7 @@ import java.util.UUID;
 public class BranchProductAvailabilityController {
 
     private final BranchProductAvailabilityService service;
+    private static final Logger log = LoggerFactory.getLogger(BranchProductAvailabilityController.class);
 
     public BranchProductAvailabilityController(BranchProductAvailabilityService service) {
         this.service = service;
@@ -33,6 +36,7 @@ public class BranchProductAvailabilityController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID categoryId) {
+        log.info("Get list: branchId={}, keyword={}, page={}, size={}, status={}, categoryId={}", branchId, search, page, size, status, categoryId);
         return ResponseEntity.ok(ApiResponse.success(
                 service.list(branchId, page, size, search, status, categoryId)));
     }
@@ -43,6 +47,7 @@ public class BranchProductAvailabilityController {
             @PathVariable UUID branchId,
             @PathVariable UUID productId,
             @Valid @RequestBody UpdateBranchProductRequest request) {
+        log.info("Update product availability: branchId={}, productId={}", branchId, productId);
         return ResponseEntity.ok(ApiResponse.success(
                 service.updateAvailability(branchId, productId, request)));
     }

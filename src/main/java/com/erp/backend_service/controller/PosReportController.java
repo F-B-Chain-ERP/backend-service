@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class PosReportController {
 
     private final PosReportService posReportService;
+    private static final Logger log = LoggerFactory.getLogger(PosReportController.class);
 
     public PosReportController(PosReportService posReportService) {
         this.posReportService = posReportService;
@@ -34,6 +37,7 @@ public class PosReportController {
     @PostMapping("/orders/export")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> exportOrders(@Valid @RequestBody ExportOrderReportRequest request) {
+        log.info("Create report export: module=POS, type={}, format={}", request.reportType(), request.format());
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return posReportService.exportOrderReport(request, currentUserId);

@@ -13,6 +13,8 @@ import com.erp.core.dto.response.store.ClosingSummaryResponse;
 import com.erp.core.dto.response.store.ShiftAssignmentResponse;
 import com.erp.core.dto.response.store.ShiftReportResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -31,6 +33,7 @@ import java.util.UUID;
 public class ShiftOperationController {
 
     private final ShiftOperationService shiftOperationService;
+    private static final Logger log = LoggerFactory.getLogger(ShiftOperationController.class);
 
     public ShiftOperationController(ShiftOperationService shiftOperationService) {
         this.shiftOperationService = shiftOperationService;
@@ -41,6 +44,7 @@ public class ShiftOperationController {
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> getMyActiveShift() {
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        log.info("Get my active shift: userId={}", currentUserId);
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.getMyActiveShift(currentUserId)));
     }
 
@@ -49,6 +53,7 @@ public class ShiftOperationController {
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> openShift(
             @PathVariable UUID id,
             @Valid @RequestBody OpenShiftRequest request) {
+        log.info("Open shift id={}", id);
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.openShift(id, request, currentUserId)));
@@ -57,6 +62,7 @@ public class ShiftOperationController {
     @GetMapping("/{id}/closing-summary")
     @PreAuthorize("hasAuthority('store:shift_assignment:view')")
     public ResponseEntity<ApiResponse<ClosingSummaryResponse>> getClosingSummary(@PathVariable UUID id) {
+        log.info("Get closing summary id={}", id);
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.getClosingSummary(id, currentUserId)));
@@ -67,6 +73,7 @@ public class ShiftOperationController {
     public ResponseEntity<ApiResponse<ShiftReportResponse>> closeShift(
             @PathVariable UUID id,
             @Valid @RequestBody CloseShiftRequest request) {
+        log.info("Close shift id={}", id);
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.closeShift(id, request, currentUserId)));
@@ -75,6 +82,7 @@ public class ShiftOperationController {
     @GetMapping("/assignment/{assignmentId}/report")
     @PreAuthorize("hasAuthority('store:shift_report:view')")
     public ResponseEntity<ApiResponse<ShiftReportResponse>> getReportByAssignment(@PathVariable UUID assignmentId) {
+        log.info("Get shift report by assignment id={}", assignmentId);
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.getShiftReportByAssignmentId(assignmentId)));
     }
 
@@ -83,6 +91,7 @@ public class ShiftOperationController {
     public ResponseEntity<ApiResponse<ShiftReportResponse>> confirmReport(
             @PathVariable UUID id,
             @RequestBody(required = false) ConfirmShiftReportRequest request) {
+        log.info("Confirm shift report id={}", id);
         UUID managerId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         String note = request != null ? request.note() : null;
@@ -95,6 +104,7 @@ public class ShiftOperationController {
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate,
             @PageableDefault(size = 20) Pageable pageable) {
+        log.info("Search shift reports: branchId={}, businessDate={}, page={}, size={}", branchId, businessDate, pageable.getPageNumber(), pageable.getPageSize());
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.searchShiftReports(branchId, businessDate, pageable)));
     }
 }

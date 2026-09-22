@@ -11,6 +11,8 @@ import com.erp.core.dto.response.menu.CalculateComboPriceResponse;
 import com.erp.core.dto.response.menu.ComboDetailResponse;
 import com.erp.core.dto.response.menu.ProductResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -31,6 +33,8 @@ public class ComboController {
     private final ComboService comboService;
     private final ProductService productService;
 
+    private static final Logger log = LoggerFactory.getLogger(ComboController.class);
+
     public ComboController(ComboService comboService, ProductService productService) {
         this.comboService = comboService;
         this.productService = productService;
@@ -48,6 +52,7 @@ public class ComboController {
             @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "DESC") String sortDirection
     ) {
+        log.info("Get combos: keyword={}, page={}, size={}, categoryId={}, status={}", search, page, size, categoryId, status);
         PageResponse<ProductResponse> response = productService.list(
                 page, size, search, categoryId, status, null, null, true, sortBy, sortDirection
         );
@@ -58,6 +63,7 @@ public class ComboController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:combo:view')")
     public ResponseEntity<ApiResponse<ComboDetailResponse>> getDetail(@PathVariable UUID id) {
+        log.info("Get combo {}", id);
         return ResponseEntity.ok(ApiResponse.success(comboService.getDetail(id)));
     }
 
@@ -67,6 +73,7 @@ public class ComboController {
     public ResponseEntity<ApiResponse<ComboDetailResponse>> addItem(
             @PathVariable UUID id,
             @Valid @RequestBody AddComboItemRequest request) {
+        log.info("Add combo item: comboId={}", id);
         return ResponseEntity.ok(ApiResponse.success(comboService.addItem(id, request)));
     }
 
@@ -76,6 +83,7 @@ public class ComboController {
     public ResponseEntity<ApiResponse<ComboDetailResponse>> removeItem(
             @PathVariable UUID id,
             @PathVariable UUID itemId) {
+        log.info("Remove combo item: comboId={}, itemId={}", id, itemId);
         return ResponseEntity.ok(ApiResponse.success(comboService.removeItem(id, itemId)));
     }
 
@@ -85,6 +93,7 @@ public class ComboController {
     public ResponseEntity<ApiResponse<ComboDetailResponse>> syncItems(
             @PathVariable UUID id,
             @Valid @RequestBody BulkSyncComboItemsRequest request) {
+        log.info("Sync combo items: comboId={}", id);
         return ResponseEntity.ok(ApiResponse.success(comboService.syncItems(id, request)));
     }
 
@@ -93,6 +102,7 @@ public class ComboController {
     @PreAuthorize("hasAuthority('menu:combo:view')")
     public ResponseEntity<ApiResponse<CalculateComboPriceResponse>> calculatePrice(
             @Valid @RequestBody CalculateComboPriceRequest request) {
+        log.info("Calculate combo price: comboId={}", request.comboProductId());
         return ResponseEntity.ok(ApiResponse.success(comboService.calculatePrice(request)));
     }
 }

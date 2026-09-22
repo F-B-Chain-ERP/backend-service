@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class FinReportController {
 
     private final FinReportService finReportService;
+    private static final Logger log = LoggerFactory.getLogger(FinReportController.class);
 
     public FinReportController(FinReportService finReportService) {
         this.finReportService = finReportService;
@@ -34,6 +37,7 @@ public class FinReportController {
     @PostMapping("/financial/export")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> exportFinancialReport(@Valid @RequestBody ExportFinancialReportRequest request) {
+        log.info("Create report export: module=FIN, type={}, format={}", request.reportType(), request.format());
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return finReportService.exportFinancialReport(request, currentUserId);

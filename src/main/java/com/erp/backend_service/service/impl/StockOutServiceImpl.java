@@ -38,6 +38,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -61,6 +63,9 @@ import java.util.function.Function;
 public class StockOutServiceImpl implements StockOutService {
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Logger log = LoggerFactory.getLogger(StockOutServiceImpl.class);
+
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_POSTED = "POSTED";
     private static final String STATUS_CANCELLED = "CANCELLED";
@@ -103,6 +108,7 @@ public class StockOutServiceImpl implements StockOutService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<StockOutResponse> list(int page, int size, String search, String status, UUID warehouseId, String destinationType, LocalDate fromDate, LocalDate toDate) {
+        log.info("Get list stock-outs: keyword={}, page={}, size={}", search, page, size);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw new BaseException(ErrorCode.INV_400_STOCK_OUT_INVALID_FILTER);
@@ -150,6 +156,7 @@ public class StockOutServiceImpl implements StockOutService {
     @Override
     @Transactional(readOnly = true)
     public StockOutResponse get(UUID id) {
+        log.info("Get stock-out {}", id);
         StockOut stockOut = findById(id);
         dataScopeHelper.enforceWarehouseAccess(stockOut.getWarehouseId());
         return toResponseWithNames(stockOut, stockOutItemRepository.findByStockOutId(id));
@@ -180,6 +187,7 @@ public class StockOutServiceImpl implements StockOutService {
         stockOut = stockOutRepository.save(stockOut);
 
         List<StockOutItem> items = stockOutItemRepository.saveAll(buildItems(stockOut.getId(), request.items()));
+        log.info("Create stock-out: code={}, warehouseId={}, destinationType={}", stockOut.getCode(), stockOut.getWarehouseId(), stockOut.getDestinationType());
         return toResponseWithNames(stockOut, items);
     }
 
@@ -189,6 +197,7 @@ public class StockOutServiceImpl implements StockOutService {
     @Override
     @Transactional
     public StockOutResponse update(UUID id, UpdateStockOutRequest request) {
+        log.info("Update stock-out id={}", id);
         StockOut stockOut = findByIdForUpdate(id);
         dataScopeHelper.enforceWarehouseAccess(stockOut.getWarehouseId());
         if (!STATUS_DRAFT.equals(stockOut.getStatus())) {
@@ -245,6 +254,7 @@ public class StockOutServiceImpl implements StockOutService {
             stockOut.setIssuedBy(SecurityUtils.getCurrentPrincipalId().orElse(null));
             stockOut.setPostedAt(Instant.now());
         }
+        log.info("Change stock-out status: code={}, {} -> {}", stockOut.getCode(), stockOut.getStatus(), target);
         stockOut.setStatus(target);
         stockOut = stockOutRepository.save(stockOut);
         return toResponseWithNames(stockOut, items);

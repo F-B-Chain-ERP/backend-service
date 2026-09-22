@@ -17,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,6 +36,7 @@ import java.util.UUID;
 public class AccountsPayableController {
 
     private final AccountsPayableService accountsPayableService;
+    private static final Logger log = LoggerFactory.getLogger(AccountsPayableController.class);
 
     public AccountsPayableController(AccountsPayableService accountsPayableService) {
         this.accountsPayableService = accountsPayableService;
@@ -52,6 +55,7 @@ public class AccountsPayableController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueTo,
             @RequestParam(defaultValue = "dueDate") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir) {
+        log.info("Get list: keyword={}, page={}, size={}", search, page, size);
         String safeSortBy = Set.of("dueDate", "remaining", "createdAt").contains(sortBy) ? sortBy : "dueDate";
         return ResponseEntity.ok(ApiResponse.success(
                 accountsPayableService.list(page, size, search, status, supplierId,
@@ -62,6 +66,7 @@ public class AccountsPayableController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('fin:payable:view')")
     public ResponseEntity<ApiResponse<AccountsPayableDetailResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(accountsPayableService.get(id)));
     }
 
@@ -70,6 +75,7 @@ public class AccountsPayableController {
     @PreAuthorize("hasAuthority('fin:payable:create')")
     public ResponseEntity<ApiResponse<AccountsPayableSummaryResponse>> create(
             @Valid @RequestBody CreateAccountsPayableRequest request) {
+        log.info("Create payable: supplierId={}, amount={}", request.supplierId(), request.invoiceAmount());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(accountsPayableService.create(request)));
     }
@@ -80,6 +86,7 @@ public class AccountsPayableController {
     public ResponseEntity<ApiResponse<AccountsPayableSummaryResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateAccountsPayableRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(accountsPayableService.update(id, request)));
     }
 
@@ -87,6 +94,7 @@ public class AccountsPayableController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('fin:payable:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         accountsPayableService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -97,6 +105,7 @@ public class AccountsPayableController {
     public ResponseEntity<ApiResponse<PayablePaymentResponse>> recordPayment(
             @PathVariable UUID id,
             @Valid @RequestBody CreatePayablePaymentRequest request) {
+        log.info("Pay payable id={}, amount={}", id, request.amount());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(accountsPayableService.recordPayment(id, request)));
     }
@@ -106,6 +115,7 @@ public class AccountsPayableController {
     @PreAuthorize("hasAuthority('fin:payable_payment:view')")
     public ResponseEntity<ApiResponse<List<PayablePaymentResponse>>> getPayments(
             @PathVariable UUID id) {
+        log.info("Get payments of payable id={}", id);
         return ResponseEntity.ok(ApiResponse.success(accountsPayableService.getPayments(id)));
     }
 
@@ -113,6 +123,7 @@ public class AccountsPayableController {
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('fin:payable:view')")
     public ResponseEntity<ApiResponse<Map<String, BigDecimal>>> summary() {
+        log.info("Get payable summary");
         return ResponseEntity.ok(ApiResponse.success(accountsPayableService.getSummary()));
     }
 
@@ -120,6 +131,7 @@ public class AccountsPayableController {
     @GetMapping("/existing-po-ids")
     @PreAuthorize("hasAuthority('fin:payable:view')")
     public ResponseEntity<ApiResponse<Set<UUID>>> existingPoIds() {
+        log.info("Get existing PO ids");
         return ResponseEntity.ok(ApiResponse.success(accountsPayableService.getExistingPoIds()));
     }
 
@@ -127,6 +139,7 @@ public class AccountsPayableController {
     @PostMapping("/overdue/trigger")
     @PreAuthorize("hasAuthority('fin:payable:update')")
     public ResponseEntity<ApiResponse<Void>> triggerOverdueCheck() {
+        log.info("Trigger overdue check");
         accountsPayableService.checkAndMarkOverdue();
         return ResponseEntity.ok(ApiResponse.success(null));
     }

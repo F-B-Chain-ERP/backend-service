@@ -99,6 +99,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @Transactional(readOnly = true)
     public boolean hasPermission(UUID accountId, String permissionCode) {
+        log.info("Check permission: accountId={}, code={}", accountId, permissionCode);
         if (!isActive(accountId)) {
             return false;
         }
@@ -113,6 +114,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @Transactional(readOnly = true)
     public boolean isAllowed(UUID accountId, String permissionCode, UUID branchId) {
+        log.info("Check access: accountId={}, code={}, branchId={}", accountId, permissionCode, branchId);
         Objects.requireNonNull(branchId, "branchId must not be null");
         if (!isActive(accountId)) {
             return false;
@@ -144,6 +146,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @Transactional(readOnly = true)
     public PermissionSnapshot getSnapshot(UUID accountId) {
+        log.info("Get permission snapshot accountId={}", accountId);
         PermissionSnapshot cached = readSnapshot(accountId);
         if (cached != null) {
             return cached;
@@ -156,6 +159,7 @@ public class PermissionServiceImpl implements PermissionService {
     /** {@inheritDoc} */
     @Override
     public void saveSnapshot(UUID accountId, PermissionSnapshot snapshot) {
+        log.info("Save permission snapshot accountId={}", accountId);
         if (accountId == null || snapshot == null) {
             return;
         }
@@ -169,6 +173,7 @@ public class PermissionServiceImpl implements PermissionService {
     /** {@inheritDoc} */
     @Override
     public void evictSnapshot(UUID accountId) {
+        log.info("Evict permission snapshot accountId={}", accountId);
         if (accountId == null) {
             return;
         }
@@ -181,6 +186,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public void evictSnapshots(Collection<UUID> accountIds) {
+        log.info("Evict permission snapshots count={}", accountIds == null ? 0 : accountIds.size());
         if (accountIds == null || accountIds.isEmpty()) {
             return;
         }
@@ -203,6 +209,7 @@ public class PermissionServiceImpl implements PermissionService {
         if (details == null) {
             return emptySnapshot();
         }
+        log.info("Build permission snapshot principalId={}", details.getPrincipalId());
         return new PermissionSnapshot(details.getRoles(), details.getPermissions(), details.getScopes());
     }
 
@@ -210,6 +217,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @Transactional(readOnly = true)
     public PermissionResponse getById(UUID id) {
+        log.info("Get permission id={}", id);
         return permissionMapper.toResponse(getExisting(id));
     }
 
@@ -217,6 +225,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<PermissionResponse> getAll(int page, int size, String search, String module, EntityStatus status) {
+        log.info("Get list permissions: keyword={}, page={}, size={}, module={}, status={}", search, page, size, module, status);
         Pageable pageable = PageRequest.of(Math.max(page, 0), normalizeSize(size),
                 Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Permission> result = permissionRepository.search(
@@ -234,6 +243,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @Transactional(readOnly = true)
     public List<String> getModules() {
+        log.info("Get permission modules");
         return permissionRepository.findDistinctModules(null);
     }
 
@@ -343,6 +353,7 @@ public class PermissionServiceImpl implements PermissionService {
     /** {@inheritDoc} */
     @Override
     public void requirePermission(String permissionCode) {
+        log.info("Require permission: code={}", permissionCode);
         UUID accountId = currentPrincipalId();
         if (!hasPermission(accountId, permissionCode)) {
             auditDenied(accountId, AuditTargetType.PERMISSION, null, Map.of("permissionCode", permissionCode));
@@ -353,6 +364,7 @@ public class PermissionServiceImpl implements PermissionService {
     /** {@inheritDoc} */
     @Override
     public void requireAccess(String permissionCode, UUID branchId) {
+        log.info("Require access: code={}, branchId={}", permissionCode, branchId);
         UUID accountId = currentPrincipalId();
         if (!isAllowed(accountId, permissionCode, branchId)) {
             auditDenied(accountId, AuditTargetType.SCOPE, branchId,

@@ -6,6 +6,8 @@ import com.erp.core.dto.auth.RoleAssignmentResponse;
 import com.erp.core.dto.response.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -28,6 +30,7 @@ import java.util.UUID;
 @Validated
 public class RoleAssignmentController {
     private final RoleService roleService;
+    private static final Logger log = LoggerFactory.getLogger(RoleAssignmentController.class);
 
     public RoleAssignmentController(RoleService roleService) { this.roleService = roleService; }
 
@@ -35,6 +38,7 @@ public class RoleAssignmentController {
     @PostMapping
     @PreAuthorize("hasAuthority('sys:role_assignment:create')")
     public ResponseEntity<ApiResponse<RoleAssignmentResponse>> assign(@Valid @RequestBody RoleAssignmentRequest request) {
+        log.info("Assign role: accountId={}, roleId={}, scopeId={}", request.accountId(), request.roleId(), request.scopeId());
         return ResponseEntity.ok(ApiResponse.success(roleService.assign(request)));
     }
 
@@ -45,6 +49,7 @@ public class RoleAssignmentController {
             @NotNull(message = "Assignment id must not be null")
             @PathVariable UUID assignmentId
     ) {
+        log.info("Revoke assignmentId={}", assignmentId);
         roleService.revoke(assignmentId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -56,6 +61,7 @@ public class RoleAssignmentController {
             @NotNull(message = "Account id must not be null")
             @PathVariable UUID accountId
     ) {
+        log.info("Get assignments accountId={}", accountId);
         return ResponseEntity.ok(ApiResponse.success(roleService.findByAccount(accountId)));
     }
 }

@@ -42,6 +42,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -67,6 +69,9 @@ import java.util.stream.Collectors;
 public class StockInServiceImpl implements StockInService {
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Logger log = LoggerFactory.getLogger(StockInServiceImpl.class);
+
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_POSTED = "POSTED";
     private static final String STATUS_CANCELLED = "CANCELLED";
@@ -117,6 +122,7 @@ public class StockInServiceImpl implements StockInService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<StockInResponse> list(int page, int size, String search, String status, UUID warehouseId, String sourceType, LocalDate fromDate, LocalDate toDate) {
+        log.info("Get list stock-ins: keyword={}, page={}, size={}", search, page, size);
         validateFilter(page, size, status, sourceType, fromDate, toDate);
         int safeSize = Math.min(size, MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(page, safeSize, Sort.by("createdAt").descending());
@@ -162,6 +168,7 @@ public class StockInServiceImpl implements StockInService {
     @Override
     @Transactional(readOnly = true)
     public StockInResponse get(UUID id) {
+        log.info("Get stock-in {}", id);
         StockIn stockIn = findById(id);
         dataScopeHelper.enforceWarehouseAccess(stockIn.getWarehouseId());
         return toResponseWithNames(stockIn, stockInItemRepository.findByStockInId(id));
@@ -193,6 +200,7 @@ public class StockInServiceImpl implements StockInService {
         stockIn = stockInRepository.save(stockIn);
 
         List<StockInItem> items = stockInItemRepository.saveAll(buildItems(stockIn.getId(), request.items()));
+        log.info("Create stock-in: code={}, warehouseId={}, sourceType={}", stockIn.getCode(), stockIn.getWarehouseId(), stockIn.getSourceType());
         return toResponseWithNames(stockIn, items);
     }
 
@@ -202,6 +210,7 @@ public class StockInServiceImpl implements StockInService {
     @Override
     @Transactional
     public StockInResponse update(UUID id, UpdateStockInRequest request) {
+        log.info("Update stock-in id={}", id);
         StockIn stockIn = findByIdForUpdate(id);
         dataScopeHelper.enforceWarehouseAccess(stockIn.getWarehouseId());
         if (!STATUS_DRAFT.equals(stockIn.getStatus())) {
@@ -260,6 +269,7 @@ public class StockInServiceImpl implements StockInService {
             stockIn.setReceivedBy(SecurityUtils.getCurrentPrincipalId().orElse(null));
             stockIn.setPostedAt(Instant.now());
         }
+        log.info("Change stock-in status: code={}, {} -> {}", stockIn.getCode(), stockIn.getStatus(), target);
         stockIn.setStatus(target);
         stockIn = stockInRepository.save(stockIn);
         return toResponseWithNames(stockIn, items);

@@ -12,6 +12,8 @@ import com.erp.core.dto.request.store.CreateShiftRequest;
 import com.erp.core.dto.request.store.UpdateShiftRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.ShiftResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -30,6 +32,8 @@ public class ShiftServiceImpl implements ShiftService {
     private final ShiftMapper shiftMapper;
     private final DataScopeHelper dataScopeHelper;
 
+    private static final Logger log = LoggerFactory.getLogger(ShiftServiceImpl.class);
+
     public ShiftServiceImpl(ShiftRepository shiftRepository,
                             BranchRepository branchRepository,
                             ShiftMapper shiftMapper,
@@ -42,6 +46,7 @@ public class ShiftServiceImpl implements ShiftService {
 
     @Override
     public ShiftResponse createShift(CreateShiftRequest request) {
+        log.info("Create shift: branchId={}, shiftCode={}", request.branchId(), request.shiftCode());
         dataScopeHelper.enforceBranchAccess(request.branchId());
 
         if (!branchRepository.existsById(request.branchId())) {
@@ -70,6 +75,7 @@ public class ShiftServiceImpl implements ShiftService {
 
     @Override
     public ShiftResponse updateShift(UUID id, UpdateShiftRequest request) {
+        log.info("Update shift id={}", id);
         Shift shift = shiftRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_SHIFT_NOT_FOUND));
 
@@ -93,6 +99,7 @@ public class ShiftServiceImpl implements ShiftService {
     @Override
     @Transactional(readOnly = true)
     public ShiftResponse getShiftById(UUID id) {
+        log.info("Get shift {}", id);
         Shift shift = shiftRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_SHIFT_NOT_FOUND));
         dataScopeHelper.enforceBranchAccess(shift.getBranchId());
@@ -102,6 +109,7 @@ public class ShiftServiceImpl implements ShiftService {
     @Override
     @Transactional(readOnly = true)
     public List<ShiftResponse> getShiftsByBranch(UUID branchId, String status) {
+        log.info("Get shifts by branch: branchId={}, status={}", branchId, status);
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
         List<Shift> shifts;
         if (status != null && !status.isBlank()) {
@@ -115,6 +123,7 @@ public class ShiftServiceImpl implements ShiftService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<ShiftResponse> searchShifts(UUID branchId, String status, Pageable pageable) {
+        log.info("Search shifts: branchId={}, status={}, page={}, size={}", branchId, status, pageable.getPageNumber(), pageable.getPageSize());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         Specification<Shift> spec = (root, query, cb) -> {
@@ -135,6 +144,7 @@ public class ShiftServiceImpl implements ShiftService {
 
     @Override
     public void deleteShift(UUID id) {
+        log.info("Delete shift id={}", id);
         Shift shift = shiftRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_SHIFT_NOT_FOUND));
         dataScopeHelper.enforceBranchAccess(shift.getBranchId());

@@ -95,6 +95,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
                                                              String status, UUID supplierId,
                                                              LocalDate dueFrom, LocalDate dueTo,
                                                              String sortBy, String sortDir) {
+        log.info("List payables: search={}, status={}, page={}, size={}", search, status, page, size);
         String cleanSearch = StringUtils.hasText(search) ? search.trim() : null;
         int pageIdx = Math.max(page, 0);
         int pageSize = Math.min(size, 10);
@@ -140,6 +141,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     @Override
     @Transactional(readOnly = true)
     public AccountsPayableDetailResponse get(UUID id) {
+        log.info("Get payable {}", id);
         AccountsPayable ap = findById(id);
         List<PayablePaymentResponse> payments = getPayments(id);
         return toDetailResponse(ap, payments);
@@ -149,6 +151,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     @Override
     @Transactional
     public AccountsPayableSummaryResponse create(CreateAccountsPayableRequest request) {
+        log.info("Create payable: supplierId={}, invoiceAmount={}", request.supplierId(), request.invoiceAmount());
         Supplier supplier = supplierRepository.findById(request.supplierId())
                 .orElseThrow(() -> new BaseException(ErrorCode.FIN_404_SUPPLIER_NOT_FOUND));
 
@@ -199,6 +202,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
         ap.setNote(request.note());
 
         ap = accountsPayableRepository.save(ap);
+        log.info("Created payable id={}, invoiceNo={}, status={}", ap.getId(), ap.getInvoiceNo(), ap.getStatus());
         return toSummaryResponse(ap);
     }
 
@@ -206,6 +210,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     @Override
     @Transactional
     public AccountsPayableSummaryResponse update(UUID id, UpdateAccountsPayableRequest request) {
+        log.info("Update payable id={}", id);
         AccountsPayable ap = findById(id);
 
         // Chỉ cho phép sửa khi UNPAID, chưa có due_date, chưa có payment
@@ -240,6 +245,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete payable id={}", id);
         AccountsPayable ap = findById(id);
 
         if (!STATUS_UNPAID.equals(ap.getStatus())) {
@@ -256,6 +262,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     @Override
     @Transactional
     public PayablePaymentResponse recordPayment(UUID payableId, CreatePayablePaymentRequest request) {
+        log.info("Record payment: payableId={}, amount={}, method={}", payableId, request.amount(), request.paymentMethod());
         AccountsPayable ap = findById(payableId);
 
         if (STATUS_PAID.equals(ap.getStatus())) {
@@ -285,6 +292,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
         ap.setPaidAmount(ap.getPaidAmount().add(request.amount()));
         ap.setStatus(computeStatus(ap));
         accountsPayableRepository.save(ap);
+        log.info("Payment recorded: payableId={}, paidAmount={}, status={}", payableId, ap.getPaidAmount(), ap.getStatus());
 
         return payablePaymentMapper.toResponse(payment);
     }
@@ -367,6 +375,7 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     @Override
     @Transactional(readOnly = true)
     public Map<String, BigDecimal> getSummary() {
+        log.info("Get payable summary");
         BigDecimal totalRemaining = accountsPayableRepository.sumRemainingAll();
         BigDecimal totalOverdue = accountsPayableRepository.sumOverdueAll();
         return Map.of(

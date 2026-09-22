@@ -12,6 +12,8 @@ import com.erp.core.dto.response.menu.VoucherUsageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,6 +33,8 @@ public class VoucherController {
     private final VoucherService voucherService;
     private final VoucherUsageService voucherUsageService;
 
+    private static final Logger log = LoggerFactory.getLogger(VoucherController.class);
+
     public VoucherController(VoucherService voucherService, VoucherUsageService voucherUsageService) {
         this.voucherService = voucherService;
         this.voucherUsageService = voucherUsageService;
@@ -44,6 +48,7 @@ public class VoucherController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status) {
+        log.info("Get list: keyword={}, page={}, size={}, status={}", search, page, size, status);
         return ResponseEntity.ok(ApiResponse.success(voucherService.list(
                 page, size, search, status)));
     }
@@ -52,6 +57,7 @@ public class VoucherController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:voucher:view')")
     public ResponseEntity<ApiResponse<VoucherDetailResponse>> get(@PathVariable UUID id) {
+        log.info("Get voucher id={}", id);
         return ResponseEntity.ok(ApiResponse.success(voucherService.get(id)));
     }
 
@@ -59,6 +65,7 @@ public class VoucherController {
     @PostMapping
     @PreAuthorize("hasAuthority('menu:voucher:create')")
     public ResponseEntity<ApiResponse<VoucherResponse>> create(@Valid @RequestBody CreateVoucherRequest request) {
+        log.info("Create voucher code={}", request.code());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(voucherService.create(request)));
     }
 
@@ -67,6 +74,7 @@ public class VoucherController {
     @PreAuthorize("hasAuthority('menu:voucher:update')")
     public ResponseEntity<ApiResponse<VoucherResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateVoucherRequest request) {
+        log.info("Update voucher id={}", id);
         return ResponseEntity.ok(ApiResponse.success(voucherService.update(id, request)));
     }
 
@@ -75,6 +83,7 @@ public class VoucherController {
     @PreAuthorize("hasAuthority('menu:voucher:update')")
     public ResponseEntity<ApiResponse<VoucherResponse>> updateStatus(
             @PathVariable UUID id, @RequestBody Map<String, String> request) {
+        log.info("Update voucher status id={}, status={}", id, request.get("status"));
         return ResponseEntity.ok(ApiResponse.success(voucherService.updateStatus(id, request.get("status"))));
     }
 
@@ -82,6 +91,7 @@ public class VoucherController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:voucher:delete')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        log.info("Delete voucher id={}", id);
         voucherService.delete(id);
         return ResponseEntity.noContent().build();
     }
@@ -93,6 +103,7 @@ public class VoucherController {
             @PathVariable UUID id,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size) {
+        log.info("Get voucher usage id={}, page={}, size={}", id, page, size);
         return ResponseEntity.ok(ApiResponse.success(voucherUsageService.listByVoucher(page, size, id)));
     }
 }

@@ -8,6 +8,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.inv.StockInResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +36,8 @@ public class StockInController {
 
     private final StockInService stockInService;
 
+    private static final Logger log = LoggerFactory.getLogger(StockInController.class);
+
     public StockInController(StockInService stockInService) {
         this.stockInService = stockInService;
     }
@@ -50,6 +54,7 @@ public class StockInController {
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        log.info("Get list stock-ins: keyword={}, page={}, size={}", search, page, size);
         return ResponseEntity.ok(ApiResponse.success(
                 stockInService.list(page, size, search, status, warehouseId, sourceType, fromDate, toDate),
                 "Lấy danh sách phiếu nhập kho thành công"));
@@ -59,6 +64,7 @@ public class StockInController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('inv:stock_in:view')")
     public ResponseEntity<ApiResponse<StockInResponse>> get(@PathVariable UUID id) {
+        log.info("Get stock-in {}", id);
         return ResponseEntity.ok(ApiResponse.success(stockInService.get(id), "Lấy thông tin phiếu nhập kho thành công"));
     }
 
@@ -66,6 +72,7 @@ public class StockInController {
     @PostMapping
     @PreAuthorize("hasAuthority('inv:stock_in:create')")
     public ResponseEntity<ApiResponse<StockInResponse>> create(@Valid @RequestBody CreateStockInRequest request) {
+        log.info("Create stock-in: warehouseId={}, sourceType={}", request.warehouseId(), request.sourceType());
         return ResponseEntity.ok(ApiResponse.success(stockInService.create(request), "Tạo phiếu nhập kho thành công"));
     }
 
@@ -74,6 +81,7 @@ public class StockInController {
     @PreAuthorize("hasAuthority('inv:stock_in:update')")
     public ResponseEntity<ApiResponse<StockInResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateStockInRequest request) {
+        log.info("Update stock-in id={}", id);
         return ResponseEntity.ok(ApiResponse.success(stockInService.update(id, request), "Cập nhật phiếu nhập kho thành công"));
     }
 
@@ -82,6 +90,7 @@ public class StockInController {
     @PreAuthorize("hasAuthority('inv:stock_in:update')")
     public ResponseEntity<ApiResponse<StockInResponse>> changeStatus(
             @PathVariable UUID id, @Valid @RequestBody StatusUpdateRequest request) {
+        log.info("Change stock-in status id={}, status={}", id, request.status());
         return ResponseEntity.ok(ApiResponse.success(stockInService.changeStatus(id, request), "Cập nhật trạng thái phiếu nhập kho thành công"));
     }
 }

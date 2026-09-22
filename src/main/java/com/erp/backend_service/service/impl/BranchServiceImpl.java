@@ -21,6 +21,8 @@ import com.erp.backend_service.service.BranchHoursService;
 import com.erp.core.domain.Scope;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +41,7 @@ import java.util.stream.Collectors;
 @Service
 public class BranchServiceImpl implements BranchService {
 
+    private static final Logger log = LoggerFactory.getLogger(BranchServiceImpl.class);
     private static final String DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh";
     private static final String DEFAULT_STATUS = "ACTIVE";
 
@@ -72,6 +75,7 @@ public class BranchServiceImpl implements BranchService {
     @Override
     @Transactional(readOnly = true)
     public List<BranchResponse> findAll() {
+        log.info("Get list branches");
         List<Branch> branches = branchRepository.findAll();
         Map<UUID, String> parentNames = resolveParentNames(branches);
         return branches.stream()
@@ -85,6 +89,7 @@ public class BranchServiceImpl implements BranchService {
     public List<BranchResponse> findMine() {
         CustomUserDetails current = SecurityUtils.getCurrentUserDetails()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Get my branches: userId={}", current.getPrincipalId());
         if (current.getPrincipalType() != com.erp.core.enums.PrincipalType.ACCOUNT) {
             return List.of();
         }
@@ -120,6 +125,7 @@ public class BranchServiceImpl implements BranchService {
     @Override
     @Transactional(readOnly = true)
     public BranchResponse findById(UUID id) {
+        log.info("Get branch id={}", id);
         Branch branch = branchRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
         Map<UUID, String> parentNames = resolveParentNames(List.of(branch));
@@ -130,6 +136,7 @@ public class BranchServiceImpl implements BranchService {
     @Override
     @Transactional
     public BranchResponse create(CreateBranchRequest request) {
+        log.info("Create branch: code={}", request.code());
         if (branchRepository.existsByCode(request.code())) {
             throw new BaseException(ErrorCode.BRANCH_400_CODE_EXISTS);
         }
@@ -153,6 +160,7 @@ public class BranchServiceImpl implements BranchService {
         // BR-ORG-07: Tự động khởi tạo 7 bản ghi branch_hours mặc định
         branchHoursService.initDefaultHours(saved.getId());
 
+        log.info("Created branch: id={}, code={}", saved.getId(), saved.getCode());
         return branchMapper.toResponse(saved, Map.of());
     }
 
@@ -160,6 +168,7 @@ public class BranchServiceImpl implements BranchService {
     @Override
     @Transactional
     public BranchResponse update(UUID id, UpdateBranchRequest request) {
+        log.info("Update id={}", id);
         Branch branch = branchRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
         if (!branch.getCode().equals(request.code()) && branchRepository.existsByCode(request.code())) {
@@ -180,6 +189,7 @@ public class BranchServiceImpl implements BranchService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete id={}", id);
         if (!branchRepository.existsById(id)) {
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
         }

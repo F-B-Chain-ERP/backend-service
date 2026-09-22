@@ -8,6 +8,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.inv.StockOutResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +36,8 @@ public class StockOutController {
 
     private final StockOutService stockOutService;
 
+    private static final Logger log = LoggerFactory.getLogger(StockOutController.class);
+
     public StockOutController(StockOutService stockOutService) {
         this.stockOutService = stockOutService;
     }
@@ -50,6 +54,7 @@ public class StockOutController {
             @RequestParam(required = false) String destinationType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        log.info("Get list stock-outs: keyword={}, page={}, size={}", search, page, size);
         return ResponseEntity.ok(ApiResponse.success(
                 stockOutService.list(page, size, search, status, warehouseId, destinationType, fromDate, toDate),
                 "Lấy danh sách phiếu xuất kho thành công"));
@@ -59,6 +64,7 @@ public class StockOutController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('inv:stock_out:view')")
     public ResponseEntity<ApiResponse<StockOutResponse>> get(@PathVariable UUID id) {
+        log.info("Get stock-out {}", id);
         return ResponseEntity.ok(ApiResponse.success(stockOutService.get(id), "Lấy thông tin phiếu xuất kho thành công"));
     }
 
@@ -66,6 +72,7 @@ public class StockOutController {
     @PostMapping
     @PreAuthorize("hasAuthority('inv:stock_out:create')")
     public ResponseEntity<ApiResponse<StockOutResponse>> create(@Valid @RequestBody CreateStockOutRequest request) {
+        log.info("Create stock-out: warehouseId={}, destinationType={}", request.warehouseId(), request.destinationType());
         return ResponseEntity.ok(ApiResponse.success(stockOutService.create(request), "Tạo phiếu xuất kho thành công"));
     }
 
@@ -74,6 +81,7 @@ public class StockOutController {
     @PreAuthorize("hasAuthority('inv:stock_out:update')")
     public ResponseEntity<ApiResponse<StockOutResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateStockOutRequest request) {
+        log.info("Update stock-out id={}", id);
         return ResponseEntity.ok(ApiResponse.success(stockOutService.update(id, request), "Cập nhật phiếu xuất kho thành công"));
     }
 
@@ -82,6 +90,7 @@ public class StockOutController {
     @PreAuthorize("hasAuthority('inv:stock_out:update')")
     public ResponseEntity<ApiResponse<StockOutResponse>> changeStatus(
             @PathVariable UUID id, @Valid @RequestBody StatusUpdateRequest request) {
+        log.info("Change stock-out status id={}, status={}", id, request.status());
         return ResponseEntity.ok(ApiResponse.success(stockOutService.changeStatus(id, request), "Cập nhật trạng thái phiếu xuất kho thành công"));
     }
 }

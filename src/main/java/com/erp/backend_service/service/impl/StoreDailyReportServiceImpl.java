@@ -17,6 +17,8 @@ import com.erp.core.dto.request.store.CreateDailyReportRequest;
 import com.erp.core.dto.request.store.UpdateDailyReportRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.StoreDailyReportResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -44,6 +46,8 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
     private final StoreDailyReportMapper storeDailyReportMapper;
     private final DataScopeHelper dataScopeHelper;
 
+    private static final Logger log = LoggerFactory.getLogger(StoreDailyReportServiceImpl.class);
+
     public StoreDailyReportServiceImpl(StoreDailyReportRepository storeDailyReportRepository,
                                        ShiftAssignmentRepository shiftAssignmentRepository,
                                        ShiftReportRepository shiftReportRepository,
@@ -62,6 +66,7 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
 
     @Override
     public StoreDailyReportResponse generateDailyReport(CreateDailyReportRequest request, UUID currentUserId) {
+        log.info("Generate daily report: branchId={}, businessDate={}", request.branchId(), request.businessDate());
         dataScopeHelper.enforceBranchAccess(request.branchId());
 
         if (!branchRepository.existsById(request.branchId())) {
@@ -126,6 +131,7 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
 
     @Override
     public StoreDailyReportResponse updateDailyReport(UUID id, UpdateDailyReportRequest request) {
+        log.info("Update daily report id={}", id);
         StoreDailyReport report = storeDailyReportRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_DAILY_REPORT_NOT_FOUND));
 
@@ -148,6 +154,7 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
 
     @Override
     public StoreDailyReportResponse approveDailyReport(UUID id, UUID approverId, String note) {
+        log.info("Approve daily report id={}, approverId={}", id, approverId);
         StoreDailyReport report = storeDailyReportRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_DAILY_REPORT_NOT_FOUND));
 
@@ -164,6 +171,7 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
     @Override
     @Transactional(readOnly = true)
     public StoreDailyReportResponse getDailyReportById(UUID id) {
+        log.info("Get daily report id={}", id);
         StoreDailyReport report = storeDailyReportRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_DAILY_REPORT_NOT_FOUND));
 
@@ -176,6 +184,7 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
     @Override
     @Transactional(readOnly = true)
     public StoreDailyReportResponse getDailyReportByDate(UUID branchId, LocalDate businessDate) {
+        log.info("Get daily report by date: branchId={}, businessDate={}", branchId, businessDate);
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         StoreDailyReport report = storeDailyReportRepository
@@ -189,9 +198,11 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<StoreDailyReportResponse> searchDailyReports(UUID branchId,
-                                                                    LocalDate startDate,
-                                                                    LocalDate endDate,
-                                                                    Pageable pageable) {
+                                                                     LocalDate startDate,
+                                                                     LocalDate endDate,
+                                                                     Pageable pageable) {
+        log.info("Search daily reports: branchId={}, startDate={}, endDate={}, page={}, size={}",
+                branchId, startDate, endDate, pageable.getPageNumber(), pageable.getPageSize());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         Specification<StoreDailyReport> spec = (root, query, cb) -> {

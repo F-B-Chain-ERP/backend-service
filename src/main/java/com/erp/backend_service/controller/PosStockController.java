@@ -10,6 +10,8 @@ import com.erp.core.dto.response.pos.DailyStockResponse;
 import com.erp.core.domain.BranchVariantDailyStock;
 import com.erp.core.enums.PrincipalType;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +25,8 @@ public class PosStockController {
 
     private final PosStockService stockService;
 
+    private static final Logger log = LoggerFactory.getLogger(PosStockController.class);
+
     public PosStockController(PosStockService stockService) {
         this.stockService = stockService;
     }
@@ -30,6 +34,7 @@ public class PosStockController {
     @PostMapping("/restock")
     public ResponseEntity<ApiResponse<DailyStockResponse>> restock(
         @Valid @RequestBody RestockDailyStockRequest request) {
+        log.info("Restock daily stock: branchId={}, variantId={}", request.branchId(), request.variantId());
         if (SecurityUtils.getCurrentPrincipalType().orElse(null) == PrincipalType.CUSTOMER) {
             throw new BaseException(ErrorCode.UNAUTHORIZED);
         }

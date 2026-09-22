@@ -7,6 +7,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.ShiftResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class ShiftController {
 
     private final ShiftService shiftService;
+    private static final Logger log = LoggerFactory.getLogger(ShiftController.class);
 
     public ShiftController(ShiftService shiftService) {
         this.shiftService = shiftService;
@@ -32,12 +35,14 @@ public class ShiftController {
     @PostMapping
     @PreAuthorize("hasAuthority('store:shift:create')")
     public ResponseEntity<ApiResponse<ShiftResponse>> create(@Valid @RequestBody CreateShiftRequest request) {
+        log.info("Create shift: branchId={}, shiftCode={}", request.branchId(), request.shiftCode());
         return ResponseEntity.ok(ApiResponse.created(shiftService.createShift(request)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('store:shift:view')")
     public ResponseEntity<ApiResponse<ShiftResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(shiftService.getShiftById(id)));
     }
 
@@ -46,6 +51,7 @@ public class ShiftController {
     public ResponseEntity<ApiResponse<List<ShiftResponse>>> getByBranch(
             @PathVariable UUID branchId,
             @RequestParam(required = false) String status) {
+        log.info("Get shifts by branch: branchId={}, status={}", branchId, status);
         return ResponseEntity.ok(ApiResponse.success(shiftService.getShiftsByBranch(branchId, status)));
     }
 
@@ -55,6 +61,7 @@ public class ShiftController {
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
+        log.info("Search shifts: branchId={}, status={}, page={}, size={}", branchId, status, pageable.getPageNumber(), pageable.getPageSize());
         return ResponseEntity.ok(ApiResponse.success(shiftService.searchShifts(branchId, status, pageable)));
     }
 
@@ -63,12 +70,14 @@ public class ShiftController {
     public ResponseEntity<ApiResponse<ShiftResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateShiftRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(shiftService.updateShift(id, request)));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('store:shift:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         shiftService.deleteShift(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Đã xóa ca làm việc thành công"));
     }

@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -18,6 +20,8 @@ import java.util.UUID;
 public class StockCountController {
 
     private final StockCountService stockCountService;
+
+    private static final Logger log = LoggerFactory.getLogger(StockCountController.class);
 
     public StockCountController(
             StockCountService stockCountService
@@ -34,6 +38,7 @@ public class StockCountController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID warehouseId
     ) {
+        log.info("Get list stock-counts: keyword={}, page={}, size={}", search, page, size);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockCountService.list(
@@ -52,6 +57,7 @@ public class StockCountController {
     public ResponseEntity<ApiResponse<StockCountResponse>> get(
             @PathVariable UUID id
     ) {
+        log.info("Get stock-count {}", id);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockCountService.get(id)
@@ -64,6 +70,7 @@ public class StockCountController {
     public ResponseEntity<ApiResponse<StockCountResponse>> create(
             @Valid @RequestBody CreateStockCountRequest request
     ) {
+        log.info("Create stock-count: warehouseId={}", request.warehouseId());
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockCountService.create(request)
@@ -77,6 +84,7 @@ public class StockCountController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateStockCountRequest request
     ) {
+        log.info("Update stock-count id={}", id);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockCountService.update(
@@ -92,6 +100,7 @@ public class StockCountController {
     public ResponseEntity<ApiResponse<StockCountResponse>> start(
             @PathVariable UUID id
     ) {
+        log.info("Start stock-count id={}", id);
         return ResponseEntity.ok(
                 ApiResponse.success(stockCountService.start(id))
         );
@@ -102,6 +111,7 @@ public class StockCountController {
     public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable UUID id
     ) {
+        log.info("Delete stock-count id={}", id);
         stockCountService.delete(id);
 
         return ResponseEntity.ok(
@@ -114,6 +124,7 @@ public class StockCountController {
     public ResponseEntity<ApiResponse<StockCountResponse>> complete(
             @PathVariable UUID id
     ) {
+        log.info("Complete stock-count id={}", id);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockCountService.complete(id)
@@ -126,6 +137,7 @@ public class StockCountController {
     public ResponseEntity<ApiResponse<StockCountResponse>> adjust(
             @PathVariable UUID id
     ) {
+        log.info("Adjust stock-count id={}", id);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockCountService.adjust(id)

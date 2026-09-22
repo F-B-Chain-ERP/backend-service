@@ -15,6 +15,8 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 import java.util.UUID;
@@ -28,6 +30,8 @@ import java.util.UUID;
  */
 @Service
 public class MinioStorageServiceImpl implements StorageService {
+
+    private static final Logger log = LoggerFactory.getLogger(MinioStorageServiceImpl.class);
 
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024L; // 5 MB
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
@@ -48,6 +52,7 @@ public class MinioStorageServiceImpl implements StorageService {
     public String upload(MultipartFile file, String folder) {
         validateFile(file);
         String objectName = buildObjectName(folder, file.getOriginalFilename());
+        log.info("Upload file: object={}, size={}", objectName, file.getSize());
         try {
             minioClient.putObject(
                     PutObjectArgs.builder()
@@ -58,13 +63,16 @@ public class MinioStorageServiceImpl implements StorageService {
                             .build()
             );
         } catch (Exception e) {
+            log.error("Upload file failed: object={}", objectName, e);
             throw new BaseException(ErrorCode.MENU_500_STORAGE_UPLOAD_FAILED,
                     "Không thể tải ảnh lên máy chủ lưu trữ: " + e.getMessage());
         }
         // Trả về URL công khai: {publicUrl}/{bucketName}/{objectName}
         String baseUrl = props.getPublicUrl().endsWith("/")
                 ? props.getPublicUrl() : props.getPublicUrl() + "/";
-        return baseUrl + props.getBucketName() + "/" + objectName;
+        String url = baseUrl + props.getBucketName() + "/" + objectName;
+        log.info("Upload file success: object={}, url={}", objectName, url);
+        return url;
     }
 
     @Override
@@ -80,9 +88,11 @@ public class MinioStorageServiceImpl implements StorageService {
                             .object(objectName)
                             .build()
             );
+            log.info("Deleted file: object={}", objectName);
         } catch (Exception e) {
             // Không ném exception khi xóa thất bại (file có thể đã bị xóa trước đó)
             System.err.println("[MinIO] Không thể xóa file '" + fileUrl + "': " + e.getMessage());
+            log.error("Delete file failed: url={}", fileUrl, e);
         }
     }
 
@@ -93,6 +103,7 @@ public class MinioStorageServiceImpl implements StorageService {
 
     @Override
     public Resource downloadReport(String fileUrl) {
+        log.info("Download report: url={}", fileUrl);
         return downloadFrom(fileUrl, reportProperties.getMinioBucketName());
     }
 
@@ -109,9 +120,11 @@ public class MinioStorageServiceImpl implements StorageService {
                             .object(objectName)
                             .build()
             );
+            log.info("Deleted report file: object={}", objectName);
         } catch (Exception e) {
             // Không ném exception khi xóa thất bại (file có thể đã bị xóa trước đó)
             System.err.println("[MinIO] Không thể xóa file báo cáo '" + fileUrl + "': " + e.getMessage());
+            log.error("Delete report file failed: url={}", fileUrl, e);
         }
     }
 
@@ -132,8 +145,10 @@ public class MinioStorageServiceImpl implements StorageService {
                             .object(objectName)
                             .build()
             );
+            log.info("Download file success: bucket={}, object={}", bucketName, objectName);
             return new InputStreamResource(response);
         } catch (Exception e) {
+            log.error("Download file failed: bucket={}, object={}", bucketName, objectName, e);
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND,
                     "Không thể tải báo cáo từ máy chủ lưu trữ: " + e.getMessage());
         }

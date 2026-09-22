@@ -17,6 +17,8 @@ import com.erp.core.dto.request.proc.SupplierMaterial.CreateSupplierMaterialRequ
 import com.erp.core.dto.request.proc.SupplierMaterial.UpdateSupplierMaterialRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.SupplierMaterial.SupplierMaterialResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +41,7 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private static final String DEFAULT_STATUS = "ACTIVE";
+    private static final Logger log = LoggerFactory.getLogger(SupplierMaterialServiceImpl.class);
 
     private final SupplierMaterialRepository supplierMaterialRepository;
     private final SupplierRepository supplierRepository;
@@ -61,6 +64,7 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<SupplierMaterialResponse> list(int page, int size, UUID supplierId, UUID materialId, String search) {
+        log.info("SupplierMaterial list: supplierId={}, materialId={}, keyword={}, page={}, size={}", supplierId, materialId, search, page, size);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
@@ -80,12 +84,14 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
     @Override
     @Transactional(readOnly = true)
     public SupplierMaterialResponse get(UUID id) {
+        log.info("SupplierMaterial get: id={}", id);
         return toResponseWithNames(findById(id));
     }
 
     @Override
     @Transactional
     public SupplierMaterialResponse create(CreateSupplierMaterialRequest request) {
+        log.info("SupplierMaterial create: supplierId={}, materialId={}", request.supplierId(), request.materialId());
         if (!supplierRepository.existsById(request.supplierId())) {
             throw new BaseException(ErrorCode.SUPPLIER_NOT_FOUND);
         }
@@ -102,12 +108,15 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
         SupplierMaterial entity = new SupplierMaterial();
         apply(entity, request.supplierId(), request.materialId(), resolveSupplierSku(request.supplierSku()),
                 request.purchasePrice(), request.leadTimeDays(), request.isPreferred(), request.status());
-        return toResponseWithNames(supplierMaterialRepository.save(entity));
+        SupplierMaterial saved = supplierMaterialRepository.save(entity);
+        log.info("SupplierMaterial created: id={}, supplierId={}, materialId={}", saved.getId(), saved.getSupplierId(), saved.getMaterialId());
+        return toResponseWithNames(saved);
     }
 
     @Override
     @Transactional
     public SupplierMaterialResponse update(UUID id, UpdateSupplierMaterialRequest request) {
+        log.info("SupplierMaterial update: id={}", id);
         SupplierMaterial entity = findById(id);
 
         if (!supplierRepository.existsById(request.supplierId())) {
@@ -142,18 +151,20 @@ public class SupplierMaterialServiceImpl implements SupplierMaterialService {
                 request.status()
         );
 
-        return toResponseWithNames(
-                supplierMaterialRepository.save(entity)
-        );
+        SupplierMaterial saved = supplierMaterialRepository.save(entity);
+        log.info("SupplierMaterial updated: id={}, supplierId={}, materialId={}", saved.getId(), saved.getSupplierId(), saved.getMaterialId());
+        return toResponseWithNames(saved);
     }
 
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("SupplierMaterial delete: id={}", id);
         if (!supplierMaterialRepository.existsById(id)) {
             throw new BaseException(ErrorCode.SUPPLIER_MATERIAL_NOT_FOUND);
         }
         supplierMaterialRepository.deleteById(id);
+        log.info("SupplierMaterial deleted: id={}", id);
     }
 
     private SupplierMaterial findById(UUID id) {

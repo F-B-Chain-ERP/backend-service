@@ -11,6 +11,8 @@ import com.erp.core.dto.request.pos.AddCartItemRequest;
 import com.erp.core.dto.request.pos.UpdateCartItemRequest;
 import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.PrincipalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,8 @@ public class CartServiceImpl implements CartService {
     private final BranchToppingAvailabilityRepository branchToppingAvailabilityRepository;
     private final BranchProductAvailabilityRepository availabilityRepository;
     private final PosComboService posComboService;
+
+    private static final Logger log = LoggerFactory.getLogger(CartServiceImpl.class);
 
     public CartServiceImpl(CartRepository cartRepository, CartItemRepository itemRepository,
                            CartItemToppingRepository itemToppingRepository, ProductRepository productRepository,
@@ -55,6 +59,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional(readOnly = true)
     public CartResponse getCart(UUID branchId, String sessionToken) {
+        log.info("Get cart branch={}", branchId);
         requireCustomerPermission("pos:cart:view");
         UUID customerId = currentCustomerId();
         Cart cart = findCart(customerId, branchId, sessionToken);
@@ -67,6 +72,8 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartMutationResponse addItem(AddCartItemRequest request) {
+        log.info("Add cart item: branch={}, product={}, variant={}, qty={}", request.branchId(),
+            request.productId(), request.variantId(), request.quantity());
         requireCustomerPermission("pos:cart:create");
         UUID customerId = currentCustomerId();
         Product product = productRepository.findById(request.productId())
@@ -150,6 +157,8 @@ public class CartServiceImpl implements CartService {
         }
         saveToppings(item, request.toppings(), product.getId(), cart.getBranchId());
         recalculate(cart);
+        log.info("Cart item added: cartId={}, itemId={}, qty={}, subtotal={}", cart.getId(), item.getId(),
+            item.getQuantity(), cart.getSubtotalAmount());
         return new CartMutationResponse(cart.getId(), item.getId(), item.getQuantity(), item.getTotalPrice(),
                                         cart.getSubtotalAmount());
     }
@@ -157,6 +166,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartMutationResponse updateItem(UUID itemId, UpdateCartItemRequest request) {
+        log.info("Update cart item id={}, qty={}", itemId, request.quantity());
         requireCustomerPermission("pos:cart:update");
         UUID customerId = currentCustomerId();
         CartItem item =
@@ -185,6 +195,7 @@ public class CartServiceImpl implements CartService {
         item.setTotalPrice(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
         itemRepository.save(item);
         recalculate(cart);
+        log.info("Cart item updated: cartId={}, itemId={}, qty={}", cart.getId(), itemId, item.getQuantity());
         return new CartMutationResponse(cart.getId(), item.getId(), item.getQuantity(), item.getTotalPrice(),
                                         cart.getSubtotalAmount());
     }
@@ -192,6 +203,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartMutationResponse deleteItem(UUID itemId) {
+        log.info("Delete cart item id={}", itemId);
         requireCustomerPermission("pos:cart:delete");
         UUID customerId = currentCustomerId();
         CartItem item =
@@ -206,6 +218,7 @@ public class CartServiceImpl implements CartService {
         item.setStatus("DELETED");
         itemRepository.save(item);
         recalculate(cart);
+        log.info("Cart item deleted: cartId={}, itemId={}", cart.getId(), itemId);
         return new CartMutationResponse(cart.getId(), itemId, null, null, cart.getSubtotalAmount());
     }
 

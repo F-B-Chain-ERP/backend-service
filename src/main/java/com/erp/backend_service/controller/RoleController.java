@@ -9,6 +9,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class RoleController {
 
     private final RoleService roleService;
+    private static final Logger log = LoggerFactory.getLogger(RoleController.class);
 
     public RoleController(RoleService roleService) {
         this.roleService = roleService;
@@ -32,6 +35,7 @@ public class RoleController {
     @PostMapping
     @PreAuthorize("hasAuthority('sys:role:create')")
     public ResponseEntity<ApiResponse<RoleResponse>> create(@Valid @RequestBody CreateRoleRequest request) {
+        log.info("Create role: name={}", request.name());
         RoleResponse response = roleService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
@@ -41,6 +45,7 @@ public class RoleController {
     public ResponseEntity<ApiResponse<RoleResponse>> getById(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
+        log.info("Get {}", id);
         RoleResponse response = roleService.getById(id);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
@@ -51,6 +56,7 @@ public class RoleController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search) {
+        log.info("Get list: keyword={}, page={}, size={}", search, page, size);
         PageResponse<RoleResponse> response = roleService.getAll(page, size, search);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
@@ -61,6 +67,7 @@ public class RoleController {
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id,
             @Valid @RequestBody UpdateRoleRequest request) {
+        log.info("Update id={}", id);
         RoleResponse response = roleService.update(id, request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
@@ -70,6 +77,7 @@ public class RoleController {
     public ResponseEntity<ApiResponse<Void>> delete(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
+        log.info("Delete id={}", id);
         roleService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -80,6 +88,7 @@ public class RoleController {
     public ResponseEntity<ApiResponse<List<String>>> getPermissions(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
+        log.info("Get permissions roleId={}", id);
         return ResponseEntity.ok(ApiResponse.success(roleService.getPermissionsByRole(id)));
     }
 
@@ -89,6 +98,7 @@ public class RoleController {
     public ResponseEntity<ApiResponse<List<RoleMemberResponse>>> getMembers(
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id) {
+        log.info("Get members roleId={}", id);
         return ResponseEntity.ok(ApiResponse.success(roleService.getMembers(id)));
     }
 
@@ -99,6 +109,7 @@ public class RoleController {
             @NotNull(message = "Role id must not be null")
             @PathVariable UUID id,
             @RequestBody List<String> permissionCodes) {
+        log.info("Set permissions roleId={}: codes={}", id, permissionCodes);
         roleService.setPermissionsForRole(id, permissionCodes);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

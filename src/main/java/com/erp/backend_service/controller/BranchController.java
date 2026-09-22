@@ -6,6 +6,8 @@ import com.erp.core.dto.request.branch.UpdateBranchRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.branch.BranchResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class BranchController {
 
     private final BranchService branchService;
+    private static final Logger log = LoggerFactory.getLogger(BranchController.class);
 
     public BranchController(BranchService branchService) {
         this.branchService = branchService;
@@ -32,6 +35,7 @@ public class BranchController {
     @GetMapping
     @PreAuthorize("hasAuthority('sys:branch:view')")
     public ResponseEntity<ApiResponse<List<BranchResponse>>> list() {
+        log.info("Get list branches");
         return ResponseEntity.ok(ApiResponse.success(branchService.findAll()));
     }
 
@@ -39,6 +43,7 @@ public class BranchController {
     @GetMapping("/mine")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<BranchResponse>>> mine() {
+        log.info("Get my branches");
         return ResponseEntity.ok(ApiResponse.success(branchService.findMine()));
     }
 
@@ -46,6 +51,7 @@ public class BranchController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sys:branch:view')")
     public ResponseEntity<ApiResponse<BranchResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(branchService.findById(id)));
     }
 
@@ -53,6 +59,7 @@ public class BranchController {
     @PostMapping
     @PreAuthorize("hasAuthority('sys:branch:create')")
     public ResponseEntity<ApiResponse<BranchResponse>> create(@Valid @RequestBody CreateBranchRequest request) {
+        log.info("Create branch: code={}", request.code());
         return ResponseEntity.ok(ApiResponse.success(branchService.create(request)));
     }
 
@@ -61,6 +68,7 @@ public class BranchController {
     @PreAuthorize("hasAuthority('sys:branch:update')")
     public ResponseEntity<ApiResponse<BranchResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateBranchRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(branchService.update(id, request)));
     }
 
@@ -68,6 +76,7 @@ public class BranchController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('sys:branch:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         branchService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

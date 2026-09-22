@@ -8,6 +8,8 @@ import com.erp.core.enums.EntityStatus;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -31,6 +33,7 @@ import java.util.UUID;
 public class PermissionController {
 
     private final PermissionService permissionService;
+    private static final Logger log = LoggerFactory.getLogger(PermissionController.class);
 
     public PermissionController(PermissionService permissionService) {
         this.permissionService = permissionService;
@@ -43,6 +46,7 @@ public class PermissionController {
             @NotNull(message = "Permission id must not be null")
             @PathVariable UUID id
     ) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(permissionService.getById(id)));
     }
 
@@ -58,6 +62,7 @@ public class PermissionController {
             @RequestParam(required = false) String module,
             @RequestParam(required = false) EntityStatus status
     ) {
+        log.info("Get list: keyword={}, page={}, size={}, module={}, status={}", search, page, size, module, status);
         PageResponse<PermissionResponse> response =
                 permissionService.getAll(page, size, search, module, status);
         return ResponseEntity.ok(ApiResponse.success(response));
@@ -67,6 +72,7 @@ public class PermissionController {
     @GetMapping("/modules")
     @PreAuthorize("hasAuthority('sys:permission:view')")
     public ResponseEntity<ApiResponse<List<String>>> getModules() {
+        log.info("Get modules");
         return ResponseEntity.ok(ApiResponse.success(permissionService.getModules()));
     }
 }

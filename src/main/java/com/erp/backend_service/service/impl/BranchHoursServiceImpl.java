@@ -10,6 +10,8 @@ import com.erp.core.domain.BranchHours;
 import com.erp.core.dto.request.branch.BatchUpdateBranchHoursRequest;
 import com.erp.core.dto.request.branch.UpdateBranchHoursItemRequest;
 import com.erp.core.dto.response.branch.BranchHoursResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ import java.util.*;
 @Service
 public class BranchHoursServiceImpl implements BranchHoursService {
 
+    private static final Logger log = LoggerFactory.getLogger(BranchHoursServiceImpl.class);
     private static final LocalTime DEFAULT_OPEN_TIME = LocalTime.of(7, 0);
     private static final LocalTime DEFAULT_CLOSE_TIME = LocalTime.of(22, 0);
 
@@ -37,6 +40,7 @@ public class BranchHoursServiceImpl implements BranchHoursService {
     @Override
     @Transactional
     public List<BranchHoursResponse> getHours(UUID branchId) {
+        log.info("Get hours: branchId={}", branchId);
         validateBranchAndScope(branchId);
 
         List<BranchHours> hoursList = hoursRepository.findByBranchIdOrderByDayOfWeekAsc(branchId);

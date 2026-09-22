@@ -33,6 +33,8 @@ import com.erp.core.dto.request.role.UpdateRoleRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -59,6 +61,7 @@ import java.util.UUID;
 @Service
 public class RoleServiceImpl implements RoleService {
     private static final int MAX_PAGE_SIZE = 100;
+    private static final Logger log = LoggerFactory.getLogger(RoleServiceImpl.class);
     private final AccountRepository accountRepository;
     private final RoleRepository roleRepository;
     private final AccountRoleRepository accountRoleRepository;
@@ -101,6 +104,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public RoleAssignmentResponse assign(RoleAssignmentRequest request) {
+        log.info("Assign role: accountId={}, roleId={}, scopeId={}", request.accountId(), request.roleId(), request.scopeId());
         validateReferences(request);
         Optional<AccountRole> existing = accountRoleRepository
                 .findByAccountIdAndRoleIdAndScopeId(request.accountId(), request.roleId(), request.scopeId());
@@ -113,6 +117,7 @@ public class RoleServiceImpl implements RoleService {
         try {
             accountRole = accountRoleRepository.saveAndFlush(accountRole);
         } catch (DataIntegrityViolationException exception) {
+            log.error("Assign role failed (duplicate assignment): accountId={}, roleId={}, scopeId={}", request.accountId(), request.roleId(), request.scopeId(), exception);
             throw new BaseException(ErrorCode.ASSIGNMENT_EXISTS);
         }
 
@@ -128,6 +133,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public void revoke(UUID assignmentId) {
+        log.info("Revoke assignment id={}", assignmentId);
         AccountRole accountRole = accountRoleRepository.findById(assignmentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
         verifyCanModify(accountRole.getAccountId());
@@ -142,6 +148,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(readOnly = true)
     public List<RoleAssignmentResponse> findByAccount(UUID accountId) {
+        log.info("Get assignments accountId={}", accountId);
         if (!accountRepository.existsById(accountId)) {
             throw new BaseException(ErrorCode.ACCOUNT_NOT_FOUND);
         }
@@ -223,6 +230,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public RoleResponse create(CreateRoleRequest request) {
+        log.info("Create role: name={}", request.name());
         String code = request.name().toUpperCase();
         if (roleRepository.findByCode(code).isPresent()) {
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
@@ -236,11 +244,13 @@ public class RoleServiceImpl implements RoleService {
         role.setStatus(request.status());
 
         Role saved = roleRepository.save(role);
+        log.info("Role created: id={}, code={}", saved.getId(), saved.getCode());
         return toResponse(saved);
     }
 
     @Override
     public RoleResponse getById(UUID id) {
+        log.info("Get role id={}", id);
         Role role = roleRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
         return toResponse(role);
@@ -248,6 +258,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public RoleResponse getByCode(String code) {
+        log.info("Get role code={}", code);
         Role role = roleRepository.findByCode(code)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
         return toResponse(role);
@@ -255,6 +266,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public PageResponse<RoleResponse> getAll(int page, int size, String search) {
+        log.info("Get list roles: keyword={}, page={}, size={}", search, page, size);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Role> rolePage;
@@ -276,6 +288,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public RoleResponse update(UUID id, UpdateRoleRequest request) {
+        log.info("Update role id={}", id);
         Role role = roleRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
 
@@ -297,6 +310,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public void delete(UUID id) {
+        log.info("Delete role id={}", id);
         if (!roleRepository.existsById(id)) {
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
         }
@@ -306,6 +320,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(readOnly = true)
     public List<String> getPermissionsByRole(UUID roleId) {
+        log.info("Get permissions roleId={}", roleId);
         if (!roleRepository.existsById(roleId)) {
             throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
         }
@@ -323,6 +338,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(readOnly = true)
     public List<RoleMemberResponse> getMembers(UUID roleId) {
+        log.info("Get members roleId={}", roleId);
         if (!roleRepository.existsById(roleId)) {
             throw new BaseException(ErrorCode.ROLE_NOT_FOUND);
         }
@@ -366,6 +382,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public void setPermissionsForRole(UUID roleId, List<String> permissionCodes) {
+        log.info("Set permissions roleId={}: codes={}", roleId, permissionCodes);
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new BaseException(ErrorCode.ROLE_NOT_FOUND));
         if ("ADMIN".equals(role.getCode())) {

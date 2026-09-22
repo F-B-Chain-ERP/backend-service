@@ -56,6 +56,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (principalId == null || title == null || title.isBlank()) {
             return;
         }
+        log.info("Notify {}: principalId={}, title={}", recipientType, principalId, title);
         Notification notification = new Notification();
         notification.setRecipientType(recipientType);
         if ("CUSTOMER".equals(recipientType)) {
@@ -69,6 +70,7 @@ public class NotificationServiceImpl implements NotificationService {
         notification.setStatus(STATUS_PENDING);
         notification.setSentAt(Instant.now());
         Notification saved = notificationRepository.save(notification);
+        log.info("Notification saved: id={}, principalId={}, title={}", saved.getId(), principalId, title);
 
         // Đẩy thông báo qua Redis Pub/Sub để realtime SSE
         try {
@@ -86,6 +88,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return List.of();
         }
+        log.info("Get unread notifications: accountId={}", accountId);
         return notificationRepository.findByAccountIdAndReadAtIsNullOrderByCreatedAtDesc(accountId)
                 .stream()
                 .map(this::toResponse)
@@ -111,6 +114,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return 0L;
         }
+        log.info("Get unread count: accountId={}", accountId);
         return notificationRepository.countUnreadByPrincipalId(accountId);
     }
 
@@ -120,6 +124,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (id == null || accountId == null) {
             return;
         }
+        log.info("Mark notification read: id={}, accountId={}", id, accountId);
         notificationRepository.markAsRead(id, accountId, Instant.now());
     }
 
@@ -129,6 +134,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return;
         }
+        log.info("Mark all notifications read: accountId={}", accountId);
         notificationRepository.markAllAsRead(accountId, Instant.now());
     }
 
@@ -138,6 +144,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (id == null || accountId == null) {
             return;
         }
+        log.info("Delete notification id={}, accountId={}", id, accountId);
         notificationRepository.deleteByIdAndAccountId(id, accountId);
     }
 
@@ -147,6 +154,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return;
         }
+        log.info("Delete all notifications: accountId={}", accountId);
         notificationRepository.deleteAllByAccountId(accountId);
     }
 
@@ -156,6 +164,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (accountId == null) {
             return;
         }
+        log.info("Delete read notifications: accountId={}", accountId);
         notificationRepository.deleteReadByAccountId(accountId);
     }
 

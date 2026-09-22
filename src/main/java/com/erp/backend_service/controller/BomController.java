@@ -10,6 +10,8 @@ import com.erp.core.dto.response.menu.BomResponse;
 import com.erp.core.dto.response.menu.ProductBomOverviewResponse;
 import com.erp.core.dto.response.menu.ProductRecipeItemResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +31,8 @@ public class BomController {
 
     private final BomService bomService;
 
+    private static final Logger log = LoggerFactory.getLogger(BomController.class);
+
     public BomController(BomService bomService) {
         this.bomService = bomService;
     }
@@ -39,6 +43,7 @@ public class BomController {
     @GetMapping("/variants/{variantId}/bom")
     @PreAuthorize("hasAuthority('menu:bom:view')")
     public ResponseEntity<ApiResponse<BomResponse>> getBom(@PathVariable UUID variantId) {
+        log.info("Get BOM: variantId={}", variantId);
         BomResponse response = bomService.getBomByVariantId(variantId);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy công thức định lượng thành công"));
     }
@@ -52,6 +57,7 @@ public class BomController {
             @PathVariable UUID variantId,
             @Valid @RequestBody AddBomItemRequest request
     ) {
+        log.info("Add BOM item: variantId={}", variantId);
         ProductRecipeItemResponse created = bomService.addItem(variantId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(created, "Thêm nguyên vật liệu vào công thức thành công"));
@@ -67,6 +73,7 @@ public class BomController {
             @PathVariable UUID itemId,
             @Valid @RequestBody UpdateBomItemRequest request
     ) {
+        log.info("Update BOM item id={}, variantId={}", itemId, variantId);
         ProductRecipeItemResponse updated = bomService.updateItem(variantId, itemId, request);
         return ResponseEntity.ok(ApiResponse.success(updated, "Cập nhật dòng định lượng thành công"));
     }
@@ -80,6 +87,7 @@ public class BomController {
             @PathVariable UUID variantId,
             @PathVariable UUID itemId
     ) {
+        log.info("Remove BOM item id={}, variantId={}", itemId, variantId);
         bomService.removeItem(variantId, itemId);
         return ResponseEntity.ok(ApiResponse.success(null, "Gỡ nguyên vật liệu khỏi công thức thành công"));
     }
@@ -93,6 +101,7 @@ public class BomController {
             @PathVariable UUID variantId,
             @Valid @RequestBody BulkSyncBomRequest request
     ) {
+        log.info("Sync BOM: variantId={}", variantId);
         BomResponse response = bomService.syncBom(variantId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Đồng bộ công thức định lượng thành công"));
     }
@@ -109,6 +118,7 @@ public class BomController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) String bomStatus
     ) {
+        log.info("Get BOM overview: page={}, size={}, search={}, categoryId={}, bomStatus={}", page, size, search, categoryId, bomStatus);
         PageResponse<ProductBomOverviewResponse> response =
                 bomService.getBomOverview(page, size, search, categoryId, bomStatus);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách tổng quan định lượng thành công"));

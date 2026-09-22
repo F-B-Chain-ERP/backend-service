@@ -11,6 +11,8 @@ import com.erp.core.dto.request.proc.UpdateSupplierRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.SupplierResponse;
 import com.erp.core.enums.EntityStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +32,7 @@ public class SupplierServiceImpl implements SupplierService {
 
     private static final int FIXED_PAGE_SIZE = 10;
     private static final String DEFAULT_STATUS = "ACTIVE";
+    private static final Logger log = LoggerFactory.getLogger(SupplierServiceImpl.class);
 
     private final SupplierRepository supplierRepository;
     private final SupplierMapper supplierMapper;
@@ -43,6 +46,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<SupplierResponse> list(int page, int size, String search, EntityStatus status) {
+        log.info("Supplier list: keyword={}, page={}, size={}, status={}", search, page, size, status);
         Pageable pageable = PageRequest.of(Math.max(page, 0), FIXED_PAGE_SIZE, Sort.by("createdAt").descending());
         Page<Supplier> supplierPage = supplierRepository.search(
                 StringUtils.hasText(search) ? search.trim() : "",
@@ -61,6 +65,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     @Transactional(readOnly = true)
     public SupplierResponse get(UUID id) {
+        log.info("Supplier get: id={}", id);
         return toResponse(findById(id));
     }
 
@@ -68,6 +73,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     @Transactional
     public SupplierResponse create(CreateSupplierRequest request) {
+        log.info("Supplier create: code={}, name={}", request.code(), request.name());
         if (supplierRepository.existsByCode(request.code())) {
             throw new BaseException(ErrorCode.SUPPLIER_CODE_EXISTED);
         }
@@ -79,13 +85,16 @@ public class SupplierServiceImpl implements SupplierService {
         Supplier supplier = new Supplier();
         apply(supplier, request.code(), request.name(), request.taxCode(), request.contactName(),
                 request.phone(), request.email(), request.address(), request.paymentTermDays(), request.status());
-        return toResponse(supplierRepository.save(supplier));
+        Supplier saved = supplierRepository.save(supplier);
+        log.info("Supplier created: id={}, code={}", saved.getId(), saved.getCode());
+        return toResponse(saved);
     }
 
     /** {@inheritDoc} */
     @Override
     @Transactional
     public SupplierResponse update(UUID id, UpdateSupplierRequest request) {
+        log.info("Supplier update: id={}", id);
         Supplier supplier = findById(id);
         if (!supplier.getCode().equals(request.code()) && supplierRepository.existsByCode(request.code())) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE);
@@ -96,13 +105,16 @@ public class SupplierServiceImpl implements SupplierService {
         }
         apply(supplier, request.code(), request.name(), request.taxCode(), request.contactName(),
                 request.phone(), request.email(), request.address(), request.paymentTermDays(), request.status());
-        return toResponse(supplierRepository.save(supplier));
+        Supplier saved = supplierRepository.save(supplier);
+        log.info("Supplier updated: id={}, code={}", saved.getId(), saved.getCode());
+        return toResponse(saved);
     }
 
     /** PATCH */
     @Override
     @Transactional
     public SupplierResponse updateStatus(UUID id, String status) {
+        log.info("Supplier update status: id={}, newStatus={}", id, status);
         Supplier supplier = findById(id);
 
         if (!StringUtils.hasText(status)) {
@@ -118,17 +130,21 @@ public class SupplierServiceImpl implements SupplierService {
 
         supplier.setStatus(normalizedStatus);
 
-        return toResponse(supplierRepository.save(supplier));
+        Supplier saved = supplierRepository.save(supplier);
+        log.info("Supplier status updated: id={}, status={}", saved.getId(), normalizedStatus);
+        return toResponse(saved);
     }
 
     /** {@inheritDoc} */
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Supplier delete: id={}", id);
         if (!supplierRepository.existsById(id)) {
             throw new BaseException(ErrorCode.RESOURCE_NOT_FOUND);
         }
         supplierRepository.deleteById(id);
+        log.info("Supplier deleted: id={}", id);
     }
 
     private Supplier findById(UUID id) {

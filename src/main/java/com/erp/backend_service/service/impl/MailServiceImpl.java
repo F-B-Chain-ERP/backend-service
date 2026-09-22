@@ -55,18 +55,21 @@ public class MailServiceImpl implements MailService {
     /** {@inheritDoc} */
     @Override
     public void sendHtml(String to, String subject, String htmlContent) {
+        log.info("Send html email: to={}, subject={}", to, subject);
         send(to, subject, htmlToPlainText(htmlContent), htmlContent);
     }
 
     /** {@inheritDoc} */
     @Override
     public void sendText(String to, String subject, String text) {
+        log.info("Send text email: to={}, subject={}", to, subject);
         send(to, subject, text, null);
     }
 
     /** {@inheritDoc} */
     @Override
     public void sendTemplate(String to, String subject, String templateName, Map<String, Object> variables) {
+        log.info("Send template email: to={}, template={}, subject={}", to, templateName, subject);
         if (!enabled) {
             log.debug("Email bị tắt (app.mail.enabled=false), bỏ qua gửi template '{}' tới {}", templateName, to);
             return;

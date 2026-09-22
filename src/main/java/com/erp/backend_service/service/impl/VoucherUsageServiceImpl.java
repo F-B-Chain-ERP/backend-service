@@ -9,6 +9,8 @@ import com.erp.backend_service.service.VoucherUsageService;
 import com.erp.core.domain.VoucherUsage;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.VoucherUsageResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +32,8 @@ public class VoucherUsageServiceImpl implements VoucherUsageService {
     private final VoucherUsageRepository voucherUsageRepository;
     private final VoucherUsageMapper voucherUsageMapper;
 
+    private static final Logger log = LoggerFactory.getLogger(VoucherUsageServiceImpl.class);
+
     public VoucherUsageServiceImpl(VoucherRepository voucherRepository,
                                    VoucherUsageRepository voucherUsageRepository,
                                    VoucherUsageMapper voucherUsageMapper) {
@@ -41,12 +45,14 @@ public class VoucherUsageServiceImpl implements VoucherUsageService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<VoucherUsageResponse> listByVoucher(int page, int size, UUID voucherId) {
+        log.info("List voucher usage: voucherId={}, page={}, size={}", voucherId, page, size);
         if (!voucherRepository.existsById(voucherId)) {
             throw new BaseException(ErrorCode.VOUCHER_NOT_FOUND);
         }
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("usedAt").descending());
         Page<VoucherUsage> pageResult = voucherUsageRepository.findByVoucherId(voucherId, pageable);
+        log.info("Voucher usage listed: voucherId={}, totalElements={}, totalPages={}", voucherId, pageResult.getTotalElements(), pageResult.getTotalPages());
         return new PageResponse<>(
                 pageResult.getNumber(),
                 pageResult.getSize(),

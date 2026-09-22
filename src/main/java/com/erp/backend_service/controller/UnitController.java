@@ -7,6 +7,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.UnitResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,8 @@ public class UnitController {
 
     private final UnitService unitService;
 
+    private static final Logger log = LoggerFactory.getLogger(UnitController.class);
+
     public UnitController(UnitService unitService) {
         this.unitService = unitService;
     }
@@ -35,18 +39,21 @@ public class UnitController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String unitType,
             @RequestParam(required = false) String status) {
+        log.info("Get list units: keyword={}, page={}, size={}", search, page, size);
         return ResponseEntity.ok(ApiResponse.success(unitService.list(page, size, search, unitType, status)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:unit:view')")
     public ResponseEntity<ApiResponse<UnitResponse>> get(@PathVariable UUID id) {
+        log.info("Get unit {}", id);
         return ResponseEntity.ok(ApiResponse.success(unitService.get(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('menu:unit:create')")
     public ResponseEntity<ApiResponse<UnitResponse>> create(@Valid @RequestBody CreateUnitRequest request) {
+        log.info("Create unit: code={}", request.code());
         return ResponseEntity.created(null).body(ApiResponse.created(unitService.create(request)));
     }
 
@@ -54,6 +61,7 @@ public class UnitController {
     @PreAuthorize("hasAuthority('menu:unit:update')")
     public ResponseEntity<ApiResponse<UnitResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateUnitRequest request) {
+        log.info("Update unit id={}", id);
         return ResponseEntity.ok(ApiResponse.success(unitService.update(id, request)));
     }
 
@@ -61,12 +69,14 @@ public class UnitController {
     @PreAuthorize("hasAuthority('menu:unit:update')")
     public ResponseEntity<ApiResponse<UnitResponse>> updateStatus(
             @PathVariable UUID id, @RequestBody Map<String, String> request) {
+        log.info("Update unit status id={}, status={}", id, request.get("status"));
         return ResponseEntity.ok(ApiResponse.success(unitService.updateStatus(id, request.get("status"))));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:unit:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete unit id={}", id);
         unitService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

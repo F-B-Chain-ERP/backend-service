@@ -5,6 +5,8 @@ import com.erp.core.dto.request.branch.BatchUpdateBranchHoursRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.branch.BranchHoursResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +22,7 @@ import java.util.UUID;
 public class BranchHoursController {
 
     private final BranchHoursService branchHoursService;
+    private static final Logger log = LoggerFactory.getLogger(BranchHoursController.class);
 
     public BranchHoursController(BranchHoursService branchHoursService) {
         this.branchHoursService = branchHoursService;
@@ -31,6 +34,7 @@ public class BranchHoursController {
     @GetMapping
     @PreAuthorize("hasAuthority('sys:branch_hours:view')")
     public ResponseEntity<ApiResponse<List<BranchHoursResponse>>> getHours(@PathVariable UUID branchId) {
+        log.info("Get branch hours: branchId={}", branchId);
         return ResponseEntity.ok(ApiResponse.success(branchHoursService.getHours(branchId)));
     }
 
@@ -42,6 +46,7 @@ public class BranchHoursController {
     public ResponseEntity<ApiResponse<List<BranchHoursResponse>>> updateHours(
             @PathVariable UUID branchId,
             @Valid @RequestBody BatchUpdateBranchHoursRequest request) {
+        log.info("Update branch hours: branchId={}", branchId);
         return ResponseEntity.ok(ApiResponse.success(branchHoursService.updateHours(branchId, request)));
     }
 }

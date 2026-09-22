@@ -7,6 +7,8 @@ import com.erp.core.dto.request.menu.UpdateProductVariantRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.menu.ProductVariantResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,6 +28,8 @@ public class ProductVariantController {
 
     private final ProductVariantService productVariantService;
 
+    private static final Logger log = LoggerFactory.getLogger(ProductVariantController.class);
+
     public ProductVariantController(ProductVariantService productVariantService) {
         this.productVariantService = productVariantService;
     }
@@ -37,6 +41,7 @@ public class ProductVariantController {
     public ResponseEntity<ApiResponse<List<ProductVariantResponse>>> getVariants(
             @PathVariable UUID productId
     ) {
+        log.info("Get variants: productId={}", productId);
         List<ProductVariantResponse> response = productVariantService.getVariantsByProductId(productId);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách biến thể thành công"));
     }
@@ -50,6 +55,7 @@ public class ProductVariantController {
             @PathVariable UUID productId,
             @Valid @RequestBody CreateProductVariantRequest request
     ) {
+        log.info("Create variant: productId={}, code={}", productId, request.variantCode());
         ProductVariantResponse created = productVariantService.create(productId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(created, "Tạo biến thể sản phẩm thành công"));
@@ -65,6 +71,7 @@ public class ProductVariantController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateProductVariantRequest request
     ) {
+        log.info("Update variant id={}, productId={}", id, productId);
         ProductVariantResponse updated = productVariantService.update(productId, id, request);
         return ResponseEntity.ok(ApiResponse.success(updated, "Cập nhật biến thể sản phẩm thành công"));
     }
@@ -78,6 +85,7 @@ public class ProductVariantController {
             @PathVariable UUID productId,
             @PathVariable UUID id
     ) {
+        log.info("Delete variant id={}, productId={}", id, productId);
         productVariantService.delete(productId, id);
         return ResponseEntity.ok(ApiResponse.success(null, "Xóa biến thể sản phẩm thành công"));
     }
@@ -91,6 +99,7 @@ public class ProductVariantController {
             @PathVariable UUID productId,
             @Valid @RequestBody SyncProductVariantsRequest request
     ) {
+        log.info("Sync variants: productId={}", productId);
         List<ProductVariantResponse> synced = productVariantService.syncVariants(productId, request);
         return ResponseEntity.ok(ApiResponse.success(synced, "Đồng bộ biến thể sản phẩm thành công"));
     }

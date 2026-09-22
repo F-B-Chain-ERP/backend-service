@@ -26,6 +26,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -34,6 +36,8 @@ import java.util.stream.Collectors;
 public class WarehouseServiceImpl implements WarehouseService {
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Logger log = LoggerFactory.getLogger(WarehouseServiceImpl.class);
 
     private static final Set<String> ALLOWED_WAREHOUSE_TYPES = Set.of("CENTRAL", "BRANCH");
     private static final Set<String> ALLOWED_WAREHOUSE_STATUSES = Set.of("ACTIVE", "INACTIVE");
@@ -78,6 +82,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        log.info("Get list warehouses: keyword={}, page={}, size={}", search, page, size);
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         String normalizedWarehouseType = StringUtils.hasText(warehouseType) ? warehouseType.trim().toUpperCase() : null;
@@ -108,6 +113,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional(readOnly = true)
     public List<WarehouseResponse> listAll(String status) {
+        log.info("Get all warehouses: status={}", status);
         String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
         validateWarehouseStatus(normalizedStatus);
         // Dropdown dùng ở mọi form kho: user chi nhánh chỉ thấy kho CN đang làm
@@ -127,6 +133,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional(readOnly = true)
     public WarehouseResponse get(UUID id) {
+        log.info("Get warehouse {}", id);
         Warehouse warehouse = findById(id);
         dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
         String branchName = resolveSingleBranchName(warehouse.getBranchId());
@@ -151,6 +158,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         if ("CENTRAL".equals(request.warehouseType().trim().toUpperCase())) {
             warehouse.setBranchId(null);
         }
+        log.info("Create warehouse: code={}, warehouseType={}", normalizedCode, normalizedType);
         Warehouse saved = warehouseRepository.save(warehouse);
         String branchName = resolveSingleBranchName(saved.getBranchId());
         return warehouseMapper.toResponse(saved, branchName);
@@ -159,6 +167,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseResponse update(UUID id, UpdateWarehouseRequest request) {
+        log.info("Update warehouse id={}", id);
         Warehouse warehouse = findById(id);
         dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
 
@@ -186,6 +195,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public WarehouseResponse updateStatus(UUID id, String status) {
+        log.info("Update warehouse status id={}, status={}", id, status);
         Warehouse warehouse = findById(id);
         dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
 
@@ -207,6 +217,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete warehouse id={}", id);
         Warehouse warehouse = findById(id);
         dataScopeHelper.enforceBranchAccess(warehouse.getBranchId());
 

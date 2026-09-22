@@ -28,6 +28,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -38,6 +40,8 @@ import java.util.stream.Collectors;
 public class MaterialServiceImpl implements MaterialService {
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Logger log = LoggerFactory.getLogger(MaterialServiceImpl.class);
 
     private final MaterialRepository materialRepository;
     private final CategoryRepository categoryRepository;
@@ -82,6 +86,7 @@ public class MaterialServiceImpl implements MaterialService {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        log.info("Get list materials: keyword={}, page={}, size={}", search, page, size);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Material> pageResult = materialRepository.search(
                 StringUtils.hasText(search) ? search.trim() : null,
@@ -108,6 +113,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     @Transactional(readOnly = true)
     public MaterialResponse get(UUID id) {
+        log.info("Get material {}", id);
         Material material = findById(id);
         String categoryName = resolveCategoryName(material.getCategoryId());
         String unitName = resolveUnitName(material.getBaseUnitId());
@@ -137,12 +143,14 @@ public class MaterialServiceImpl implements MaterialService {
 
         Material material = materialMapper.toEntity(request);
         material.setCode(code);
+        log.info("Create material: code={}, categoryId={}, baseUnitId={}", code, request.categoryId(), request.baseUnitId());
         return materialMapper.toResponse(materialRepository.save(material));
     }
 
     @Override
     @Transactional
     public MaterialResponse update(UUID id, UpdateMaterialRequest request) {
+        log.info("Update material id={}", id);
         Material material = findById(id);
         String newCode = request.code() == null ? material.getCode() : request.code().trim().toUpperCase();
         if (!material.getCode().equals(newCode) && materialRepository.existsByCode(newCode)) {
@@ -180,6 +188,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     @Transactional
     public MaterialResponse updateStatus(UUID id, String status) {
+        log.info("Update material status id={}", id);
         Material material = findById(id);
 
         if (!StringUtils.hasText(status)) {
@@ -199,6 +208,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete material id={}", id);
         Material material = findById(id);
 
         if (purchaseOrderItemRepository.existsByMaterialId(id)

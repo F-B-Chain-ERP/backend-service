@@ -10,6 +10,8 @@ import com.erp.core.enums.EntityStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,6 +28,7 @@ import java.util.UUID;
 public class SupplierController {
 
     private final SupplierService supplierService;
+    private static final Logger log = LoggerFactory.getLogger(SupplierController.class);
 
     public SupplierController(SupplierService supplierService) {
         this.supplierService = supplierService;
@@ -39,6 +42,7 @@ public class SupplierController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(10) int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) EntityStatus status) {
+        log.info("Get list: keyword={}, page={}, size={}", search, page, size);
         return ResponseEntity.ok(ApiResponse.success(supplierService.list(page, size, search, status)));
     }
 
@@ -46,6 +50,7 @@ public class SupplierController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('proc:supplier:view')")
     public ResponseEntity<ApiResponse<SupplierResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(supplierService.get(id)));
     }
 
@@ -53,6 +58,7 @@ public class SupplierController {
     @PostMapping
     @PreAuthorize("hasAuthority('proc:supplier:create')")
     public ResponseEntity<ApiResponse<SupplierResponse>> create(@Valid @RequestBody CreateSupplierRequest request) {
+        log.info("Create supplier: code={}", request.code());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(supplierService.create(request)));
     }
 
@@ -61,6 +67,7 @@ public class SupplierController {
     @PreAuthorize("hasAuthority('proc:supplier:update')")
     public ResponseEntity<ApiResponse<SupplierResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateSupplierRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(supplierService.update(id, request)));
     }
 
@@ -69,6 +76,7 @@ public class SupplierController {
     @PreAuthorize("hasAuthority('proc:supplier:update')")
     public ResponseEntity<ApiResponse<SupplierResponse>> updateStatus(
             @PathVariable UUID id, @RequestBody Map<String, String> request) {
+        log.info("Update status id={}", id);
         return ResponseEntity.ok(ApiResponse.success(supplierService.updateStatus(id, request.get("status"))));
     }
 
@@ -76,6 +84,7 @@ public class SupplierController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('proc:supplier:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         supplierService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

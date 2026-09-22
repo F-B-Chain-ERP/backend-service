@@ -7,6 +7,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.CategoryResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,8 @@ public class CategoryController {
 
     private final CategoryService categoryService;
 
+    private static final Logger log = LoggerFactory.getLogger(CategoryController.class);
+
     public CategoryController(CategoryService categoryService) {
         this.categoryService = categoryService;
     }
@@ -34,17 +38,20 @@ public class CategoryController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String categoryType,
             @RequestParam(required = false) String status) {
+        log.info("Get list: keyword={}, page={}, size={}, categoryType={}, status={}", search, page, size, categoryType, status);
         return ResponseEntity.ok(ApiResponse.success(categoryService.list(page, size, search, categoryType, status)));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<CategoryResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(categoryService.get(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('menu:category:create')")
     public ResponseEntity<ApiResponse<CategoryResponse>> create(@Valid @RequestBody CreateCategoryRequest request) {
+        log.info("Create category: code={}", request.code());
         return ResponseEntity.created(null).body(ApiResponse.created(categoryService.create(request)));
     }
 
@@ -52,6 +59,7 @@ public class CategoryController {
     @PreAuthorize("hasAuthority('menu:category:update')")
     public ResponseEntity<ApiResponse<CategoryResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateCategoryRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(categoryService.update(id, request)));
     }
 
@@ -59,12 +67,14 @@ public class CategoryController {
     @PreAuthorize("hasAuthority('menu:category:update')")
     public ResponseEntity<ApiResponse<CategoryResponse>> updateStatus(
             @PathVariable UUID id, @RequestBody Map<String, String> request) {
+        log.info("Update category id={}, status={}", id, request.get("status"));
         return ResponseEntity.ok(ApiResponse.success(categoryService.updateStatus(id, request.get("status"))));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:category:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         categoryService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

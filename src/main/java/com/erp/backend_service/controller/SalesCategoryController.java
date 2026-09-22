@@ -4,6 +4,8 @@ import com.erp.backend_service.service.CategoryService;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.CategoryResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SalesCategoryController {
 
     private final CategoryService categoryService;
+    private static final Logger log = LoggerFactory.getLogger(SalesCategoryController.class);
 
     public SalesCategoryController(CategoryService categoryService) {
         this.categoryService = categoryService;
@@ -34,6 +37,7 @@ public class SalesCategoryController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String categoryType
     ) {
+        log.info("Get list: keyword={}, page={}, size={}, categoryType={}", search, page, size, categoryType);
         PageResponse<CategoryResponse> response = categoryService.list(
                 page,
                 size,

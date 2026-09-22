@@ -7,6 +7,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.ShiftAssignmentResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -27,6 +29,7 @@ import java.util.UUID;
 public class ShiftAssignmentController {
 
     private final ShiftAssignmentService shiftAssignmentService;
+    private static final Logger log = LoggerFactory.getLogger(ShiftAssignmentController.class);
 
     public ShiftAssignmentController(ShiftAssignmentService shiftAssignmentService) {
         this.shiftAssignmentService = shiftAssignmentService;
@@ -36,6 +39,7 @@ public class ShiftAssignmentController {
     @PreAuthorize("hasAuthority('store:shift_assignment:create')")
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> assign(
             @Valid @RequestBody CreateShiftAssignmentRequest request) {
+        log.info("Assign shift: branchId={}, shiftId={}, accountId={}, workDate={}", request.branchId(), request.shiftId(), request.accountId(), request.workDate());
         return ResponseEntity.ok(ApiResponse.created(shiftAssignmentService.assignShift(request)));
     }
 
@@ -43,12 +47,14 @@ public class ShiftAssignmentController {
     @PreAuthorize("hasAuthority('store:shift_assignment:create')")
     public ResponseEntity<ApiResponse<List<ShiftAssignmentResponse>>> bulkAssign(
             @Valid @RequestBody BulkAssignShiftRequest request) {
+        log.info("Bulk assign shifts: branchId={}, count={}", request.branchId(), request.assignments().size());
         return ResponseEntity.ok(ApiResponse.created(shiftAssignmentService.bulkAssignShifts(request)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('store:shift_assignment:view')")
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(shiftAssignmentService.getAssignmentById(id)));
     }
 
@@ -61,6 +67,7 @@ public class ShiftAssignmentController {
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
+        log.info("Search assignments: branchId={}, startDate={}, endDate={}, accountId={}, status={}", branchId, startDate, endDate, accountId, status);
         return ResponseEntity.ok(ApiResponse.success(
                 shiftAssignmentService.searchAssignments(branchId, startDate, endDate, accountId, status, pageable)));
     }
@@ -71,6 +78,7 @@ public class ShiftAssignmentController {
             @PathVariable UUID id,
             @RequestBody(required = false) Map<String, String> body) {
         String reason = body != null ? body.get("reason") : null;
+        log.info("Cancel shift assignment id={}", id);
         shiftAssignmentService.cancelAssignment(id, reason);
         return ResponseEntity.ok(ApiResponse.success(null, "Đã hủy ca phân công thành công"));
     }

@@ -9,6 +9,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.customer.CustomerDetailResponse;
 import com.erp.core.dto.response.PageResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,6 +35,8 @@ public class CustomerController {
 
     private final CustomerService customerService;
 
+    private static final Logger log = LoggerFactory.getLogger(CustomerController.class);
+
     public CustomerController(CustomerService customerService) {
         this.customerService = customerService;
     }
@@ -42,6 +46,7 @@ public class CustomerController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> getMe() {
         UUID customerId = SecurityUtils.requireCustomerId();
+        log.info("Get me customer id={}", customerId);
         return ResponseEntity.ok(ApiResponse.success(customerService.getCustomer(customerId)));
     }
 
@@ -51,6 +56,7 @@ public class CustomerController {
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> updateMe(
             @Valid @RequestBody UpdateCustomerRequest request) {
         UUID customerId = SecurityUtils.requireCustomerId();
+        log.info("Update me customer id={}", customerId);
         return ResponseEntity.ok(ApiResponse.success(customerService.updateCustomer(customerId, request)));
     }
 
@@ -58,6 +64,7 @@ public class CustomerController {
     @PostMapping
     @PreAuthorize("hasAuthority('customer:customer:create')")
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> create(@Valid @RequestBody CreateCustomerRequest request) {
+        log.info("Create customer: email={}, phone={}", request.email(), request.phone());
         return ResponseEntity.ok(ApiResponse.success(customerService.createCustomer(request)));
     }
 
@@ -65,6 +72,7 @@ public class CustomerController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('customer:customer:view')")
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> getById(@PathVariable UUID id) {
+        log.info("Get customer id={}", id);
         return ResponseEntity.ok(ApiResponse.success(customerService.getCustomer(id)));
     }
 
@@ -75,6 +83,7 @@ public class CustomerController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String search) {
+        log.info("Get list: keyword={}, page={}, size={}", search, page, size);
         return ResponseEntity.ok(ApiResponse.success(customerService.listCustomers(page, size, search)));
     }
 
@@ -84,6 +93,7 @@ public class CustomerController {
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateCustomerRequest request) {
+        log.info("Update customer id={}", id);
         return ResponseEntity.ok(ApiResponse.success(customerService.updateCustomer(id, request)));
     }
 
@@ -91,6 +101,7 @@ public class CustomerController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('customer:customer:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete customer id={}", id);
         customerService.deleteCustomer(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -101,6 +112,7 @@ public class CustomerController {
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> resetPassword(
             @PathVariable UUID id,
             @Valid @RequestBody ResetCustomerPasswordRequest request) {
+        log.info("Reset password customer id={}", id);
         return ResponseEntity.ok(ApiResponse.success(customerService.resetPassword(id, request)));
     }
 }

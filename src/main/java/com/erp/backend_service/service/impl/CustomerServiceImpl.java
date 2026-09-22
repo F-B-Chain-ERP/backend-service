@@ -17,6 +17,8 @@ import com.erp.core.dto.response.PageResponse;
 import com.erp.core.enums.AuthProvider;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -48,6 +50,8 @@ public class CustomerServiceImpl implements CustomerService {
     private final RefreshTokenService refreshTokenService;
     private final Duration accessTokenLifetime;
 
+    private static final Logger log = LoggerFactory.getLogger(CustomerServiceImpl.class);
+
     public CustomerServiceImpl(CustomerRepository customerRepository,
                                CustomerMapper customerMapper,
                                PasswordEncoder passwordEncoder,
@@ -63,6 +67,7 @@ public class CustomerServiceImpl implements CustomerService {
     /** {@inheritDoc} */
     @Override
     public CustomerDetailResponse createCustomer(CreateCustomerRequest request) {
+        log.info("Create customer: email={}, phone={}", request.email(), request.phone());
         assertInternalAdmin();
         String email = request.email() != null ? request.email().trim().toLowerCase() : null;
         if (StringUtils.hasText(email) && customerRepository.existsByEmailIgnoreCase(email)) {
@@ -94,6 +99,7 @@ public class CustomerServiceImpl implements CustomerService {
         customer.setEmailVerified(request.emailVerified() != null ? request.emailVerified() : false);
         customer.setStatus(request.status() != null ? request.status() : EntityStatus.ACTIVE);
         customer = customerRepository.save(customer);
+        log.info("Customer created: id={}, code={}", customer.getId(), customer.getCustomerCode());
         return customerMapper.toResponse(customer);
     }
 
@@ -101,6 +107,7 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional(readOnly = true)
     public CustomerDetailResponse getCustomer(UUID id) {
+        log.info("Get customer id={}", id);
         assertInternalAdmin();
         return customerMapper.toResponse(findById(id));
     }
@@ -109,6 +116,7 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<CustomerDetailResponse> listCustomers(int page, int size, String search) {
+        log.info("List customers: keyword={}, page={}, size={}", search, page, size);
         assertInternalAdmin();
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
@@ -126,6 +134,7 @@ public class CustomerServiceImpl implements CustomerService {
     /** {@inheritDoc} */
     @Override
     public CustomerDetailResponse updateCustomer(UUID id, UpdateCustomerRequest request) {
+        log.info("Update customer id={}", id);
         assertInternalAdmin();
         Customer customer = findById(id);
 
@@ -172,22 +181,26 @@ public class CustomerServiceImpl implements CustomerService {
     /** {@inheritDoc} */
     @Override
     public void deleteCustomer(UUID id) {
+        log.info("Delete customer id={}", id);
         assertInternalAdmin();
         Customer customer = findById(id);
         customer.setStatus(EntityStatus.INACTIVE);
         customerRepository.save(customer);
         refreshTokenService.revokeAll(PrincipalType.CUSTOMER, id);
+        log.info("Customer deactivated: id={}, code={}", id, customer.getCustomerCode());
     }
 
     /** {@inheritDoc} */
     @Override
     public CustomerDetailResponse resetPassword(UUID id, ResetCustomerPasswordRequest request) {
+        log.info("Reset password customer id={}", id);
         assertInternalAdmin();
         Customer customer = findById(id);
         customer.setPassword(passwordEncoder.encode(request.password()));
         customer.setHasLocalPassword(true);
         Customer saved = customerRepository.save(customer);
         refreshTokenService.revokeAll(PrincipalType.CUSTOMER, id);
+        log.info("Password reset for customer id={}, code={}", id, saved.getCustomerCode());
         return customerMapper.toResponse(saved);
     }
 

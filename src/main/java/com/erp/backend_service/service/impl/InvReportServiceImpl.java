@@ -20,6 +20,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -31,6 +33,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class InvReportServiceImpl implements InvReportService {
+
+    private static final Logger log = LoggerFactory.getLogger(InvReportServiceImpl.class);
 
     private final MaterialStockBalanceRepository balanceRepository;
     private final MaterialRepository materialRepository;
@@ -53,6 +57,7 @@ public class InvReportServiceImpl implements InvReportService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<?> exportStockReport(ExportStockReportRequest request, UUID currentUserId) {
+        log.info("Export INV report: type={}, format={}, mode={}, warehouseId={}", request.reportType(), request.format(), request.mode(), request.warehouseId());
         Collection<UUID> allowedWarehouseIds = dataScopeHelper.getAllowedWarehouseIds(request.warehouseId());
 
         Map<String, Object> params = new HashMap<>();

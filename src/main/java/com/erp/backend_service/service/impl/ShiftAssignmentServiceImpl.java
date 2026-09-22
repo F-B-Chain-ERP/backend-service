@@ -16,6 +16,8 @@ import com.erp.core.dto.request.store.BulkAssignShiftRequest;
 import com.erp.core.dto.request.store.CreateShiftAssignmentRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.ShiftAssignmentResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -41,6 +43,8 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
     private final ShiftAssignmentMapper shiftAssignmentMapper;
     private final DataScopeHelper dataScopeHelper;
 
+    private static final Logger log = LoggerFactory.getLogger(ShiftAssignmentServiceImpl.class);
+
     public ShiftAssignmentServiceImpl(ShiftAssignmentRepository shiftAssignmentRepository,
                                       ShiftRepository shiftRepository,
                                       AccountRepository accountRepository,
@@ -57,6 +61,8 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     public ShiftAssignmentResponse assignShift(CreateShiftAssignmentRequest request) {
+        log.info("Assign shift: branchId={}, shiftId={}, accountId={}, workDate={}",
+                request.branchId(), request.shiftId(), request.accountId(), request.workDate());
         dataScopeHelper.enforceBranchAccess(request.branchId());
 
         if (!branchRepository.existsById(request.branchId())) {
@@ -87,6 +93,8 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     public List<ShiftAssignmentResponse> bulkAssignShifts(BulkAssignShiftRequest request) {
+        log.info("Bulk assign shifts: branchId={}, count={}", request.branchId(),
+                request.assignments() != null ? request.assignments().size() : 0);
         dataScopeHelper.enforceBranchAccess(request.branchId());
 
         if (!branchRepository.existsById(request.branchId())) {
@@ -128,6 +136,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
     @Override
     @Transactional(readOnly = true)
     public ShiftAssignmentResponse getAssignmentById(UUID id) {
+        log.info("Get assignment id={}", id);
         ShiftAssignment assignment = shiftAssignmentRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_ASSIGNMENT_NOT_FOUND));
 
@@ -147,6 +156,8 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
                                                                   UUID accountId,
                                                                   String status,
                                                                   Pageable pageable) {
+        log.info("Search assignments: branchId={}, startDate={}, endDate={}, accountId={}, status={}, page={}, size={}",
+                branchId, startDate, endDate, accountId, status, pageable.getPageNumber(), pageable.getPageSize());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         Specification<ShiftAssignment> spec = (root, query, cb) -> {
@@ -189,6 +200,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     public void cancelAssignment(UUID id, String reason) {
+        log.info("Cancel assignment id={}, reason={}", id, reason);
         ShiftAssignment assignment = shiftAssignmentRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_ASSIGNMENT_NOT_FOUND));
 

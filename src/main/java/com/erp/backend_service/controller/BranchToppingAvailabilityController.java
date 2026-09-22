@@ -6,6 +6,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.BranchToppingAvailabilityResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -19,6 +21,7 @@ import java.util.UUID;
 public class BranchToppingAvailabilityController {
 
     private final BranchToppingAvailabilityService service;
+    private static final Logger log = LoggerFactory.getLogger(BranchToppingAvailabilityController.class);
 
     public BranchToppingAvailabilityController(BranchToppingAvailabilityService service) {
         this.service = service;
@@ -32,6 +35,7 @@ public class BranchToppingAvailabilityController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status) {
+        log.info("Get list: branchId={}, keyword={}, page={}, size={}, status={}", branchId, search, page, size, status);
         return ResponseEntity.ok(ApiResponse.success(
                 service.list(branchId, page, size, search, status)));
     }
@@ -42,6 +46,7 @@ public class BranchToppingAvailabilityController {
             @PathVariable UUID branchId,
             @PathVariable UUID toppingId,
             @Valid @RequestBody UpdateBranchToppingRequest request) {
+        log.info("Update topping availability: branchId={}, toppingId={}", branchId, toppingId);
         return ResponseEntity.ok(ApiResponse.success(
                 service.updateAvailability(branchId, toppingId, request)));
     }

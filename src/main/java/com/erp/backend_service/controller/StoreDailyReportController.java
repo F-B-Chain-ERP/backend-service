@@ -10,6 +10,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.store.StoreDailyReportResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,6 +31,7 @@ import java.util.UUID;
 public class StoreDailyReportController {
 
     private final StoreDailyReportService storeDailyReportService;
+    private static final Logger log = LoggerFactory.getLogger(StoreDailyReportController.class);
 
     public StoreDailyReportController(StoreDailyReportService storeDailyReportService) {
         this.storeDailyReportService = storeDailyReportService;
@@ -38,6 +41,7 @@ public class StoreDailyReportController {
     @PreAuthorize("hasAuthority('store:daily_report:create')")
     public ResponseEntity<ApiResponse<StoreDailyReportResponse>> generate(
             @Valid @RequestBody CreateDailyReportRequest request) {
+        log.info("Generate daily report: branchId={}, businessDate={}", request.branchId(), request.businessDate());
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.created(storeDailyReportService.generateDailyReport(request, currentUserId)));
@@ -46,6 +50,7 @@ public class StoreDailyReportController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('store:daily_report:view')")
     public ResponseEntity<ApiResponse<StoreDailyReportResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(storeDailyReportService.getDailyReportById(id)));
     }
 
@@ -54,6 +59,7 @@ public class StoreDailyReportController {
     public ResponseEntity<ApiResponse<StoreDailyReportResponse>> getByDate(
             @RequestParam UUID branchId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate) {
+        log.info("Get daily report by date: branchId={}, businessDate={}", branchId, businessDate);
         return ResponseEntity.ok(ApiResponse.success(storeDailyReportService.getDailyReportByDate(branchId, businessDate)));
     }
 
@@ -64,6 +70,7 @@ public class StoreDailyReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @PageableDefault(size = 20) Pageable pageable) {
+        log.info("Search daily reports: branchId={}, startDate={}, endDate={}", branchId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.success(
                 storeDailyReportService.searchDailyReports(branchId, startDate, endDate, pageable)));
     }
@@ -73,6 +80,7 @@ public class StoreDailyReportController {
     public ResponseEntity<ApiResponse<StoreDailyReportResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateDailyReportRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(storeDailyReportService.updateDailyReport(id, request)));
     }
 
@@ -81,6 +89,7 @@ public class StoreDailyReportController {
     public ResponseEntity<ApiResponse<StoreDailyReportResponse>> approve(
             @PathVariable UUID id,
             @RequestBody(required = false) Map<String, String> body) {
+        log.info("Approve daily report id={}", id);
         UUID approverId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         String note = body != null ? body.get("note") : null;

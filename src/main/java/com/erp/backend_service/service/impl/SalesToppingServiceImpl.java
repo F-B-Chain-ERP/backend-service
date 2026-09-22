@@ -12,6 +12,8 @@ import com.erp.core.domain.BranchToppingAvailability;
 import com.erp.core.domain.ProductTopping;
 import com.erp.core.domain.Topping;
 import com.erp.core.dto.response.menu.ProductToppingResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,8 @@ public class SalesToppingServiceImpl implements SalesToppingService {
     private final BranchToppingAvailabilityRepository branchToppingAvailabilityRepository;
     private final ProductToppingMapper mapper;
 
+    private static final Logger log = LoggerFactory.getLogger(SalesToppingServiceImpl.class);
+
     public SalesToppingServiceImpl(ProductRepository productRepository,
                                    ProductToppingRepository productToppingRepository,
                                    ToppingRepository toppingRepository,
@@ -50,6 +54,7 @@ public class SalesToppingServiceImpl implements SalesToppingService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductToppingResponse> listForSales(UUID productId, UUID branchId) {
+        log.info("Get list toppings for sales: productId={}, branchId={}", productId, branchId);
         productRepository.findById(productId)
             .filter(p -> "ACTIVE".equals(p.getStatus()))
             .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));

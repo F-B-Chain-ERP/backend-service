@@ -21,6 +21,8 @@ import com.erp.core.dto.response.menu.VoucherApplyResponse;
 import com.erp.core.dto.response.menu.VoucherBranchResponse;
 import com.erp.core.dto.response.menu.VoucherDetailResponse;
 import com.erp.core.dto.response.menu.VoucherResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -65,6 +67,8 @@ public class VoucherServiceImpl implements VoucherService {
     private final VoucherMapper voucherMapper;
     private final VoucherBranchMapper voucherBranchMapper;
 
+    private static final Logger log = LoggerFactory.getLogger(VoucherServiceImpl.class);
+
     public VoucherServiceImpl(VoucherRepository voucherRepository,
                               VoucherBranchRepository voucherBranchRepository,
                               VoucherUsageRepository voucherUsageRepository,
@@ -82,6 +86,7 @@ public class VoucherServiceImpl implements VoucherService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<VoucherResponse> list(int page, int size, String search, String status) {
+        log.info("List vouchers: keyword={}, status={}, page={}, size={}", search, status, page, size);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
 
@@ -103,6 +108,7 @@ public class VoucherServiceImpl implements VoucherService {
     @Override
     @Transactional(readOnly = true)
     public VoucherDetailResponse get(UUID id) {
+        log.info("Get voucher id={}", id);
         Voucher voucher = findById(id);
         List<VoucherBranch> branches = voucherBranchRepository.findByVoucherId(id);
         Map<UUID, String> branchNames = resolveBranchNames(
@@ -117,6 +123,7 @@ public class VoucherServiceImpl implements VoucherService {
     @Transactional
     public VoucherResponse create(CreateVoucherRequest request) {
         String code = request.code().trim().toUpperCase();
+        log.info("Create voucher code={}", code);
         if (voucherRepository.existsByCode(code)) {
             throw new BaseException(ErrorCode.VOUCHER_CODE_EXISTED);
         }
@@ -125,12 +132,15 @@ public class VoucherServiceImpl implements VoucherService {
                 request.discountValue(), request.maxDiscountAmount(), request.minOrderAmount(),
                 request.usageLimit(), request.usageLimitPerCustomer(), request.startAt(), request.endAt(),
                 request.status());
-        return voucherMapper.toResponse(voucherRepository.save(voucher));
+        Voucher saved = voucherRepository.save(voucher);
+        log.info("Voucher created: id={}, code={}", saved.getId(), saved.getCode());
+        return voucherMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
     public VoucherResponse update(UUID id, UpdateVoucherRequest request) {
+        log.info("Update voucher id={}", id);
         Voucher voucher = findById(id);
         String code = request.code().trim().toUpperCase();
         if (!voucher.getCode().equals(code) && voucherRepository.existsByCode(code)) {
@@ -140,12 +150,15 @@ public class VoucherServiceImpl implements VoucherService {
                 request.discountValue(), request.maxDiscountAmount(), request.minOrderAmount(),
                 request.usageLimit(), request.usageLimitPerCustomer(), request.startAt(), request.endAt(),
                 request.status());
-        return voucherMapper.toResponse(voucherRepository.save(voucher));
+        Voucher saved = voucherRepository.save(voucher);
+        log.info("Voucher updated: id={}, code={}", saved.getId(), saved.getCode());
+        return voucherMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
     public VoucherResponse updateStatus(UUID id, String status) {
+        log.info("Update voucher status id={}, to={}", id, status);
         Voucher voucher = findById(id);
         if (!StringUtils.hasText(status)) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
@@ -155,12 +168,15 @@ public class VoucherServiceImpl implements VoucherService {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
         voucher.setStatus(normalizedStatus);
-        return voucherMapper.toResponse(voucherRepository.save(voucher));
+        Voucher saved = voucherRepository.save(voucher);
+        log.info("Voucher status changed: id={}, code={}, newStatus={}", id, saved.getCode(), normalizedStatus);
+        return voucherMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete voucher id={}", id);
         Voucher voucher = findById(id);
         if (STATUS_ACTIVE.equals(voucher.getStatus())) {
             voucher.setStatus(STATUS_INACTIVE);
@@ -171,6 +187,8 @@ public class VoucherServiceImpl implements VoucherService {
     @Override
     @Transactional
     public VoucherApplyResponse apply(ApplyVoucherRequest request) {
+        log.info("Apply voucher voucherId={}, orderId={}, orderAmount={}", request.voucherId(), request.orderId(),
+            request.orderAmount());
         Voucher voucher = voucherRepository.findByIdForUpdate(request.voucherId())
                 .orElseThrow(() -> new BaseException(ErrorCode.VOUCHER_NOT_FOUND));
 

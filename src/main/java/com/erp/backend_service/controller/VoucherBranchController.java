@@ -5,6 +5,8 @@ import com.erp.core.dto.request.menu.AssignVoucherBranchRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.menu.VoucherBranchResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +24,8 @@ public class VoucherBranchController {
 
     private final VoucherBranchService voucherBranchService;
 
+    private static final Logger log = LoggerFactory.getLogger(VoucherBranchController.class);
+
     public VoucherBranchController(VoucherBranchService voucherBranchService) {
         this.voucherBranchService = voucherBranchService;
     }
@@ -30,6 +34,7 @@ public class VoucherBranchController {
     @GetMapping
     @PreAuthorize("hasAuthority('menu:voucher_branch:view')")
     public ResponseEntity<ApiResponse<List<VoucherBranchResponse>>> list(@PathVariable UUID voucherId) {
+        log.info("Get voucher branches voucherId={}", voucherId);
         return ResponseEntity.ok(ApiResponse.success(voucherBranchService.getBranches(voucherId)));
     }
 
@@ -38,6 +43,7 @@ public class VoucherBranchController {
     @PreAuthorize("hasAuthority('menu:voucher_branch:create')")
     public ResponseEntity<ApiResponse<List<VoucherBranchResponse>>> assign(
             @PathVariable UUID voucherId, @Valid @RequestBody AssignVoucherBranchRequest request) {
+        log.info("Assign voucher branches voucherId={}", voucherId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(voucherBranchService.assign(voucherId, request)));
     }
@@ -46,6 +52,7 @@ public class VoucherBranchController {
     @DeleteMapping("/{branchId}")
     @PreAuthorize("hasAuthority('menu:voucher_branch:delete')")
     public ResponseEntity<Void> remove(@PathVariable UUID voucherId, @PathVariable UUID branchId) {
+        log.info("Remove voucher branch voucherId={}, branchId={}", voucherId, branchId);
         voucherBranchService.remove(voucherId, branchId);
         return ResponseEntity.noContent().build();
     }

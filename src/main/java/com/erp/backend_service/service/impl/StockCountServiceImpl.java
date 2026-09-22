@@ -15,6 +15,8 @@ import jakarta.persistence.PersistenceContext;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -48,6 +50,8 @@ public class StockCountServiceImpl implements StockCountService {
     @PersistenceContext
     private EntityManager entityManager;
 
+    private static final Logger log = LoggerFactory.getLogger(StockCountServiceImpl.class);
+
     public StockCountServiceImpl(StockCountRepository countRepository, StockCountItemRepository itemRepository, WarehouseRepository warehouseRepository, MaterialRepository materialRepository, MaterialStockBalanceRepository balanceRepository, StockInRepository stockInRepository, StockOutRepository stockOutRepository, StockTransferRepository transferRepository, DataScopeHelper dataScopeHelper, StockBalanceMutationService balanceMutationService) {
         this.countRepository = countRepository;
         this.itemRepository = itemRepository;
@@ -64,6 +68,7 @@ public class StockCountServiceImpl implements StockCountService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<StockCountResponse> list(int page, int size, String search, String status, UUID warehouseId) {
+        log.info("Get list stock-counts: keyword={}, page={}, size={}", search, page, size);
         page = Math.max(page, 0);
         size = Math.min(Math.max(size, 1), 100);
 
@@ -83,6 +88,7 @@ public class StockCountServiceImpl implements StockCountService {
     @Override
     @Transactional(readOnly = true)
     public StockCountResponse get(UUID id) {
+        log.info("Get stock-count {}", id);
         return toResponse(findAccessible(id));
     }
 
@@ -136,12 +142,14 @@ public class StockCountServiceImpl implements StockCountService {
 
         saveItems(count, request.items());
 
+        log.info("Create stock-count: code={}, warehouseId={}", count.getCode(), count.getWarehouseId());
         return toResponse(count);
     }
 
     @Override
     @Transactional
     public StockCountResponse update(UUID id, UpdateStockCountRequest request) {
+        log.info("Update stock-count id={}", id);
         if (request == null) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
@@ -178,6 +186,7 @@ public class StockCountServiceImpl implements StockCountService {
     @Override
     @Transactional
     public StockCountResponse start(UUID id) {
+        log.info("Start stock-count id={}", id);
         StockCount count = findAccessibleForUpdate(id);
 
         if (!DRAFT.equals(count.getStatus())) {
@@ -210,12 +219,14 @@ public class StockCountServiceImpl implements StockCountService {
 
         count.setStatus(IN_PROGRESS);
         countRepository.save(count);
+        log.info("Start stock-count: code={}, {} -> {}", count.getCode(), DRAFT, IN_PROGRESS);
         return toResponse(count);
     }
 
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete stock-count id={}", id);
         StockCount count = findAccessibleForUpdate(id);
 
         if (!DRAFT.equals(count.getStatus())) {
@@ -230,6 +241,7 @@ public class StockCountServiceImpl implements StockCountService {
     @Override
     @Transactional
     public StockCountResponse complete(UUID id) {
+        log.info("Complete stock-count id={}", id);
         StockCount count = findAccessibleForUpdate(id);
 
         if (!IN_PROGRESS.equals(count.getStatus())) {
@@ -270,12 +282,14 @@ public class StockCountServiceImpl implements StockCountService {
 
         countRepository.save(count);
 
+        log.info("Complete stock-count: code={}, {} -> {}", count.getCode(), IN_PROGRESS, COMPLETED);
         return toResponse(count);
     }
 
     @Override
     @Transactional
     public StockCountResponse adjust(UUID id) {
+        log.info("Adjust stock-count id={}", id);
         StockCount count = findAccessibleForUpdate(id);
 
         if (ADJUSTED.equals(count.getStatus())) {
@@ -362,6 +376,7 @@ public class StockCountServiceImpl implements StockCountService {
 
         countRepository.save(count);
 
+        log.info("Adjust stock-count: code={}, {} -> {}", count.getCode(), COMPLETED, ADJUSTED);
         return toResponse(count);
     }
 

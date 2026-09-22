@@ -6,6 +6,8 @@ import com.erp.core.dto.request.scope.CreateScopeRequest;
 import com.erp.core.dto.request.scope.UpdateScopeRequest;
 import com.erp.core.dto.response.ApiResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +24,7 @@ import java.util.UUID;
 public class ScopeController {
 
     private final ScopeService scopeService;
+    private static final Logger log = LoggerFactory.getLogger(ScopeController.class);
 
     public ScopeController(ScopeService scopeService) {
         this.scopeService = scopeService;
@@ -31,6 +34,7 @@ public class ScopeController {
     @GetMapping
     @PreAuthorize("hasAuthority('sys:scope:view')")
     public ResponseEntity<ApiResponse<List<ScopeAdminResponse>>> list() {
+        log.info("Get list scopes");
         return ResponseEntity.ok(ApiResponse.success(scopeService.findAll()));
     }
 
@@ -38,6 +42,7 @@ public class ScopeController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sys:scope:view')")
     public ResponseEntity<ApiResponse<ScopeAdminResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(scopeService.getById(id)));
     }
 
@@ -45,6 +50,7 @@ public class ScopeController {
     @PostMapping
     @PreAuthorize("hasAuthority('sys:scope:create')")
     public ResponseEntity<ApiResponse<ScopeAdminResponse>> create(@Valid @RequestBody CreateScopeRequest request) {
+        log.info("Create scope: scopeType={}, branchId={}", request.scopeType(), request.branchId());
         return ResponseEntity.ok(ApiResponse.success(scopeService.create(request)));
     }
 
@@ -53,6 +59,7 @@ public class ScopeController {
     @PreAuthorize("hasAuthority('sys:scope:update')")
     public ResponseEntity<ApiResponse<ScopeAdminResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdateScopeRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(scopeService.update(id, request)));
     }
 
@@ -60,6 +67,7 @@ public class ScopeController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('sys:scope:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         scopeService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

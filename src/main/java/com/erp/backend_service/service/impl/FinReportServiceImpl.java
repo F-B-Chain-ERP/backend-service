@@ -16,6 +16,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.function.Function;
@@ -26,6 +28,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class FinReportServiceImpl implements FinReportService {
+
+    private static final Logger log = LoggerFactory.getLogger(FinReportServiceImpl.class);
 
     private final BranchDailyFinancialSummaryRepository summaryRepository;
     private final BranchRepository branchRepository;
@@ -45,6 +49,7 @@ public class FinReportServiceImpl implements FinReportService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<?> exportFinancialReport(ExportFinancialReportRequest request, UUID currentUserId) {
+        log.info("Export FIN report: type={}, format={}, mode={}, branchId={}", request.reportType(), request.format(), request.mode(), request.branchId());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(request.branchId());
 
         Specification<BranchDailyFinancialSummary> spec = (root, query, cb) -> {

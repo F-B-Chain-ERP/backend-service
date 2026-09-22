@@ -7,6 +7,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.menu.ToppingResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +27,8 @@ public class ToppingController {
 
     private final ToppingService toppingService;
 
+    private static final Logger log = LoggerFactory.getLogger(ToppingController.class);
+
     public ToppingController(ToppingService toppingService) {
         this.toppingService = toppingService;
     }
@@ -38,6 +42,7 @@ public class ToppingController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String groupName,
             @RequestParam(required = false) String status) {
+        log.info("Get list: keyword={}, page={}, size={}, groupName={}, status={}", search, page, size, groupName, status);
         return ResponseEntity.ok(ApiResponse.success(
                 toppingService.list(page, size, search, groupName, status)));
     }
@@ -46,6 +51,7 @@ public class ToppingController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:topping:view')")
     public ResponseEntity<ApiResponse<ToppingResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(toppingService.get(id)));
     }
 
@@ -54,6 +60,7 @@ public class ToppingController {
     @PreAuthorize("hasAuthority('menu:topping:create')")
     public ResponseEntity<ApiResponse<ToppingResponse>> create(
             @Valid @RequestBody CreateToppingRequest request) {
+        log.info("Create topping: code={}", request.code());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(toppingService.create(request), "Tạo topping thành công"));
     }
@@ -64,6 +71,7 @@ public class ToppingController {
     public ResponseEntity<ApiResponse<ToppingResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateToppingRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(toppingService.update(id, request)));
     }
 
@@ -71,6 +79,7 @@ public class ToppingController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:topping:delete')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         toppingService.delete(id);
         return ResponseEntity.noContent().build();
     }

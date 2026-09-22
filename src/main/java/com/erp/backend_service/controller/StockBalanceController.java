@@ -7,6 +7,8 @@ import com.erp.core.dto.response.inv.StockBalanceResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -15,6 +17,8 @@ import java.util.UUID;
 public class StockBalanceController {
 
     private final StockBalanceService stockBalanceService;
+
+    private static final Logger log = LoggerFactory.getLogger(StockBalanceController.class);
 
     public StockBalanceController(StockBalanceService stockBalanceService) {
         this.stockBalanceService = stockBalanceService;
@@ -29,6 +33,7 @@ public class StockBalanceController {
             @RequestParam(required = false) UUID materialId,
             @RequestParam(required = false) String search
     ) {
+        log.info("Get list stock balances: page={}, size={}, warehouseId={}, materialId={}", page, size, warehouseId, materialId);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockBalanceService.list(
@@ -48,6 +53,7 @@ public class StockBalanceController {
             @PathVariable UUID warehouseId,
             @PathVariable UUID materialId
     ) {
+        log.info("Get stock balance: warehouseId={}, materialId={}", warehouseId, materialId);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         stockBalanceService.get(warehouseId, materialId)

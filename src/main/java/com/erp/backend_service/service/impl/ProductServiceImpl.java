@@ -68,7 +68,7 @@ public class ProductServiceImpl implements ProductService {
             String sortBy,
             String sortDirection
     ) {
-        log.info("Get-list product with sort: {} {}", sortBy, sortDirection);
+        log.info("Get list: page={}, size={}, search={}, categoryId={}, status={}, isFeatured={}, isBestSeller={}, isCombo={}, sortBy={}, sortDirection={}", page, size, search, categoryId, status, isFeatured, isBestSeller, isCombo, sortBy, sortDirection);
         String sortField = "createdAt";
         if ("basePrice".equalsIgnoreCase(sortBy) || "price".equalsIgnoreCase(sortBy)) {
             sortField = "basePrice";
@@ -111,6 +111,7 @@ public class ProductServiceImpl implements ProductService {
             Boolean isFeatured,
             Boolean isBestSeller
     ) {
+        log.info("Get list: page={}, size={}, search={}, categoryId={}, status={}, isFeatured={}, isBestSeller={}", page, size, search, categoryId, status, isFeatured, isBestSeller);
         return list(page, size, search, categoryId, status, isFeatured, isBestSeller, null, null, null);
     }
 
@@ -178,7 +179,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductDetailResponse get(UUID id) {
-        log.info("Get-product by id");
+        log.info("Get product by id: {}", id);
         Product product = findById(id);
         if ("DELETED".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -195,7 +196,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductDetailResponse getDetailForSales(UUID id) {
-        log.info("Get-product by id for sale");
+        log.info("Get product by id for sale: {}", id);
         Product product = findById(id);
         if (!"ACTIVE".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -225,7 +226,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public CreateProductResponse create(CreateProductRequest request) {
-        log.info("Create product");
+        log.info("Create product: code={}, name={}", request.code(), request.name());
         // 1. Validate category
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_CATEGORY_NOT_FOUND));
@@ -253,6 +254,7 @@ public class ProductServiceImpl implements ProductService {
         product.setStatus("ACTIVE");
 
         Product saved = productRepository.save(product);
+        log.info("Created product id={}, code={}", saved.getId(), saved.getCode());
         return new CreateProductResponse(
                 saved.getId() != null ? saved.getId().toString() : null,
                 saved.getCode(),
@@ -265,7 +267,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse update(UUID id, UpdateProductRequest request) {
-        log.info("Update product");
+        log.info("Update product id={}", id);
         Product product = findById(id);
         if ("DELETED".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -319,13 +321,14 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Product saved = productRepository.save(product);
+        log.info("Updated product id={}, code={}", saved.getId(), saved.getCode());
         return productMapper.toAdminResponse(saved, category.getName());
     }
 
     @Override
     @Transactional
     public void delete(UUID id) {
-        log.info("Delete product");
+        log.info("Delete product id={}", id);
         Product product = findById(id);
         if ("DELETED".equalsIgnoreCase(product.getStatus())) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
@@ -333,6 +336,7 @@ public class ProductServiceImpl implements ProductService {
         // Xóa mềm: Chuyển trạng thái sang DELETED
         product.setStatus("DELETED");
         productRepository.save(product);
+        log.info("Deleted product id={}", id);
     }
 
     private Product findById(UUID id) {

@@ -46,7 +46,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductVariantResponse> getVariantsByProductId(UUID productId) {
-        log.info("Get variant by product id");
+        log.info("Get variants by product id: {}", productId);
         ensureProductExists(productId);
         List<ProductVariant> variants = productVariantRepository.findByProductIdOrderByDisplayOrderAsc(productId);
         return variants.stream()
@@ -57,7 +57,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Override
     @Transactional
     public ProductVariantResponse create(UUID productId, CreateProductVariantRequest request) {
-        log.info("Create product variant");
+        log.info("Create product variant: productId={}, code={}", productId, request.variantCode());
         ensureProductExists(productId);
 
         String normalizedCode = request.variantCode().trim().toUpperCase();
@@ -75,13 +75,14 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         variant.setStatus("ACTIVE");
 
         ProductVariant saved = productVariantRepository.save(variant);
+        log.info("Created product variant id={}, code={}", saved.getId(), saved.getVariantCode());
         return productMapper.toVariantResponse(saved);
     }
 
     @Override
     @Transactional
     public ProductVariantResponse update(UUID productId, UUID variantId, UpdateProductVariantRequest request) {
-        log.info("Update product variant");
+        log.info("Update product variant id={}, productId={}", variantId, productId);
         ensureProductExists(productId);
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
@@ -109,13 +110,14 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         }
 
         ProductVariant saved = productVariantRepository.save(variant);
+        log.info("Updated product variant id={}", saved.getId());
         return productMapper.toVariantResponse(saved);
     }
 
     @Override
     @Transactional
     public void delete(UUID productId, UUID variantId) {
-        log.info("Delete product variant");
+        log.info("Delete product variant id={}, productId={}", variantId, productId);
         ensureProductExists(productId);
 
         ProductVariant variant = productVariantRepository.findByIdAndProductId(variantId, productId)
@@ -127,12 +129,13 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         } catch (DataIntegrityViolationException e) {
             throw new BaseException(ErrorCode.MENU_400_VARIANT_IN_USE);
         }
+        log.info("Deleted product variant id={}, productId={}", variantId, productId);
     }
 
     @Override
     @Transactional
     public List<ProductVariantResponse> syncVariants(UUID productId, SyncProductVariantsRequest request) {
-        log.info("Sync variants");
+        log.info("Sync product variants: productId={}", productId);
         ensureProductExists(productId);
 
         List<SyncProductVariantsRequest.VariantItemRequest> incomingItems =

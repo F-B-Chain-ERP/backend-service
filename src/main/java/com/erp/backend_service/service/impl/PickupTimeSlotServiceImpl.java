@@ -13,6 +13,8 @@ import com.erp.core.dto.request.branch.CreatePickupTimeSlotRequest;
 import com.erp.core.dto.request.branch.GeneratePickupSlotsRequest;
 import com.erp.core.dto.request.branch.UpdatePickupTimeSlotRequest;
 import com.erp.core.dto.response.branch.PickupTimeSlotResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +30,8 @@ public class PickupTimeSlotServiceImpl implements PickupTimeSlotService {
     private final OrderRepository orderRepository;
     private final DataScopeHelper dataScopeHelper;
 
+    private static final Logger log = LoggerFactory.getLogger(PickupTimeSlotServiceImpl.class);
+
     public PickupTimeSlotServiceImpl(PickupTimeSlotRepository slotRepository,
                                      BranchRepository branchRepository,
                                      OrderRepository orderRepository,
@@ -41,6 +45,7 @@ public class PickupTimeSlotServiceImpl implements PickupTimeSlotService {
     @Override
     @Transactional(readOnly = true)
     public List<PickupTimeSlotResponse> getSlots(UUID branchId, LocalDate date, boolean enforceScope) {
+        log.info("Get pickup time slots: branchId={}, date={}, enforceScope={}", branchId, date, enforceScope);
         Branch branch = branchRepository.findById(branchId)
                 .orElseThrow(() -> new BaseException(ErrorCode.INV_404_BRANCH_NOT_FOUND));
 
@@ -103,6 +108,7 @@ public class PickupTimeSlotServiceImpl implements PickupTimeSlotService {
     @Override
     @Transactional
     public PickupTimeSlotResponse createSlot(UUID branchId, CreatePickupTimeSlotRequest request) {
+        log.info("Create pickup time slot: branchId={}, slotCode={}", branchId, request.slotCode());
         validateBranchAndScope(branchId);
         validateSlotTimes(request.startTime(), request.endTime());
 
@@ -125,6 +131,7 @@ public class PickupTimeSlotServiceImpl implements PickupTimeSlotService {
     @Override
     @Transactional
     public PickupTimeSlotResponse updateSlot(UUID branchId, UUID slotId, UpdatePickupTimeSlotRequest request) {
+        log.info("Update pickup time slot: branchId={}, slotId={}", branchId, slotId);
         validateBranchAndScope(branchId);
         validateSlotTimes(request.startTime(), request.endTime());
 
@@ -150,6 +157,7 @@ public class PickupTimeSlotServiceImpl implements PickupTimeSlotService {
     @Override
     @Transactional
     public void deleteSlot(UUID branchId, UUID slotId) {
+        log.info("Delete pickup time slot: branchId={}, slotId={}", branchId, slotId);
         validateBranchAndScope(branchId);
 
         PickupTimeSlot slot = slotRepository.findByIdAndBranchId(slotId, branchId)
@@ -167,6 +175,8 @@ public class PickupTimeSlotServiceImpl implements PickupTimeSlotService {
     @Override
     @Transactional
     public List<PickupTimeSlotResponse> generateSlots(UUID branchId, GeneratePickupSlotsRequest request) {
+        log.info("Generate pickup time slots: branchId={}, startTime={}, endTime={}, stepMinutes={}, maxOrders={}",
+                branchId, request.startTime(), request.endTime(), request.stepMinutes(), request.maxOrders());
         validateBranchAndScope(branchId);
 
         LocalTime start = request.startTime();

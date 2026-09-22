@@ -17,6 +17,8 @@ import com.erp.core.report.ReportColumnDefinition;
 import com.erp.core.report.ReportDataContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,8 @@ import java.util.stream.Collectors;
 public class StoreReportServiceImpl implements StoreReportService {
 
     private static final BigDecimal ZERO = BigDecimal.ZERO;
+
+    private static final Logger log = LoggerFactory.getLogger(StoreReportServiceImpl.class);
 
     private final StoreDailyReportRepository storeDailyReportRepository;
     private final ShiftReportRepository shiftReportRepository;
@@ -60,6 +64,8 @@ public class StoreReportServiceImpl implements StoreReportService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<?> exportDailyReport(ExportDailyReportRequest request, UUID currentUserId) {
+        log.info("Export daily report: branchId={}, format={}, mode={}, startDate={}, endDate={}",
+                request.branchId(), request.format(), request.mode(), request.startDate(), request.endDate());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(request.branchId());
 
         Specification<StoreDailyReport> spec = (root, query, cb) -> {
@@ -178,6 +184,8 @@ public class StoreReportServiceImpl implements StoreReportService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<?> exportShiftReport(ExportShiftReportRequest request, UUID currentUserId) {
+        log.info("Export shift report: branchId={}, format={}, mode={}, businessDate={}, status={}",
+                request.branchId(), request.format(), request.mode(), request.businessDate(), request.status());
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(request.branchId());
 
         Specification<ShiftReport> spec = (root, query, cb) -> {

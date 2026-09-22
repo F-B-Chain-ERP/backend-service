@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.List;
@@ -42,6 +44,7 @@ public class NotificationController {
     private final NotificationService notificationService;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final StringRedisTemplate stringRedisTemplate;
+    private static final Logger log = LoggerFactory.getLogger(NotificationController.class);
 
     public NotificationController(
             NotificationService notificationService,
@@ -66,6 +69,7 @@ public class NotificationController {
         PrincipalType principalType = SecurityUtils.getCurrentPrincipalType()
                 .orElse(PrincipalType.CUSTOMER);
         Optional<UUID> branchIdOpt = SecurityUtils.getCurrentBranchId();
+        log.info("Generate SSE ticket: principalId={}, branchId={}", principalId, branchIdOpt.orElse(null));
 
         boolean isStaff = (principalType == PrincipalType.ACCOUNT);
         String ticket = UUID.randomUUID().toString();
@@ -111,6 +115,7 @@ public class NotificationController {
         if (parts.length > 2) {
             isStaff = Boolean.parseBoolean(parts[2]);
         }
+        log.info("Subscribe SSE: principalId={}, branchId={}, isStaff={}", principalId, branchId, isStaff);
         return sseEmitterRegistry.register(principalId, branchId, isStaff, SSE_TIMEOUT_MS);
     }
 
@@ -122,6 +127,7 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<List<NotificationResponse>>> getUnread() {
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Get unread notifications: accountId={}", accountId);
         return ResponseEntity.ok(ApiResponse.success(notificationService.getUnreadNotifications(accountId)));
     }
 
@@ -135,6 +141,7 @@ public class NotificationController {
     ) {
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Get recent notifications: accountId={}, limit={}", accountId, limit);
         return ResponseEntity.ok(ApiResponse.success(notificationService.getRecentNotifications(accountId, limit)));
     }
 
@@ -146,6 +153,7 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<Long>> getUnreadCount() {
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Get unread count: accountId={}", accountId);
         return ResponseEntity.ok(ApiResponse.success(notificationService.getUnreadCount(accountId)));
     }
 
@@ -155,6 +163,7 @@ public class NotificationController {
     @PatchMapping("/{id}/read")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Boolean>> markAsRead(@PathVariable UUID id) {
+        log.info("Update id={}", id);
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
         notificationService.markAsRead(id, accountId);
@@ -169,6 +178,7 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<Boolean>> markAllAsRead() {
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Update all as read: accountId={}", accountId);
         notificationService.markAllAsRead(accountId);
         return ResponseEntity.ok(ApiResponse.success(true));
     }
@@ -179,6 +189,7 @@ public class NotificationController {
     @DeleteMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Boolean>> deleteNotification(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
         notificationService.deleteNotification(id, accountId);
@@ -193,6 +204,7 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<Boolean>> deleteAllNotifications() {
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Delete all notifications: accountId={}", accountId);
         notificationService.deleteAllNotifications(accountId);
         return ResponseEntity.ok(ApiResponse.success(true));
     }
@@ -205,6 +217,7 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<Boolean>> deleteReadNotifications() {
         UUID accountId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        log.info("Delete read notifications: accountId={}", accountId);
         notificationService.deleteReadNotifications(accountId);
         return ResponseEntity.ok(ApiResponse.success(true));
     }

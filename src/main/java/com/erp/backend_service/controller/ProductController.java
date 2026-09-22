@@ -14,6 +14,8 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +39,8 @@ public class ProductController {
     private final ProductService productService;
     private final StorageService storageService;
 
+    private static final Logger log = LoggerFactory.getLogger(ProductController.class);
+
     public ProductController(ProductService productService, StorageService storageService) {
         this.productService = productService;
         this.storageService = storageService;
@@ -58,6 +62,7 @@ public class ProductController {
             @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "DESC") String sortDirection
     ) {
+        log.info("Get list: keyword={}, page={}, size={}, categoryId={}, status={}", search, page, size, categoryId, status);
         PageResponse<ProductResponse> response = productService.list(
                 page, size, search, categoryId, status, isFeatured, isBestSeller, isCombo, sortBy, sortDirection
         );
@@ -69,6 +74,7 @@ public class ProductController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProductDetailResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         ProductDetailResponse response = productService.get(id);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy chi tiết sản phẩm thành công"));
     }
@@ -81,6 +87,7 @@ public class ProductController {
     public ResponseEntity<ApiResponse<CreateProductResponse>> create(
             @Valid @RequestBody CreateProductRequest request
     ) {
+        log.info("Create product: code={}", request.code());
         CreateProductResponse created = productService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.created(created, "Tạo sản phẩm thành công"));
     }
@@ -102,6 +109,7 @@ public class ProductController {
             @RequestParam(required = false) Boolean isCombo,
             @RequestParam(name = "image", required = false) MultipartFile image
     ) {
+        log.info("Create product: code={}", code);
         String finalImageUrl = imageUrl;
         if (image != null && !image.isEmpty()) {
             finalImageUrl = storageService.upload(image, "products");
@@ -125,6 +133,7 @@ public class ProductController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateProductRequest request
     ) {
+        log.info("Update id={}", id);
         ProductResponse updated = productService.update(id, request);
         return ResponseEntity.ok(ApiResponse.success(updated, "Cập nhật sản phẩm thành công"));
     }
@@ -151,6 +160,7 @@ public class ProductController {
             @RequestParam(required = false) String status,
             @RequestParam(name = "image", required = false) MultipartFile image
     ) {
+        log.info("Update id={}", id);
         String finalImageUrl = imageUrl;
         if (image != null && !image.isEmpty()) {
             finalImageUrl = storageService.upload(image, "products");
@@ -172,6 +182,7 @@ public class ProductController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('menu:product:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         productService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Xóa sản phẩm thành công"));
     }
@@ -184,6 +195,7 @@ public class ProductController {
     public ResponseEntity<ApiResponse<Map<String, String>>> uploadImage(
             @RequestParam("image") MultipartFile image
     ) {
+        log.info("Upload product image");
         String imageUrl = storageService.upload(image, "products");
         return ResponseEntity.ok(ApiResponse.success(Map.of("imageUrl", imageUrl), "Upload ảnh thành công"));
     }

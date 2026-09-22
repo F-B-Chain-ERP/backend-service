@@ -10,6 +10,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -25,6 +27,7 @@ import java.util.List;
 public class ReportConfigController {
 
     private final ReportProperties reportProperties;
+    private static final Logger log = LoggerFactory.getLogger(ReportConfigController.class);
 
     public ReportConfigController(ReportProperties reportProperties) {
         this.reportProperties = reportProperties;
@@ -33,6 +36,7 @@ public class ReportConfigController {
     @GetMapping("/config")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<ReportConfigResponse>> getConfig() {
+        log.info("Get report config");
         ReportConfigResponse config = new ReportConfigResponse(
                 reportProperties.getAsyncThresholdRecords(),
                 reportProperties.getMaxHardSyncRecords(),

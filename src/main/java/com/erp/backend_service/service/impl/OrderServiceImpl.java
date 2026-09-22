@@ -18,6 +18,8 @@ import com.erp.core.dto.request.pos.*;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.PrincipalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -68,6 +70,8 @@ public class OrderServiceImpl implements OrderService {
     private final PickupTimeSlotRepository pickupTimeSlotRepository;
     private final ApplicationEventPublisher eventPublisher;
 
+    private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
+
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
                             OrderStatusHistoryRepository historyRepository,
@@ -116,6 +120,8 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse create(String idempotencyKey, CreateOrderRequest request) {
         requireCustomerPermission("pos:order:create");
         UUID customerId = currentCustomerId();
+        log.info("Create order: branch={}, customer={}, orderType={}", request.branchId(), customerId,
+            request.orderType());
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return createInternal(customerId, request);
         }
@@ -388,6 +394,8 @@ public class OrderServiceImpl implements OrderService {
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_CREATED,
             "Đơn hàng mới: #" + o.getOrderCode(),
             "Đơn hàng mới từ " + (o.getCustomerName() != null ? o.getCustomerName() : "Khách hàng") + " (" + o.getTotalAmount() + "đ)");
+        log.info("Order created: id={}, code={}, status={}, total={}", o.getId(), o.getOrderCode(), o.getStatus(),
+            o.getTotalAmount());
         return toResponse(o);
     }
 
@@ -395,6 +403,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
                                                    LocalDate toDate, String search, int page, int size) {
+        log.info("List orders: orderType={}, status={}, page={}, size={}", orderType, status, page, size);
         requirePermission("pos:order:view");
         if (page < 0 || size < 1 || size > 100) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
@@ -422,6 +431,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public OrderResponse get(UUID id) {
+        log.info("Get order id={}", id);
         requirePermission("pos:order:view");
         Order o = findAccessible(id);
         return toResponse(o);
@@ -430,6 +440,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderStatusResponse updateStatus(UUID id, UpdateOrderStatusRequest request) {
+        log.info("Update status order id={}, target={}", id, request.status());
         requirePermission("pos:order:update");
         Order o = findAccessible(id);
         PosFlow.Order target = PosFlow.parseOrder(request.status());
@@ -492,12 +503,14 @@ public class OrderServiceImpl implements OrderService {
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Cập nhật đơn hàng: #" + o.getOrderCode(),
             "Đơn hàng #" + o.getOrderCode() + " đã chuyển sang trạng thái " + target.name());
+        log.info("Order status changed: code={}, {} -> {}", o.getOrderCode(), old, target.name());
         return new OrderStatusResponse(o.getId(), o.getOrderCode(), old, target.name(), by, now);
     }
 
     @Override
     @Transactional
     public OrderResponse cancel(UUID id, CancelOrderRequest request) {
+        log.info("Cancel order id={}, reason={}", id, request.reason());
         requirePermission("pos:order:cancel");
         Order o = findAccessible(id);
         PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
@@ -522,12 +535,14 @@ public class OrderServiceImpl implements OrderService {
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Đơn hàng #" + o.getOrderCode() + " đã bị hủy",
             "Lý do: " + (request.reason() != null ? request.reason() : "Khách hủy"));
+        log.info("Order cancelled: code={}, from={}, amount={}", o.getOrderCode(), old, o.getTotalAmount());
         return toResponse(o);
     }
 
     @Override
     @Transactional
     public OrderResponse complete(UUID id, CompleteOrderRequest request) {
+        log.info("Complete order id={}, note={}", id, request.note());
         requirePermission("pos:order:update");
         Order o = findAccessible(id);
         if (!PosFlow.Payment.PAID.name().equalsIgnoreCase(o.getPaymentStatus())) {
@@ -549,12 +564,14 @@ public class OrderServiceImpl implements OrderService {
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Đơn hàng #" + o.getOrderCode() + " đã hoàn tất",
             "Đơn hàng đã được hoàn tất thành công.");
+        log.info("Order completed: code={}, from={}", o.getOrderCode(), old);
         return toResponse(o);
     }
 
     @Override
     @Transactional
     public OrderResponse updatePaymentStatus(UUID id, UpdatePaymentStatusRequest request) {
+        log.info("Update payment status order id={}, to={}", id, request.status());
         // TODO [VNPay Sprint]: Thay requirePermission("pos:order:update") bằng requirePaymentPermission()
         // để CUSTOMER có thể tự cập nhật sau khi VNPay callback. Xem chi tiết trong implementation_plan.md Fix 3.
         // Luật tiền 1 chiều: chỉ UNPAID -> PAID (thu tiền). PAID muốn đảo phải hủy đơn
@@ -562,6 +579,7 @@ public class OrderServiceImpl implements OrderService {
         // và cấm set REFUNDED tay (không có chứng từ refund đi kèm).
         requirePermission("pos:order:update");
         Order o = findAccessible(id);
+        String oldPaymentStatus = o.getPaymentStatus();
         PosFlow.Payment target = PosFlow.parsePayment(request.status());
         PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
         if (current == PosFlow.Order.CANCELLED || current == PosFlow.Order.REJECTED ||
@@ -591,12 +609,14 @@ public class OrderServiceImpl implements OrderService {
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Thanh toán đơn hàng: #" + o.getOrderCode(),
             "Trạng thái thanh toán: " + target.name());
+        log.info("Payment status changed: code={}, {} -> {}", o.getOrderCode(), oldPaymentStatus, target.name());
         return toResponse(o);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<OrderHistoryResponse> history(UUID id) {
+        log.info("Get history order id={}", id);
         requirePermission("pos:order:view");
         findAccessible(id);
         return historyRepository.findByOrderIdOrderByChangedAtAsc(id).stream().map(

@@ -7,6 +7,8 @@ import com.erp.backend_service.repository.MaterialStockBalanceRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.core.domain.MaterialStockBalance;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -17,6 +19,8 @@ public class StockBalanceMutationService {
     private final MaterialStockBalanceRepository balanceRepository;
     private final MaterialRepository materialRepository;
     private final DataScopeHelper dataScopeHelper;
+
+    private static final Logger log = LoggerFactory.getLogger(StockBalanceMutationService.class);
 
     public StockBalanceMutationService(
             MaterialStockBalanceRepository balanceRepository,
@@ -35,6 +39,8 @@ public class StockBalanceMutationService {
         dataScopeHelper.enforceWarehouseAccess(
                 warehouseId
         );
+
+        log.info("Lock/Create stock balance: warehouseId={}, materialId={}", warehouseId, materialId);
 
         materialRepository.findById(materialId)
                 .orElseThrow(() ->
@@ -82,6 +88,7 @@ public class StockBalanceMutationService {
                 current.add(quantity)
         );
 
+        log.info("Increase stock balance: warehouseId={}, materialId={}, quantity={}", warehouseId, materialId, quantity);
         balanceRepository.save(balance);
     }
 
@@ -126,6 +133,7 @@ public class StockBalanceMutationService {
                 onHand.subtract(quantity)
         );
 
+        log.info("Decrease stock balance: warehouseId={}, materialId={}, quantity={}", warehouseId, materialId, quantity);
         balanceRepository.save(balance);
     }
 }

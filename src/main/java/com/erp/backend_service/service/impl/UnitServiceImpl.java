@@ -18,6 +18,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -28,6 +30,8 @@ import java.util.UUID;
 public class UnitServiceImpl implements UnitService {
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Logger log = LoggerFactory.getLogger(UnitServiceImpl.class);
 
     private final UnitRepository unitRepository;
     private final MaterialRepository materialRepository;
@@ -48,6 +52,7 @@ public class UnitServiceImpl implements UnitService {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        log.info("Get list units: keyword={}, page={}, size={}", search, page, size);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize, Sort.by("createdAt").descending());
         Page<Unit> pageResult = unitRepository.search(
                 StringUtils.hasText(search) ? search.trim() : null,
@@ -65,6 +70,7 @@ public class UnitServiceImpl implements UnitService {
     @Override
     @Transactional(readOnly = true)
     public UnitResponse get(UUID id) {
+        log.info("Get unit {}", id);
         return unitMapper.toResponse(findById(id));
     }
 
@@ -77,12 +83,14 @@ public class UnitServiceImpl implements UnitService {
         }
         Unit unit = unitMapper.toEntity(new CreateUnitRequest(
                 code, request.name().trim(), request.unitType().trim().toUpperCase()));
+        log.info("Create unit: code={}", code);
         return unitMapper.toResponse(unitRepository.save(unit));
     }
 
     @Override
     @Transactional
     public UnitResponse update(UUID id, UpdateUnitRequest request) {
+        log.info("Update unit id={}", id);
         Unit unit = findById(id);
         String code = request.code().trim().toUpperCase();
         if (!unit.getCode().equals(code) && unitRepository.existsByCode(code)) {
@@ -99,6 +107,7 @@ public class UnitServiceImpl implements UnitService {
     @Override
     @Transactional
     public UnitResponse updateStatus(UUID id, String status) {
+        log.info("Update unit status id={}, status={}", id, status);
         Unit unit = findById(id);
         if (!StringUtils.hasText(status)) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
@@ -114,6 +123,7 @@ public class UnitServiceImpl implements UnitService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("Delete unit id={}", id);
         Unit unit = findById(id);
         if (materialRepository.existsByBaseUnitId(unit.getId())) {
             throw new BaseException(ErrorCode.INV_400_UNIT_IN_USE);

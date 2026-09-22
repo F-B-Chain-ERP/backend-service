@@ -125,6 +125,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional(readOnly = true)
     public PageResponse<PurchaseOrderResponse> list(int page, int size, String search, String status,
                                                     UUID supplierId, UUID warehouseId, LocalDate fromDate, LocalDate toDate) {
+        log.info("PO list: keyword={}, page={}, size={}, status={}, supplierId={}, warehouseId={}", search, page, size, status, supplierId, warehouseId);
         int safeSize = FIXED_PAGE_SIZE;
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw new BaseException(ErrorCode.PROC_400_PO_INVALID_FILTER);
@@ -178,6 +179,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional(readOnly = true)
     public PurchaseOrderResponse get(UUID id) {
+        log.info("PO get: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         List<PurchaseOrderItem> items = purchaseOrderItemRepository.findByPurchaseOrderId(id);
@@ -188,6 +190,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse create(CreatePurchaseOrderRequest request) {
+        log.info("PO create: supplierId={}, warehouseId={}", request.supplierId(), request.warehouseId());
         Supplier supplier = supplierRepository.findById(request.supplierId())
                 .orElseThrow(() -> new BaseException(ErrorCode.PROC_404_SUPPLIER_NOT_FOUND));
         if (!EntityStatus.ACTIVE.name().equals(supplier.getStatus())) {
@@ -236,6 +239,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         items = purchaseOrderItemRepository.saveAll(items);
         recalculateTotals(po, items);
         po = purchaseOrderRepository.save(po);
+        log.info("PO created: id={}, code={}, status={}", po.getId(), po.getPoCode(), po.getStatus());
         return toResponseWithNames(po, items);
     }
 
@@ -243,6 +247,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse update(UUID id, UpdatePurchaseOrderRequest request) {
+        log.info("PO update: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_DRAFT.equals(po.getStatus())) {
@@ -294,6 +299,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             recalculateTotals(po, purchaseOrderItemRepository.findByPurchaseOrderId(id));
         }
         po = purchaseOrderRepository.save(po);
+        log.info("PO updated: id={}, code={}, status={}", po.getId(), po.getPoCode(), po.getStatus());
         return toResponseWithNames(po, purchaseOrderItemRepository.findByPurchaseOrderId(id));
     }
 
@@ -301,6 +307,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public void delete(UUID id) {
+        log.info("PO delete: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_DRAFT.equals(po.getStatus())) {
@@ -308,12 +315,14 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
         purchaseOrderItemRepository.deleteByPurchaseOrderId(id);
         purchaseOrderRepository.deleteById(id);
+        log.info("PO deleted: id={}", id);
     }
 
     /** {@inheritDoc} */
     @Override
     @Transactional
     public PurchaseOrderResponse submit(UUID id) {
+        log.info("PO submit: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_DRAFT.equals(po.getStatus())) {
@@ -339,6 +348,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setStatus(STATUS_SUBMITTED);
         po.setSubmittedAt(java.time.Instant.now());
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        log.info("PO {} status: {} -> {}", id, STATUS_DRAFT, STATUS_SUBMITTED);
         notifyPoSubmitted(saved);
         return toResponseWithNames(saved, items);
     }
@@ -347,6 +357,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse approve(UUID id) {
+        log.info("PO approve: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_SUBMITTED.equals(po.getStatus())) {
@@ -357,6 +368,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         po.setApprovedBy(approver);
         po.setApprovedAt(java.time.Instant.now());
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        log.info("PO {} status: {} -> {}", id, STATUS_SUBMITTED, STATUS_APPROVED);
         notifyPoApproved(saved);
         return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));
     }
@@ -365,6 +377,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse cancel(UUID id, String reason) {
+        log.info("PO cancel: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         boolean cancellable = STATUS_DRAFT.equals(po.getStatus())
@@ -376,10 +389,12 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (reason == null || reason.isBlank()) {
             throw new BaseException(ErrorCode.PROC_400_PO_CANCEL_REASON_REQUIRED);
         }
+        String oldStatus = po.getStatus();
         po.setStatus(STATUS_CANCELLED);
         po.setCancelledAt(java.time.Instant.now());
         po.setCancelReason(reason);
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        log.info("PO {} status: {} -> {}", id, oldStatus, STATUS_CANCELLED);
         notifyPoCancelled(saved, reason);
         return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));
     }
@@ -451,6 +466,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse reject(UUID id, String reason) {
+        log.info("PO reject: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_SUBMITTED.equals(po.getStatus())) {
@@ -459,9 +475,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (reason == null || reason.isBlank()) {
             throw new BaseException(ErrorCode.PROC_400_PO_REJECT_REASON_REQUIRED);
         }
+        String oldStatus = po.getStatus();
         po.setStatus(STATUS_DRAFT);
         po.setCancelReason(reason);
         PurchaseOrder saved = purchaseOrderRepository.save(po);
+        log.info("PO {} status: {} -> {}", id, oldStatus, STATUS_DRAFT);
         notifyPoRejected(saved, reason);
         return toResponseWithNames(saved, purchaseOrderItemRepository.findByPurchaseOrderId(id));
     }
@@ -470,6 +488,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse receive(UUID id, ReceivePurchaseOrderRequest request) {
+        log.info("PO receive: id={}", id);
         PurchaseOrder po = findById(id);
         dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
         if (!STATUS_APPROVED.equals(po.getStatus()) && !STATUS_PARTIALLY_RECEIVED.equals(po.getStatus())) {
@@ -496,6 +515,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
         items = purchaseOrderItemRepository.saveAll(items);
 
+        String oldStatus = po.getStatus();
         boolean allReceived = items.stream().allMatch(i -> i.getReceivedQuantity().compareTo(i.getQuantity()) >= 0);
         boolean anyReceived = items.stream().anyMatch(i -> i.getReceivedQuantity().compareTo(BigDecimal.ZERO) > 0);
         if (allReceived) {
@@ -504,6 +524,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             po.setStatus(STATUS_PARTIALLY_RECEIVED);
         }
         po = purchaseOrderRepository.save(po);
+        log.info("PO {} status: {} -> {}", id, oldStatus, po.getStatus());
         notifyPoReceived(po, allReceived);
 
         // Tự động tạo công nợ khi nhận hàng (1 PO = 1 Payable)

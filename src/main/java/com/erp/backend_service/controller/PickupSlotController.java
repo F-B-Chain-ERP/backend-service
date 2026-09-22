@@ -7,6 +7,8 @@ import com.erp.core.dto.request.branch.UpdatePickupTimeSlotRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.branch.PickupTimeSlotResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class PickupSlotController {
 
     private final PickupTimeSlotService pickupTimeSlotService;
+    private static final Logger log = LoggerFactory.getLogger(PickupSlotController.class);
 
     public PickupSlotController(PickupTimeSlotService pickupTimeSlotService) {
         this.pickupTimeSlotService = pickupTimeSlotService;
@@ -37,6 +40,7 @@ public class PickupSlotController {
     public ResponseEntity<ApiResponse<List<PickupTimeSlotResponse>>> listSlots(
             @PathVariable UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        log.info("Get list: branchId={}, date={}", branchId, date);
         return ResponseEntity.ok(ApiResponse.success(pickupTimeSlotService.getSlots(branchId, date, true)));
     }
 
@@ -47,6 +51,7 @@ public class PickupSlotController {
     public ResponseEntity<ApiResponse<List<PickupTimeSlotResponse>>> listPublicSlots(
             @PathVariable UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        log.info("Get list public: branchId={}, date={}", branchId, date);
         return ResponseEntity.ok(ApiResponse.success(pickupTimeSlotService.getSlots(branchId, date, false)));
     }
 
@@ -58,6 +63,7 @@ public class PickupSlotController {
     public ResponseEntity<ApiResponse<PickupTimeSlotResponse>> createSlot(
             @PathVariable UUID branchId,
             @Valid @RequestBody CreatePickupTimeSlotRequest request) {
+        log.info("Create pickup slot: branchId={}, slotCode={}", branchId, request.slotCode());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(pickupTimeSlotService.createSlot(branchId, request)));
     }
@@ -71,6 +77,7 @@ public class PickupSlotController {
             @PathVariable UUID branchId,
             @PathVariable UUID id,
             @Valid @RequestBody UpdatePickupTimeSlotRequest request) {
+        log.info("Update pickup slot id={}, branchId={}", id, branchId);
         return ResponseEntity.ok(ApiResponse.success(pickupTimeSlotService.updateSlot(branchId, id, request)));
     }
 
@@ -82,6 +89,7 @@ public class PickupSlotController {
     public ResponseEntity<ApiResponse<Void>> deleteSlot(
             @PathVariable UUID branchId,
             @PathVariable UUID id) {
+        log.info("Delete pickup slot id={}, branchId={}", id, branchId);
         pickupTimeSlotService.deleteSlot(branchId, id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -94,6 +102,7 @@ public class PickupSlotController {
     public ResponseEntity<ApiResponse<List<PickupTimeSlotResponse>>> generateSlots(
             @PathVariable UUID branchId,
             @Valid @RequestBody GeneratePickupSlotsRequest request) {
+        log.info("Generate pickup slots: branchId={}, from={}, to={}, stepMinutes={}", branchId, request.startTime(), request.endTime(), request.stepMinutes());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(pickupTimeSlotService.generateSlots(branchId, request)));
     }

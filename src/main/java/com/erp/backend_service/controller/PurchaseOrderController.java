@@ -10,6 +10,8 @@ import com.erp.core.dto.response.proc.PurchaseOrderResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +31,7 @@ import java.util.UUID;
 public class PurchaseOrderController {
 
     private final PurchaseOrderService purchaseOrderService;
+    private static final Logger log = LoggerFactory.getLogger(PurchaseOrderController.class);
 
     public PurchaseOrderController(PurchaseOrderService purchaseOrderService) {
         this.purchaseOrderService = purchaseOrderService;
@@ -46,6 +49,7 @@ public class PurchaseOrderController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        log.info("Get list: keyword={}, page={}, size={}, status={}, supplierId={}, warehouseId={}", search, page, size, status, supplierId, warehouseId);
         return ResponseEntity.ok(ApiResponse.success(
                 purchaseOrderService.list(page, size, search, status, supplierId, warehouseId, fromDate, toDate)));
     }
@@ -54,6 +58,7 @@ public class PurchaseOrderController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('proc:purchase_order:view')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> get(@PathVariable UUID id) {
+        log.info("Get {}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.get(id)));
     }
 
@@ -62,6 +67,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('proc:purchase_order:create')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> create(
             @Valid @RequestBody CreatePurchaseOrderRequest request) {
+        log.info("Create PO: supplierId={}, warehouseId={}", request.supplierId(), request.warehouseId());
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.create(request)));
     }
 
@@ -70,6 +76,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> update(
             @PathVariable UUID id, @Valid @RequestBody UpdatePurchaseOrderRequest request) {
+        log.info("Update id={}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.update(id, request)));
     }
 
@@ -77,6 +84,7 @@ public class PurchaseOrderController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('proc:purchase_order:delete')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        log.info("Delete id={}", id);
         purchaseOrderService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -85,6 +93,7 @@ public class PurchaseOrderController {
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> submit(@PathVariable UUID id) {
+        log.info("Submit id={}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.submit(id)));
     }
 
@@ -92,6 +101,7 @@ public class PurchaseOrderController {
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> approve(@PathVariable UUID id) {
+        log.info("Approve id={}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.approve(id)));
     }
 
@@ -100,6 +110,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> cancel(
             @PathVariable UUID id, @RequestParam(required = false) String reason) {
+        log.info("Cancel id={}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.cancel(id, reason)));
     }
 
@@ -108,6 +119,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> reject(
             @PathVariable UUID id, @RequestParam(required = false) String reason) {
+        log.info("Reject id={}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.reject(id, reason)));
     }
 
@@ -116,6 +128,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> receive(
             @PathVariable UUID id, @Valid @RequestBody ReceivePurchaseOrderRequest request) {
+        log.info("Receive id={}", id);
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.receive(id, request)));
     }
 }

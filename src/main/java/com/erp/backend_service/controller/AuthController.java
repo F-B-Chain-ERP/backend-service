@@ -20,6 +20,8 @@ import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.enums.PrincipalType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -39,6 +41,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final PermissionService permissionService;
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     public AuthController(AuthService authService, PermissionService permissionService) {
         this.authService = authService;
@@ -48,60 +51,70 @@ public class AuthController {
     /** Đăng ký tài khoản khách hàng (chỉ dành cho customer). */
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterCustomerRequest request) {
+        log.info("Register customer: email={}", request.email());
         return ResponseEntity.ok(ApiResponse.success(authService.registerCustomer(request)));
     }
 
     /** Đăng nhập bằng username/email/phone và mật khẩu, trả về cặp token. */
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
+        log.info("Login attempt: identifier={}", request.usernameOrEmail());
         return ResponseEntity.ok(ApiResponse.success(authService.login(request)));
     }
 
     /** Xác thực mã OTP email của phiên đăng ký / đăng nhập, trả về cặp token. */
     @PostMapping("/verify-email")
     public ResponseEntity<ApiResponse<AuthResponse>> verifyEmail(@Valid @RequestBody VerifyOtpRequest request) {
+        log.info("Verify email OTP");
         return ResponseEntity.ok(ApiResponse.success(authService.verifyEmailOtp(request)));
     }
 
     /** Gửi lại mã OTP xác thực email cho phiên đăng ký hiện tại. */
     @PostMapping("/resend-otp")
     public ResponseEntity<ApiResponse<AuthResponse>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        log.info("Resend registration OTP");
         return ResponseEntity.ok(ApiResponse.success(authService.resendRegistrationOtp(request)));
     }
 
     /** Quên mật khẩu: gửi mã OTP qua email và trả về reset token. */
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<AuthResponse>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        log.info("Forgot password: email={}", request.email());
         return ResponseEntity.ok(ApiResponse.success(authService.forgotPassword(request)));
     }
 
     /** Đặt lại mật khẩu bằng mã OTP và reset token. */
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponse<AuthResponse>> resetPassword(@Valid @RequestBody ResetPasswordOtpRequest request) {
+        log.info("Reset password");
         return ResponseEntity.ok(ApiResponse.success(authService.resetPassword(request)));
     }
 
     /** Đổi mật khẩu của người dùng đang đăng nhập (cần mật khẩu cũ). */
     @PostMapping("/change-password")
     public ResponseEntity<ApiResponse<AuthResponse>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        log.info("Change password");
         return ResponseEntity.ok(ApiResponse.success(authService.changePassword(request)));
     }
 
     /** Đăng nhập / đăng ký khách hàng qua Google OAuth2 (gửi Google ID token). */
     @PostMapping("/oauth2/google")
     public ResponseEntity<ApiResponse<AuthResponse>> googleOAuth2(@Valid @RequestBody GoogleOAuth2Request request) {
+        log.info("Google OAuth2 login");
         return ResponseEntity.ok(ApiResponse.success(authService.authenticateWithGoogle(request)));
     }
 
     /** Cấp cặp token mới từ refresh token hợp lệ. */
     @PostMapping("/refresh-token")
     public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        log.info("Refresh token");
         return ResponseEntity.ok(ApiResponse.success(authService.refreshToken(request)));
     }
 
     /** Chọn đơn vị (chi nhánh) làm việc sau khi đăng nhập, trả về token chứa branchId. */
     @PostMapping("/select-branch")
     public ResponseEntity<ApiResponse<AuthResponse>> selectBranch(@Valid @RequestBody SelectBranchRequest request) {
+        log.info("Select branch: branchId={}", request.branchId());
         return ResponseEntity.ok(ApiResponse.success(authService.selectBranch(request)));
     }
 
@@ -111,6 +124,7 @@ public class AuthController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody RefreshTokenRequest refreshTokenRequest
     ) {
+        log.info("Logout");
         String accessToken = authorization != null ? authorization : "";
         authService.logout(accessToken, refreshTokenRequest.refreshToken());
         return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully"));
@@ -123,6 +137,7 @@ public class AuthController {
      */
     @GetMapping("/my-permission")
     public ResponseEntity<ApiResponse<PermissionSnapshot>> myPermission() {
+        log.info("Get my permission");
         CustomUserDetails details = SecurityUtils.getCurrentUserDetails()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
         if (details.getPrincipalType() == PrincipalType.CUSTOMER) {

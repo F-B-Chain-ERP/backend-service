@@ -18,6 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -30,6 +32,7 @@ public class ReportJobController {
 
     private final ReportJobService reportJobService;
     private final StorageService storageService;
+    private static final Logger log = LoggerFactory.getLogger(ReportJobController.class);
 
     public ReportJobController(ReportJobService reportJobService, StorageService storageService) {
         this.reportJobService = reportJobService;
@@ -43,6 +46,7 @@ public class ReportJobController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PageResponse<ReportJobSummaryResponse>>> getMyJobs(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        log.info("Get list: page={}, size={}", pageable.getPageNumber(), pageable.getPageSize());
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.success(reportJobService.listMyJobs(currentUserId, pageable)));
@@ -54,6 +58,7 @@ public class ReportJobController {
     @GetMapping("/{jobId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<ReportJobResponse>> getJobStatus(@PathVariable UUID jobId) {
+        log.info("Get {}", jobId);
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         return ResponseEntity.ok(ApiResponse.success(reportJobService.getJob(jobId, currentUserId)));
@@ -65,6 +70,7 @@ public class ReportJobController {
     @GetMapping("/{jobId}/download")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Resource> download(@PathVariable UUID jobId) {
+        log.info("Download job id={}", jobId);
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         ReportJobResponse job = reportJobService.getJob(jobId, currentUserId);
@@ -91,6 +97,7 @@ public class ReportJobController {
     @DeleteMapping("/{jobId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> cancelJob(@PathVariable UUID jobId) {
+        log.info("Cancel job id={}", jobId);
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         reportJobService.cancelJob(jobId, currentUserId);

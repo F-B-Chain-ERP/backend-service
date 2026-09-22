@@ -13,6 +13,8 @@ import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
 import com.erp.backend_service.event.OrderRealtimeEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,8 @@ public class DeliveryServiceImpl implements DeliveryService {
     private final DataScopeHelper dataScopeHelper;
     private final ApplicationEventPublisher eventPublisher;
 
+    private static final Logger log = LoggerFactory.getLogger(DeliveryServiceImpl.class);
+
     public DeliveryServiceImpl(OrderDeliveryRepository deliveryRepository, OrderRepository orderRepository,
                                OrderStatusHistoryRepository historyRepository,
                                AccountRepository accountRepository,
@@ -49,6 +53,7 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Override
     @Transactional(readOnly = true)
     public DeliveryResponse getByOrderId(UUID orderId) {
+        log.info("Get delivery orderId={}", orderId);
         requireViewPermission();
         Order o = accessibleOrder(orderId);
         OrderDelivery d = deliveryRepository.findByOrderId(o.getId()).orElseThrow(
@@ -59,6 +64,7 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Override
     @Transactional
     public DeliveryResponse assign(UUID orderId, AssignDeliveryRequest request) {
+        log.info("Assign delivery orderId={}, shipper={}", orderId, request.shipperId());
         requireUpdatePermission();
         Order o = accessibleOrder(orderId);
         if (!"DELIVERY".equals(o.getOrderType())) {
@@ -97,12 +103,15 @@ public class DeliveryServiceImpl implements DeliveryService {
         publishRealtimeEvent(o, savedDelivery, OrderRealtimeEvent.TYPE_DELIVERY_ASSIGNED,
             "Phân công giao hàng: #" + o.getOrderCode(),
             "Đã phân công tài xế " + shipperName + " giao đơn #" + o.getOrderCode());
+        log.info("Delivery assigned: orderId={}, code={}, shipper={}", o.getId(), o.getOrderCode(),
+            shipper.getId());
         return toResponse(savedDelivery);
     }
 
     @Override
     @Transactional
     public DeliveryStatusResponse updateStatus(UUID orderId, UpdateDeliveryStatusRequest request) {
+        log.info("Update delivery status orderId={}, to={}", orderId, request.status());
         requireUpdatePermission();
         if (request.status() == null || request.status().isBlank()) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "Trạng thái không được để trống.");
@@ -180,6 +189,8 @@ public class DeliveryServiceImpl implements DeliveryService {
         publishRealtimeEvent(o, savedDelivery, OrderRealtimeEvent.TYPE_DELIVERY_STATUS_CHANGED,
             "Cập nhật giao hàng: #" + o.getOrderCode(),
             "Đơn hàng #" + o.getOrderCode() + " trạng thái giao: " + target.name());
+        log.info("Delivery status changed: orderId={}, code={}, {} -> {}", o.getId(), o.getOrderCode(), old,
+            target.name());
         return new DeliveryStatusResponse(d.getId(), o.getId(), old, target.name(), now);
     }
 

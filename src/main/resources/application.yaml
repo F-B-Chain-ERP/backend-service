@@ -77,8 +77,13 @@ app:
     bucket-name: ${MINIO_BUCKET_NAME:erp-products}
     public-url: ${MINIO_PUBLIC_URL:/storage}
   report:
-    sync-threshold: ${REPORT_SYNC_THRESHOLD:500}
     minio-bucket-name: ${MINIO_REPORT_BUCKET:erp-reports}
+    async-threshold-records: ${REPORT_ASYNC_THRESHOLD:100}
+    max-hard-sync-records: ${REPORT_MAX_HARD_SYNC_RECORDS:500}
+    logo-path: ${REPORT_LOGO_PATH:classpath:/report/logo-erp.png}
+    poll-interval-ms: ${REPORT_POLL_INTERVAL_MS:5000}
+    sse-enabled: ${REPORT_SSE_ENABLED:true}
+    async-timeout-minutes: ${REPORT_ASYNC_TIMEOUT_MINUTES:30}
   rabbitmq:
     report:
       exchange: ${RABBITMQ_REPORT_EXCHANGE:erp.report.exchange}

@@ -53,3 +53,22 @@ scrape_configs:
       - targets: ['cadvisor:8080']
         labels:
           tier: 'container'
+
+  # 7. Thu thập dữ liệu từ Spring Boot Actuator (ERP Queue Service)
+  - job_name: 'erp-queue-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['erp-queue:8090']
+        labels:
+          application: 'queue-service'
+          environment: 'production'
+
+  # 8. Thu thập dữ liệu từ RabbitMQ Broker (Built-in Prometheus Plugin)
+  - job_name: 'erp-rabbitmq'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['rabbitmq:15692']
+        labels:
+          application: 'rabbitmq'
+          tier: 'broker'

@@ -30,9 +30,13 @@ databaseChangeLog:
   - include:
       file: db/changelog/changeset/015-report-job.sql
   - include:
+      file: db/changelog/changeset/016-warehouse-type.sql
+  - include:
       file: db/changelog/changeset/015-fix-idempotency-table-mysql.sql
   - include:
       file: db/changelog/changeset/016-seed-pos-permissions-for-staff-roles.sql
+  - include:
+      file: db/changelog/changeset/017-report-job-reliability.sql
   - include:
       file: db/changelog/changeset/018-unit-conversion.sql
   - include:

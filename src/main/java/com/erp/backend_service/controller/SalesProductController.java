@@ -44,7 +44,8 @@ public class SalesProductController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) Boolean isFeatured,
             @RequestParam(required = false) Boolean isBestSeller,
-            @RequestParam(required = false) String sortBy
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) UUID branchId
     ) {
         PageResponse<ProductSalesResponse> response = productService.listForSales(
                 page,
@@ -53,7 +54,8 @@ public class SalesProductController {
                 categoryId,
                 isFeatured,
                 isBestSeller,
-                sortBy
+                sortBy,
+                branchId
         );
         return ResponseEntity.ok(ApiResponse.success(response));
     }

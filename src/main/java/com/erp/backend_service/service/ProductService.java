@@ -58,11 +58,12 @@ public interface ProductService {
             UUID categoryId,
             Boolean isFeatured
     ) {
-        return listForSales(page, size, search, categoryId, isFeatured, null, null);
+        return listForSales(page, size, search, categoryId, isFeatured, null, null, null);
     }
 
     /**
      * Lấy danh sách sản phẩm cho kênh bán hàng (Sales channel) hỗ trợ phân trang, lọc và sắp xếp.
+     * Truyền branchId để chỉ lấy món bán tại chi nhánh đó (không truyền = mọi món ACTIVE).
      */
     PageResponse<ProductSalesResponse> listForSales(
             int page,
@@ -71,7 +72,8 @@ public interface ProductService {
             UUID categoryId,
             Boolean isFeatured,
             Boolean isBestSeller,
-            String sortBy
+            String sortBy,
+            UUID branchId
     );
 
     /**

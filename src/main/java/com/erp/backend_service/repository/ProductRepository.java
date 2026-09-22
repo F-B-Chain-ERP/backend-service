@@ -65,6 +65,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * Biến thể không COUNT(*) của {@link #findActiveForSales} cho kênh bán hàng.
      * Store tải 1 cục, không pager theo total nên không cần totalElements;
      * Slice giúp Spring Data bỏ query COUNT, bớt 1 full-scan mỗi request.
+     * Có branchId thì chỉ trả món KHẢ DỤNG tại chi nhánh đó:
+     * (chưa có record availability = mặc định bán; chỉ record is_available=false mới ẩn).
      */
     @Query("""
                 SELECT p
@@ -76,12 +78,20 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                 AND (:categoryId IS NULL OR p.categoryId = :categoryId)
                 AND (:isFeatured IS NULL OR p.isFeatured = :isFeatured)
                 AND (:isBestSeller IS NULL OR p.isBestSeller = :isBestSeller)
+                AND (:branchId IS NULL OR NOT EXISTS (
+                    SELECT bpa
+                    FROM BranchProductAvailability bpa
+                    WHERE bpa.branchId = :branchId
+                    AND bpa.productId = p.id
+                    AND bpa.isAvailable = false
+                ))
             """)
     Slice<Product> findActiveForSalesSlice(
             @Param("search") String search,
             @Param("categoryId") UUID categoryId,
             @Param("isFeatured") Boolean isFeatured,
             @Param("isBestSeller") Boolean isBestSeller,
+            @Param("branchId") UUID branchId,
             Pageable pageable
     );
 

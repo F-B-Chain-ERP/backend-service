@@ -82,10 +82,15 @@ class OrderRealtimePublisherTest {
         // 3. Phải gửi tới kênh tài xế
         verify(stringRedisTemplate).convertAndSend(eq(RedisKeys.notificationChannel(shipperId)), any(String.class));
 
-        // 4. Phải tạo notification cá nhân cho khách hàng, shipper và nhân viên chi nhánh.
-        verify(notificationService).notifyCustomer(eq(customerId), any(String.class), any(String.class));
-        verify(notificationService).notifyAccount(eq(shipperId), any(String.class), any(String.class));
-        verify(notificationService).notifyAccount(eq(managerId), any(String.class), any(String.class));
+        // 4. Phải tạo notification gộp 1 lần cho nhân viên chi nhánh + shipper (account) và khách hàng.
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<UUID>> accountCaptor = ArgumentCaptor.forClass(Set.class);
+        verify(notificationService).notifyMany(accountCaptor.capture(), eq(customerId), eq("Đang pha chế"), eq("Đơn hàng đang được chuẩn bị"));
+        assertTrue(accountCaptor.getValue().contains(managerId), "phải chứa managerId");
+        assertTrue(accountCaptor.getValue().contains(shipperId), "phải chứa shipperId");
+        assertEquals(2, accountCaptor.getValue().size());
+        verify(notificationService, never()).notifyCustomer(any(), any(), any());
+        verify(notificationService, never()).notifyAccount(any(), any(), any());
     }
 
     @Test

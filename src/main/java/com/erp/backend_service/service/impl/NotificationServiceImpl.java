@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -70,13 +71,14 @@ public class NotificationServiceImpl implements NotificationService {
         notification.setSentAt(Instant.now());
         Notification saved = notificationRepository.save(notification);
 
-        // Đẩy thông báo qua Redis Pub/Sub để realtime SSE
+        // Đẩy thông báo qua Redis Pub/Sub để realtime SSE.
+        // Lỗi mạng chỉ warn gọn (không stack): dòng DB đã lưu, chuông đọc lại được khi poll.
         try {
             NotificationResponse response = toResponse(saved);
             String payload = objectMapper.writeValueAsString(response);
             stringRedisTemplate.convertAndSend(RedisKeys.notificationChannel(principalId), payload);
         } catch (Exception e) {
-            log.error("Không thể gửi thông báo realtime qua Redis cho principal: {}", principalId, e);
+            log.warn("Bỏ qua push Redis cho principal {}: {}", principalId, e.getMessage());
         }
     }
 
@@ -157,6 +159,88 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
         notificationRepository.deleteReadByAccountId(accountId);
+    }
+
+    /**
+     * Fan-out hàng loạt trong 1 transaction (1 round-trip INSERT) cho realtime đơn hàng.
+     * Redis publish sau save: lỗi mạng chỉ warn gọn (không kèm stack) vì dòng DB đã lưu,
+     * chuông vẫn đọc được khi poll lại — tránh flood log khi Redis chập chờn.
+     */
+    @Override
+    @Transactional
+    public List<NotificationResponse> notifyMany(java.util.Set<UUID> accountIds, UUID customerId,
+                                                 String title, String body) {
+        if ((accountIds == null || accountIds.isEmpty()) && customerId == null) {
+            return List.of();
+        }
+        if (title == null || title.isBlank()) {
+            return List.of();
+        }
+        Instant now = Instant.now();
+        List<Notification> entities = new ArrayList<>();
+        if (accountIds != null) {
+            for (UUID accountId : accountIds) {
+                if (accountId == null) {
+                    continue;
+                }
+                entities.add(newNotification(accountId, null, "ACCOUNT", title, body, now));
+            }
+        }
+        if (customerId != null) {
+            entities.add(newNotification(null, customerId, "CUSTOMER", title, body, now));
+        }
+        if (entities.isEmpty()) {
+            return List.of();
+        }
+        List<Notification> saved = notificationRepository.saveAll(entities);
+        List<NotificationResponse> responses = new ArrayList<>(saved.size());
+        for (Notification notification : saved) {
+            responses.add(toResponse(notification));
+            try {
+                UUID recipientId = notification.getAccountId() != null
+                    ? notification.getAccountId() : notification.getCustomerId();
+                String payload = objectMapper.writeValueAsString(toResponse(notification));
+                stringRedisTemplate.convertAndSend(RedisKeys.notificationChannel(recipientId), payload);
+            } catch (Exception e) {
+                log.warn("Bỏ qua push Redis cho notification {}: {}", notification.getId(), e.getMessage());
+            }
+        }
+        return responses;
+    }
+
+    /**
+     * Dọn thông báo đã đọc quá 30 ngày (3h sáng hằng ngày) để bảng không phình
+     * vô hạn theo mỗi sự kiện đơn hàng.
+     */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void purgeReadNotifications() {
+        try {
+            long deleted = notificationRepository.deleteByStatusAndReadAtBefore(
+                "READ", Instant.now().minus(30, java.time.temporal.ChronoUnit.DAYS));
+            if (deleted > 0) {
+                log.info("Đã dọn {} thông báo đã đọc quá 30 ngày", deleted);
+            }
+        } catch (Exception e) {
+            log.warn("Dọn thông báo đã đọc thất bại: {}", e.getMessage());
+        }
+    }
+
+    private Notification newNotification(UUID accountId, UUID customerId, String recipientType,
+                                         String title, String body, Instant now) {
+        Notification notification = new Notification();
+        notification.setRecipientType(recipientType);
+        if ("CUSTOMER".equals(recipientType)) {
+            notification.setCustomerId(customerId);
+        } else {
+            notification.setAccountId(accountId);
+        }
+        notification.setChannel(CHANNEL_IN_APP);
+        notification.setTitle(title);
+        notification.setBody(body);
+        notification.setStatus(STATUS_PENDING);
+        notification.setSentAt(now);
+        return notification;
     }
 
     private NotificationResponse toResponse(Notification n) {

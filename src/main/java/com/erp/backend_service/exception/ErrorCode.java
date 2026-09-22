@@ -270,9 +270,14 @@ public enum ErrorCode {
     FIN_400_PAYABLE_SUPPLIER_INACTIVE(400, "FIN_400_PAYABLE_SUPPLIER_INACTIVE",
             "Nhà cung cấp đang ngừng hoạt động"),
     FIN_400_PAYABLE_INVOICE_NO_DUPLICATE(409, "FIN_400_PAYABLE_INVOICE_NO_DUPLICATE",
-            "Số hóa đơn đã tồn tại trong hệ thống");
+            "Số hóa đơn đã tồn tại trong hệ thống"),
 
-
+    KDS_404_TICKET_NOT_FOUND(404, "KDS_404_TICKET_NOT_FOUND", "Không tìm thấy phiếu bếp."),
+    KDS_404_TICKET_ITEM_NOT_FOUND(404, "KDS_404_TICKET_ITEM_NOT_FOUND", "Không tìm thấy món trong phiếu bếp."),
+    KDS_400_INVALID_STATUS_TRANSITION(400, "KDS_400_INVALID_STATUS_TRANSITION",
+                                        "Chuyển trạng thái bếp không hợp lệ."),
+    KDS_400_INVALID_QUANTITY(400, "KDS_400_INVALID_QUANTITY", "Số lượng hoàn tất không hợp lệ."),
+    KDS_400_INVALID_STATION(400, "KDS_400_INVALID_STATION", "Trạm bếp không hợp lệ. Hệ thống chỉ dùng trạm BAR.");
     private final int statusCode;
     private final String code;
     private final String message;

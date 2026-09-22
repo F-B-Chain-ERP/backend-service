@@ -8,12 +8,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface BranchVariantDailyStockRepository extends JpaRepository<BranchVariantDailyStock, UUID> {
     Optional<BranchVariantDailyStock> findByBranchIdAndVariantIdAndBusinessDateAndStatus(UUID branchId, UUID variantId,
                                                                                          LocalDate date, String status);
+
+    /** Mọi dòng tồn của chi nhánh trong 1 ngày kinh doanh (màn Tồn sản phẩm). */
+    List<BranchVariantDailyStock> findByBranchIdAndBusinessDateAndStatus(UUID branchId, LocalDate date,
+                                                                         String status);
 
     /** Dòng tồn mới nhất của variant tại chi nhánh (để carryover số dư sang ngày mới). */
     Optional<BranchVariantDailyStock> findFirstByBranchIdAndVariantIdAndStatusOrderByBusinessDateDesc(

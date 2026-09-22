@@ -18,6 +18,9 @@ public interface BranchProductAvailabilityRepository extends JpaRepository<Branc
 
     Optional<BranchProductAvailability> findByBranchIdAndProductId(UUID branchId, UUID productId);
 
+    /** Mọi dòng mở bán của chi nhánh (màn Tồn lấy nền hàng đang bán). */
+    List<BranchProductAvailability> findByBranchIdAndStatus(UUID branchId, String status);
+
     @Query("""
         SELECT bpa FROM BranchProductAvailability bpa
         JOIN Product p ON p.id = bpa.productId

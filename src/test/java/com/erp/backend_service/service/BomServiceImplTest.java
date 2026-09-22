@@ -48,6 +48,9 @@ class BomServiceImplTest {
     @Mock
     private UnitRepository unitRepository;
 
+    @Mock
+    private UnitConversionService unitConversionService;
+
     private BomMapper bomMapper;
     private BomServiceImpl bomService;
 
@@ -70,6 +73,7 @@ class BomServiceImplTest {
                 categoryRepository,
                 materialRepository,
                 unitRepository,
+                unitConversionService,
                 bomMapper
         );
 
@@ -336,6 +340,8 @@ class BomServiceImplTest {
         when(productRecipeItemRepository.findByIdAndVariantId(itemId, variantId)).thenReturn(Optional.of(item));
         when(materialRepository.findById(materialId)).thenReturn(Optional.of(material));
         when(unitRepository.findById(unitId)).thenReturn(Optional.of(unit));
+        doThrow(new BaseException(ErrorCode.MENU_400_BOM_UNIT_MISMATCH))
+                .when(unitConversionService).validateBomUnit(any(), any());
 
         UpdateBomItemRequest request = new UpdateBomItemRequest(
                 materialId,

@@ -101,7 +101,7 @@ public class MaterialServiceImpl implements MaterialService {
                 pageResult.getTotalElements(),
                 pageResult.getTotalPages(),
                 materials.stream()
-                        .map(m -> materialMapper.toResponse(m, categoryNameMap.get(m.getCategoryId()), unitNameMap.get(m.getBaseUnitId())))
+                        .map(m -> materialMapper.toResponse(m, categoryNameMap.get(m.getCategoryId()), unitNameMap.get(m.getBaseUnitId()), unitNameMap.get(m.getPackUnitId())))
                         .toList());
     }
 
@@ -111,7 +111,8 @@ public class MaterialServiceImpl implements MaterialService {
         Material material = findById(id);
         String categoryName = resolveCategoryName(material.getCategoryId());
         String unitName = resolveUnitName(material.getBaseUnitId());
-        return materialMapper.toDetailResponse(material, categoryName, unitName);
+        String packUnitName = resolveUnitName(material.getPackUnitId());
+        return materialMapper.toDetailResponse(material, categoryName, unitName, packUnitName);
     }
 
     @Override
@@ -134,6 +135,7 @@ public class MaterialServiceImpl implements MaterialService {
         if (Boolean.TRUE.equals(request.isPerishable()) && request.shelfLifeDays() == null) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        validatePack(request.packUnitId(), request.packToBaseFactor(), request.baseUnitId());
 
         Material material = materialMapper.toEntity(request);
         material.setCode(code);
@@ -169,6 +171,7 @@ public class MaterialServiceImpl implements MaterialService {
         if (status != null && !"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        validatePack(request.packUnitId(), request.packToBaseFactor(), request.baseUnitId());
 
         materialMapper.updateEntity(material, request);
         if (status != null) {
@@ -233,6 +236,32 @@ public class MaterialServiceImpl implements MaterialService {
         return unitRepository.findById(unitId).map(Unit::getName).orElse(null);
     }
 
+    /**
+     * Đóng gói NVL: có đơn vị thì bắt buộc hệ số dương + đơn vị ACTIVE + khác đơn vị gốc.
+     * Có hệ số mà thiếu đơn vị thì từ chối để khỏi ghi số treo.
+     */
+    private void validatePack(UUID packUnitId, java.math.BigDecimal packToBaseFactor, UUID baseUnitId) {
+        if (packUnitId == null && packToBaseFactor == null) {
+            return;
+        }
+        if (packUnitId == null || packToBaseFactor == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Đơn vị đóng gói và hệ số quy đổi phải đi cùng nhau.");
+        }
+        if (packToBaseFactor.signum() <= 0) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Hệ số đóng gói phải lớn hơn 0.");
+        }
+        if (packUnitId.equals(baseUnitId)) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Đơn vị đóng gói phải khác đơn vị cơ sở.");
+        }
+        Unit packUnit = unitRepository.findById(packUnitId)
+                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND));
+        if (!"ACTIVE".equals(packUnit.getStatus())) {
+            throw new BaseException(ErrorCode.INV_404_UNIT_NOT_FOUND);
+        }
+    }
+
     private Map<UUID, String> resolveCategoryNames(List<Material> materials) {
         List<UUID> categoryIds = materials.stream()
                 .map(Material::getCategoryId)
@@ -248,7 +277,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     private Map<UUID, String> resolveUnitNames(List<Material> materials) {
         List<UUID> unitIds = materials.stream()
-                .map(Material::getBaseUnitId)
+                .flatMap(m -> java.util.stream.Stream.of(m.getBaseUnitId(), m.getPackUnitId()))
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList();

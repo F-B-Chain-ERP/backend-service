@@ -55,6 +55,111 @@ public class StockBalanceMutationService {
                 ));
     }
 
+    /**
+     * Trừ tồn cho luồng bán (principal CUSTOMER không có scope kho nên không check scope
+     * user ở đây; kho đã resolve từ chi nhánh của đơn, gọi nội bộ nên tin cậy).
+     * Chặn khi khả dụng không đủ để khỏi âm kho lén.
+     */
+    public void decreaseForSale(
+            UUID warehouseId,
+            UUID materialId,
+            BigDecimal quantity
+    ) {
+        if (quantity == null
+                || quantity.signum() <= 0) {
+            throw new BaseException(
+                    ErrorCode.INVALID_QUANTITY
+            );
+        }
+
+        MaterialStockBalance balance =
+                lockForSale(
+                        warehouseId,
+                        materialId
+                );
+
+        BigDecimal onHand =
+                balance.getQuantityOnHand() == null
+                        ? BigDecimal.ZERO
+                        : balance.getQuantityOnHand();
+
+        BigDecimal reserved =
+                balance.getQuantityReserved() == null
+                        ? BigDecimal.ZERO
+                        : balance.getQuantityReserved();
+
+        BigDecimal available =
+                onHand.subtract(reserved);
+
+        if (available.compareTo(quantity) < 0) {
+            throw new BaseException(
+                    ErrorCode.INV_400_INSUFFICIENT_STOCK
+            );
+        }
+
+        balance.setQuantityOnHand(
+                onHand.subtract(quantity)
+        );
+
+        balanceRepository.save(balance);
+    }
+
+    /**
+     * Hoàn tồn cho luồng bán (hủy sớm). Đối xứng decreaseForSale, không check scope.
+     */
+    public void increaseForSale(
+            UUID warehouseId,
+            UUID materialId,
+            BigDecimal quantity
+    ) {
+        if (quantity == null
+                || quantity.signum() <= 0) {
+            throw new BaseException(
+                    ErrorCode.INVALID_QUANTITY
+            );
+        }
+
+        MaterialStockBalance balance =
+                lockForSale(
+                        warehouseId,
+                        materialId
+                );
+
+        BigDecimal current =
+                balance.getQuantityOnHand() == null
+                        ? BigDecimal.ZERO
+                        : balance.getQuantityOnHand();
+
+        balance.setQuantityOnHand(
+                current.add(quantity)
+        );
+
+        balanceRepository.save(balance);
+    }
+
+    private MaterialStockBalance lockForSale(
+            UUID warehouseId,
+            UUID materialId
+    ) {
+        materialRepository.findById(materialId)
+                .orElseThrow(() ->
+                        new BaseException(
+                                ErrorCode.MATERIAL_NOT_FOUND
+                        )
+                );
+
+        balanceRepository.ensureExists(warehouseId, materialId);
+
+        return balanceRepository
+                .findForUpdate(
+                        warehouseId,
+                        materialId
+                )
+                .orElseThrow(() -> new IllegalStateException(
+                        "Stock balance was not created or found"
+                ));
+    }
+
     public void increase(
             UUID warehouseId,
             UUID materialId,

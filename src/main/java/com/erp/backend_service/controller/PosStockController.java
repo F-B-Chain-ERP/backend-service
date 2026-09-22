@@ -4,14 +4,27 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.pos.PosStockService;
+import com.erp.core.dto.request.pos.RestockDailyStockBatchRequest;
 import com.erp.core.dto.request.pos.RestockDailyStockRequest;
 import com.erp.core.dto.response.ApiResponse;
+import com.erp.core.dto.response.PageResponse;
+import com.erp.core.dto.response.inv.StockTransferResponse;
+import com.erp.core.dto.response.pos.DailyStockBatchResponse;
+import com.erp.core.dto.response.pos.DailyStockLineResponse;
+import com.erp.core.dto.response.pos.DailyStockLogResponse;
 import com.erp.core.dto.response.pos.DailyStockResponse;
+import com.erp.core.dto.response.pos.MaterialShortageResponse;
 import com.erp.core.domain.BranchVariantDailyStock;
 import com.erp.core.enums.PrincipalType;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.UUID;
 
 /**
  * Tồn bán trong ngày của POS. Chỉ nhân viên quản lý bán hàng, CUSTOMER không được gọi.
@@ -25,6 +38,71 @@ public class PosStockController {
 
     public PosStockController(PosStockService stockService) {
         this.stockService = stockService;
+    }
+
+    /** Màn Tồn sản phẩm: tồn từng biến thể trong 1 ngày kinh doanh (search theo mã/tên). */
+    @GetMapping
+    @PreAuthorize("hasAuthority('store:product_stock:view')")
+    public ResponseEntity<ApiResponse<PageResponse<DailyStockLineResponse>>> list(
+        @RequestParam(required = false) UUID branchId,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+        @RequestParam(required = false) String search,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.list(branchId, date, search, page, size),
+            "Lấy tồn mở bán trong ngày thành công"));
+    }
+
+    /** Lịch sử biến động tồn: RESTOCK / SALE / ADJUSTMENT (mới nhất trước). */
+    @GetMapping("/history")
+    @PreAuthorize("hasAuthority('store:product_stock_history:view')")
+    public ResponseEntity<ApiResponse<PageResponse<DailyStockLogResponse>>> history(        @RequestParam(required = false) UUID branchId,
+        @RequestParam(required = false) UUID variantId,
+        @RequestParam(required = false) Instant from,
+        @RequestParam(required = false) Instant to,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.history(branchId, variantId, from, to, page, size),
+            "Lấy lịch sử biến động tồn thành công"));
+    }
+
+    /**
+     * Bảng đối soát NVL ngày (tab NVL &amp; Cấp hàng): kế hoạch × BOM vs tồn kho bar.
+     * Cùng đối tượng xem màn tồn nên dùng quyền store.
+     */
+    @GetMapping("/material-shortage")
+    @PreAuthorize("hasAuthority('store:product_stock:view')")
+    public ResponseEntity<ApiResponse<MaterialShortageResponse>> materialShortage(
+        @RequestParam UUID branchId,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.materialShortage(branchId, date),
+            "Lấy bảng đối soát NVL thành công"));
+    }
+
+    /**
+     * Tạo yêu cầu cấp hàng từ kho tổng theo số thiếu (trạng thái REQUESTED,
+     * đi tiếp luồng duyệt 2 phe ở màn điều chuyển).
+     */
+    @PostMapping("/request-replenishment")
+    @PreAuthorize("hasAuthority('inv:stock_transfer:create')")
+    public ResponseEntity<ApiResponse<StockTransferResponse>> requestReplenishment(
+        @RequestParam UUID branchId,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.requestReplenishment(branchId, date),
+            "Tạo yêu cầu cấp hàng thành công, chờ kho tổng duyệt"));
+    }
+
+    @PostMapping("/restock-batch")
+    public ResponseEntity<ApiResponse<DailyStockBatchResponse>> restockBatch(
+        @Valid @RequestBody RestockDailyStockBatchRequest request) {
+        if (SecurityUtils.getCurrentPrincipalType().orElse(null) == PrincipalType.CUSTOMER) {
+            throw new BaseException(ErrorCode.UNAUTHORIZED);
+        }
+        if (!SecurityUtils.hasPermission("pos:order:update")) {
+            throw new BaseException(ErrorCode.UNAUTHORIZED);
+        }
+        return ResponseEntity.ok(ApiResponse.success(stockService.restockBatch(request),
+            "Chốt tồn hàng loạt thành công"));
     }
 
     @PostMapping("/restock")

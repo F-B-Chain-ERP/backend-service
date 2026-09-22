@@ -2,12 +2,12 @@ package com.erp.backend_service.service.pos;
 
 import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.repository.BranchProductAvailabilityRepository;
 import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.repository.BranchVariantDailyStockRepository;
 import com.erp.backend_service.repository.BranchVariantStockLogRepository;
 import com.erp.backend_service.repository.MaterialRepository;
 import com.erp.backend_service.repository.MaterialStockBalanceRepository;
-import com.erp.backend_service.repository.OrderItemRepository;
 import com.erp.backend_service.repository.ProductRepository;
 import com.erp.backend_service.repository.ProductRecipeItemRepository;
 import com.erp.backend_service.repository.ProductVariantRepository;
@@ -16,11 +16,11 @@ import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.service.StockTransferService;
 import com.erp.backend_service.service.UnitConversionService;
+import com.erp.core.domain.BranchProductAvailability;
 import com.erp.core.domain.BranchVariantDailyStock;
 import com.erp.core.domain.BranchVariantStockLog;
 import com.erp.core.domain.Material;
 import com.erp.core.domain.MaterialStockBalance;
-import com.erp.core.domain.OrderItem;
 import com.erp.core.domain.Product;
 import com.erp.core.domain.ProductRecipeItem;
 import com.erp.core.domain.ProductVariant;
@@ -28,8 +28,10 @@ import com.erp.core.domain.Unit;
 import com.erp.core.domain.Warehouse;
 import com.erp.core.dto.request.inv.CreateStockTransferRequest;
 import com.erp.core.dto.request.inv.StockTransferItemRequest;
+import com.erp.core.dto.request.pos.RestockDailyStockBatchRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.inv.StockTransferResponse;
+import com.erp.core.dto.response.pos.DailyStockBatchResponse;
 import com.erp.core.dto.response.pos.DailyStockLineResponse;
 import com.erp.core.dto.response.pos.DailyStockLogResponse;
 import com.erp.core.dto.response.pos.MaterialShortageLineResponse;
@@ -74,6 +76,7 @@ public class PosStockService {
     private final BranchVariantStockLogRepository logRepository;
     private final PosBusinessDay businessDay;
     private final BranchRepository branchRepository;
+    private final BranchProductAvailabilityRepository availabilityRepository;
     private final DataScopeHelper dataScopeHelper;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
@@ -81,7 +84,6 @@ public class PosStockService {
     private final UnitRepository unitRepository;
     private final MaterialStockBalanceRepository balanceRepository;
     private final WarehouseRepository warehouseRepository;
-    private final OrderItemRepository orderItemRepository;
     private final ProductRecipeItemRepository recipeRepository;
     private final StockTransferService stockTransferService;
     private final UnitConversionService unitConversionService;
@@ -90,6 +92,7 @@ public class PosStockService {
                            BranchVariantStockLogRepository logRepository,
                            PosBusinessDay businessDay,
                            BranchRepository branchRepository,
+                           BranchProductAvailabilityRepository availabilityRepository,
                            DataScopeHelper dataScopeHelper,
                            ProductRepository productRepository,
                            ProductVariantRepository variantRepository,
@@ -97,7 +100,6 @@ public class PosStockService {
                            UnitRepository unitRepository,
                            MaterialStockBalanceRepository balanceRepository,
                            WarehouseRepository warehouseRepository,
-                           OrderItemRepository orderItemRepository,
                            ProductRecipeItemRepository recipeRepository,
                            StockTransferService stockTransferService,
                            UnitConversionService unitConversionService) {
@@ -105,6 +107,7 @@ public class PosStockService {
         this.logRepository = logRepository;
         this.businessDay = businessDay;
         this.branchRepository = branchRepository;
+        this.availabilityRepository = availabilityRepository;
         this.dataScopeHelper = dataScopeHelper;
         this.productRepository = productRepository;
         this.variantRepository = variantRepository;
@@ -112,7 +115,6 @@ public class PosStockService {
         this.unitRepository = unitRepository;
         this.balanceRepository = balanceRepository;
         this.warehouseRepository = warehouseRepository;
-        this.orderItemRepository = orderItemRepository;
         this.recipeRepository = recipeRepository;
         this.stockTransferService = stockTransferService;
         this.unitConversionService = unitConversionService;
@@ -236,9 +238,9 @@ public class PosStockService {
     }
 
     /**
-     * Màn Tồn sản phẩm: mọi dòng tồn của chi nhánh trong 1 ngày kinh doanh,
-     * kèm tên SP/biến thể, lọc search theo mã/tên, phân trang trong bộ nhớ
-     * (1 chi nhánh 1 ngày chỉ vài nghìn dòng).
+     * Màn Tồn sản phẩm: TOÀN BỘ biến thể đang mở bán tại chi nhánh (kể cả chưa có
+     * dòng tồn hôm nay — các số mở bán/đã bán/còn lại null hiển thị "—"),
+     * kèm tên SP/biến thể + gợi ý năng lực NVL, lọc search, phân trang trong bộ nhớ.
      */
     @Transactional(readOnly = true)
     public PageResponse<DailyStockLineResponse> list(UUID branchId, LocalDate date, String search,
@@ -251,39 +253,62 @@ public class PosStockService {
         }
         UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(branchId);
         LocalDate businessDate = date != null ? date : businessDay.today(effectiveBranch);
-        List<BranchVariantDailyStock> lines =
-            stockRepository.findByBranchIdAndBusinessDateAndStatus(effectiveBranch, businessDate, "ACTIVE");
-        Map<UUID, ProductVariant> variants = variantRepository.findAllById(
-            lines.stream().map(BranchVariantDailyStock::getVariantId).filter(Objects::nonNull)
-                .distinct().toList()).stream()
-            .collect(Collectors.toMap(ProductVariant::getId, Function.identity(), (a, b) -> a));
+        // Nền: toàn bộ biến thể đang mở bán tại chi nhánh (kể cả chưa có dòng tồn hôm nay).
+        List<BranchProductAvailability> availabilities =
+            availabilityRepository.findByBranchIdAndStatus(effectiveBranch, "ACTIVE").stream()
+                .filter(BranchProductAvailability::isAvailable).toList();
         Map<UUID, Product> products = productRepository.findAllById(
-            variants.values().stream().map(ProductVariant::getProductId).filter(Objects::nonNull)
-                .distinct().toList()).stream()
+            availabilities.stream().map(BranchProductAvailability::getProductId)
+                .filter(Objects::nonNull).distinct().toList()).stream()
+            .filter(p -> "ACTIVE".equals(p.getStatus()))
             .collect(Collectors.toMap(Product::getId, Function.identity(), (a, b) -> a));
+        Map<UUID, ProductVariant> variants = products.isEmpty() ? Map.of()
+            : variantRepository.findByProductIdInAndStatus(products.keySet(), "ACTIVE").stream()
+                .collect(Collectors.toMap(ProductVariant::getId, Function.identity(), (a, b) -> a));
+        Map<UUID, BranchVariantDailyStock> stockByVariant =
+            stockRepository.findByBranchIdAndBusinessDateAndStatus(effectiveBranch, businessDate, "ACTIVE")
+                .stream().collect(Collectors.toMap(BranchVariantDailyStock::getVariantId,
+                    Function.identity(), (a, b) -> a));
+        Map<UUID, List<ProductRecipeItem>> recipesByVariant = variants.keySet().isEmpty() ? Map.of()
+            : recipeRepository.findByVariantIdInAndStatus(variants.keySet(), "ACTIVE").stream()
+                .collect(Collectors.groupingBy(ProductRecipeItem::getVariantId));
+        Set<UUID> materialIds = recipesByVariant.values().stream().flatMap(List::stream)
+            .map(ProductRecipeItem::getMaterialId).filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<UUID, Material> materialsById = materialIds.isEmpty() ? Map.of()
+            : materialRepository.findAllById(materialIds).stream()
+                .collect(Collectors.toMap(Material::getId, Function.identity(), (a, b) -> a));
+        Map<UUID, BigDecimal> availableByMaterial = loadAvailableMaterials(effectiveBranch);
         String keyword = search == null ? null : search.trim().toLowerCase();
         List<DailyStockLineResponse> filtered = new ArrayList<>();
-        for (BranchVariantDailyStock s : lines) {
-            ProductVariant v = variants.get(s.getVariantId());
-            Product p = v == null ? null : products.get(v.getProductId());
+        for (ProductVariant v : variants.values()) {
+            Product p = products.get(v.getProductId());
             if (keyword != null && !keyword.isEmpty()) {
-                String haystack = ((v == null ? "" : nvl(v.getVariantCode()) + " " + nvl(v.getVariantName())) + " "
+                String haystack = ((nvl(v.getVariantCode()) + " " + nvl(v.getVariantName())) + " "
                     + (p == null ? "" : nvl(p.getCode()) + " " + nvl(p.getName()))).toLowerCase();
                 if (!haystack.contains(keyword)) {
                     continue;
                 }
             }
+            BranchVariantDailyStock s = stockByVariant.get(v.getId());
             filtered.add(new DailyStockLineResponse(
-                s.getVariantId(),
-                v == null ? null : v.getVariantCode(),
-                v == null ? null : v.getVariantName(),
+                v.getId(),
+                v.getVariantCode(),
+                v.getVariantName(),
                 p == null ? null : p.getId(),
                 p == null ? null : p.getCode(),
                 p == null ? null : p.getName(),
-                s.getBusinessDate(),
-                s.getOpeningQuantity(), s.getSoldQuantity(), s.getRemainingQuantity()));
+                businessDate,
+                s == null ? null : s.getOpeningQuantity(),
+                s == null ? null : s.getSoldQuantity(),
+                s == null ? null : s.getRemainingQuantity(),
+                capabilityOf(recipesByVariant.get(v.getId()), availableByMaterial, materialsById),
+                recipesByVariant.containsKey(v.getId())));
         }
-        filtered.sort((a, b) -> compareNullLast(a.productName(), b.productName()));
+        filtered.sort((a, b) -> {
+            int byProduct = compareNullLast(a.productName(), b.productName());
+            return byProduct != 0 ? byProduct : compareNullLast(a.variantName(), b.variantName());
+        });
         int total = filtered.size();
         int fromIndex = Math.min(page * size, total);
         int toIndex = Math.min(fromIndex + size, total);
@@ -456,12 +481,12 @@ public class PosStockService {
     /** Số lượng quy về đơn vị gốc; không quy được thì cộng thô + gắn cờ để đối chiếu tay. */
     private BigDecimal toBaseUnit(BigDecimal quantity, UUID unitId, Material material,
                                   UUID materialId, Map<UUID, Boolean> unitMismatch) {
-        try {
-            return unitConversionService.convertToBaseUnit(quantity, unitId, material);
-        } catch (BaseException e) {
+        BigDecimal converted = unitConversionService.convertToBaseUnitLenient(quantity, unitId, material);
+        if (converted == null) {
             unitMismatch.put(materialId, true);
             return quantity;
         }
+        return converted;
     }
 
     /** Kho bán hàng của chi nhánh: ACTIVE, không phải CENTRAL, bắt buộc đúng 1 kho. */
@@ -492,6 +517,97 @@ public class PosStockService {
 
     private record ShortageComputed(LocalDate businessDate, Warehouse warehouse, Warehouse central,
                                     List<MaterialShortageLineResponse> lines) {
+    }
+
+    /**
+     * Chốt tồn mở bán hàng loạt (nút Chốt theo gợi ý): từng dòng độc lập,
+     * lỗi dòng nào báo dòng đó, không rollback cả lô.
+     */
+    @Transactional
+    public DailyStockBatchResponse restockBatch(RestockDailyStockBatchRequest request) {
+        if (request == null || request.branchId() == null) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Chi nhánh không được để trống.");
+        }
+        UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(request.branchId());
+        List<DailyStockBatchResponse.DailyStockBatchItemResponse> results = new ArrayList<>();
+        int succeeded = 0;
+        for (RestockDailyStockBatchRequest.RestockDailyStockBatchItemRequest item : request.items()) {
+            try {
+                BranchVariantDailyStock saved = restock(effectiveBranch, item.variantId(),
+                    item.openingQuantity(), request.note());
+                succeeded++;
+                results.add(new DailyStockBatchResponse.DailyStockBatchItemResponse(
+                    item.variantId(), true, "OK",
+                    saved.getOpeningQuantity(), saved.getRemainingQuantity()));
+            } catch (BaseException e) {
+                results.add(new DailyStockBatchResponse.DailyStockBatchItemResponse(
+                    item.variantId(), false, e.getMessage(), null, null));
+            }
+        }
+        return new DailyStockBatchResponse(succeeded, results.size() - succeeded, results);
+    }
+
+    /**
+     * Tồn NVL khả dụng (onHand - reserved) tại kho bán hàng.
+     * Chi nhánh nhiều/không có kho thì trả rỗng để màn hình ẩn gợi ý thay vì sập.
+     * KHÔNG catch Exception ở đây: RuntimeException bị nuốt trong transaction sẽ đánh
+     * dấu rollback-only, commit nổ UnexpectedRollbackException che mất lỗi gốc.
+     */
+    private Map<UUID, BigDecimal> loadAvailableMaterials(UUID branchId) {
+        List<Warehouse> candidates = warehouseRepository.findByBranchId(branchId).stream()
+            .filter(w -> "ACTIVE".equals(w.getStatus()) && !"CENTRAL".equals(w.getWarehouseType()))
+            .toList();
+        if (candidates.size() != 1) {
+            return Map.of();
+        }
+        return balanceRepository.findByWarehouseId(candidates.get(0).getId()).stream()
+            .collect(Collectors.toMap(MaterialStockBalance::getMaterialId,
+                b -> nvlDecimal(b.getQuantityOnHand()).subtract(nvlDecimal(b.getQuantityReserved())),
+                BigDecimal::add));
+    }
+
+    /**
+     * Số ly tối đa pha được từ tồn NVL (min theo BOM, quy đơn vị gốc).
+     * null = chưa có công thức hoặc thiếu dữ liệu kho/đơn vị.
+     */
+    private Integer capabilityOf(List<ProductRecipeItem> recipeLines,
+                                   Map<UUID, BigDecimal> availableByMaterial,
+                                   Map<UUID, Material> materialsById) {
+        if (recipeLines == null || recipeLines.isEmpty() || availableByMaterial.isEmpty()) {
+            return null;
+        }
+        BigDecimal best = null;
+        for (ProductRecipeItem recipe : recipeLines) {
+            Material material = materialsById.get(recipe.getMaterialId());
+            BigDecimal available = availableByMaterial.get(recipe.getMaterialId());
+            if (material == null || available == null) {
+                return null;
+            }
+            BigDecimal bomQuantity = recipe.getQuantity() != null ? recipe.getQuantity() : BigDecimal.ZERO;
+            BigDecimal wastage = recipe.getWastagePercent() != null ? recipe.getWastagePercent() : BigDecimal.ZERO;
+            BigDecimal perCup = bomQuantity.multiply(BigDecimal.ONE.add(
+                wastage.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP)));
+            if (perCup.signum() <= 0) {
+                continue;
+            }
+            BigDecimal perCupBase = unitConversionService.convertToBaseUnitLenient(
+                perCup, recipe.getUnitId(), material);
+            if (perCupBase == null || perCupBase.signum() <= 0) {
+                return null;
+            }
+            BigDecimal cups = available.divide(perCupBase, 0, RoundingMode.FLOOR);
+            if (best == null || cups.compareTo(best) < 0) {
+                best = cups;
+            }
+        }
+        if (best == null) {
+            return null;
+        }
+        try {
+            return best.intValueExact();
+        } catch (ArithmeticException e) {
+            return Integer.MAX_VALUE;
+        }
     }
 
     private static String nvl(String value) {

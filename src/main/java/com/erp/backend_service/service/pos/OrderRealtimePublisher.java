@@ -8,6 +8,7 @@ import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +42,10 @@ public class OrderRealtimePublisher {
 
     /**
      * Lắng nghe sự kiện sau khi DB transaction đã commit thành công 100%.
+     * Chạy ASYNC trên pool riêng: API trả về ngay sau commit, fan-out tới
+     * hàng chục account (N INSERT + N Redis pub) không chặn request.
      */
+    @Async("notificationExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onOrderRealtimeEvent(OrderRealtimeEvent event) {
@@ -53,6 +57,7 @@ public class OrderRealtimePublisher {
             String payload = objectMapper.writeValueAsString(event);
 
             // Lưu và phát notification có ID thật trước, để chuông có thể đọc/xóa ngay khi nhận SSE.
+            // 1 round-trip DB duy nhất thay vì N transaction lẻ cho N account.
             Set<UUID> accountRecipients;
             if (event.branchId() != null) {
                 accountRecipients = new HashSet<>(notificationResolverService.resolveBranchStaffAndAdmins(event.branchId(), null));
@@ -62,21 +67,7 @@ public class OrderRealtimePublisher {
             if (event.shipperId() != null) {
                 accountRecipients.add(event.shipperId());
             }
-            for (UUID accountId : accountRecipients) {
-                try {
-                    notificationService.notifyAccount(accountId, event.title(), event.message());
-                } catch (Exception e) {
-                    log.warn("Không thể lưu notification đơn hàng cho account {}: {}", accountId, e.getMessage());
-                }
-            }
-
-            if (event.customerId() != null) {
-                try {
-                    notificationService.notifyCustomer(event.customerId(), event.title(), event.message());
-                } catch (Exception e) {
-                    log.warn("Không thể lưu notification đơn hàng cho customer {}: {}", event.customerId(), e.getMessage());
-                }
-            }
+            notificationService.notifyMany(accountRecipients, event.customerId(), event.title(), event.message());
 
             // Broadcast event nghiệp vụ sau notification để các màn hình cập nhật trạng thái.
             if (event.branchId() != null) {

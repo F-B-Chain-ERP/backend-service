@@ -70,6 +70,7 @@ class OrderServiceVoucherTest {
     @Mock private PickupTimeSlotRepository pickupTimeSlotRepository;
     @Mock private KdsService kdsService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Mock private com.erp.backend_service.service.pos.PosMaterialConsumptionService posMaterialConsumptionService;
 
     private OrderServiceImpl orderService;
     private UUID branchId;
@@ -91,7 +92,8 @@ class OrderServiceVoucherTest {
                 branchRepository, availabilityRepository, voucherRepository, voucherUsageRepository,
                 voucherBranchRepository, dataScopeHelper, posComboService, posCogsService,
                 refundRepository, posIdempotencyService, posBranchOpenService,
-                posShipperAssignService, pickupTimeSlotRepository, kdsService, eventPublisher
+                posShipperAssignService, pickupTimeSlotRepository, kdsService, eventPublisher,
+                posMaterialConsumptionService
         );
 
         branchId = UUID.randomUUID();

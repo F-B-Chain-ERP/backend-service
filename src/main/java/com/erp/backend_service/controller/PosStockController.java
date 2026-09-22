@@ -4,10 +4,12 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.pos.PosStockService;
+import com.erp.core.dto.request.pos.RestockDailyStockBatchRequest;
 import com.erp.core.dto.request.pos.RestockDailyStockRequest;
 import com.erp.core.dto.response.ApiResponse;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.inv.StockTransferResponse;
+import com.erp.core.dto.response.pos.DailyStockBatchResponse;
 import com.erp.core.dto.response.pos.DailyStockLineResponse;
 import com.erp.core.dto.response.pos.DailyStockLogResponse;
 import com.erp.core.dto.response.pos.DailyStockResponse;
@@ -88,6 +90,19 @@ public class PosStockController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(ApiResponse.success(stockService.requestReplenishment(branchId, date),
             "Tạo yêu cầu cấp hàng thành công, chờ kho tổng duyệt"));
+    }
+
+    @PostMapping("/restock-batch")
+    public ResponseEntity<ApiResponse<DailyStockBatchResponse>> restockBatch(
+        @Valid @RequestBody RestockDailyStockBatchRequest request) {
+        if (SecurityUtils.getCurrentPrincipalType().orElse(null) == PrincipalType.CUSTOMER) {
+            throw new BaseException(ErrorCode.UNAUTHORIZED);
+        }
+        if (!SecurityUtils.hasPermission("pos:order:update")) {
+            throw new BaseException(ErrorCode.UNAUTHORIZED);
+        }
+        return ResponseEntity.ok(ApiResponse.success(stockService.restockBatch(request),
+            "Chốt tồn hàng loạt thành công"));
     }
 
     @PostMapping("/restock")

@@ -53,6 +53,9 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Query("delete from Notification n where (n.accountId = :principalId or n.customerId = :principalId) and n.readAt is not null")
     int deleteReadByAccountId(@Param("principalId") UUID principalId);
 
+    /** Dọn thông báo đã đọc quá hạn (giữ bảng gọn theo thời gian). */
+    long deleteByStatusAndReadAtBefore(String status, Instant cutoff);
+
     // Các alias phương thức cũ để tương thích hoàn toàn
     default List<Notification> findByAccountIdAndReadAtIsNullOrderByCreatedAtDesc(UUID accountId) {
         return findUnreadByPrincipalId(accountId);

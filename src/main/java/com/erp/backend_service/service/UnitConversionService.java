@@ -29,6 +29,9 @@ public interface UnitConversionService {
     /** Quy đổi về đơn vị gốc của NVL (ưu tiên pack của chính NVL đó). */
     BigDecimal convertToBaseUnit(BigDecimal quantity, UUID fromUnitId, Material material);
 
+    /** Như trên nhưng không ném: không quy được thì null (dùng cho đường đọc). */
+    BigDecimal convertToBaseUnitLenient(BigDecimal quantity, UUID fromUnitId, Material material);
+
     /** Validate đơn vị dòng BOM: gốc, pack của NVL, hoặc cùng nhóm có dòng quy đổi. */
     void validateBomUnit(Material material, Unit unit);
 }

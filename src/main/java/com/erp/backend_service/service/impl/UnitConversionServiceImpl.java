@@ -137,6 +137,27 @@ public class UnitConversionServiceImpl implements UnitConversionService {
     @Override
     @Transactional(readOnly = true)
     public BigDecimal convertToBaseUnit(BigDecimal quantity, UUID fromUnitId, Material material) {
+        return convertToBaseUnitInternal(quantity, fromUnitId, material);
+    }
+
+    /**
+     * Bản không ném cho đường đọc (bảng tồn, đối soát): không quy được thì null
+     * để UI ẩn gợi ý thay vì sập. BẮT BUỘC catch ở trong (trước khi qua proxy):
+     * RuntimeException thoát khỏi method @Transactional sẽ đánh dấu cả transaction
+     * rollback-only, method ngoài có catch cũng không cứu được (commit nổ
+     * UnexpectedRollbackException che mất lỗi gốc).
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal convertToBaseUnitLenient(BigDecimal quantity, UUID fromUnitId, Material material) {
+        try {
+            return convertToBaseUnitInternal(quantity, fromUnitId, material);
+        } catch (BaseException e) {
+            return null;
+        }
+    }
+
+    private BigDecimal convertToBaseUnitInternal(BigDecimal quantity, UUID fromUnitId, Material material) {
         if (quantity == null || material == null) {
             return BigDecimal.ZERO;
         }

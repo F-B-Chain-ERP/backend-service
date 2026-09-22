@@ -12,6 +12,7 @@ import com.erp.backend_service.service.pos.PosComboService;
 import com.erp.backend_service.service.pos.PosBranchOpenService;
 import com.erp.backend_service.service.pos.PosFlow;
 import com.erp.backend_service.service.pos.PosIdempotencyService;
+import com.erp.backend_service.service.pos.PosMaterialConsumptionService;
 import com.erp.backend_service.service.pos.PosShipperAssignService;
 import com.erp.backend_service.util.CodeGenerator;
 import com.erp.core.domain.*;
@@ -69,6 +70,7 @@ public class OrderServiceImpl implements OrderService {
     private final PickupTimeSlotRepository pickupTimeSlotRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final KdsService kdsService;
+    private final PosMaterialConsumptionService posMaterialConsumptionService;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
                             OrderItemToppingRepository itemToppingRepository,
@@ -85,7 +87,8 @@ public class OrderServiceImpl implements OrderService {
                             PosBranchOpenService posBranchOpenService,
                             PosShipperAssignService posShipperAssignService,
                             PickupTimeSlotRepository pickupTimeSlotRepository,
-                            KdsService kdsService, ApplicationEventPublisher eventPublisher) {
+                            KdsService kdsService, ApplicationEventPublisher eventPublisher,
+                            PosMaterialConsumptionService posMaterialConsumptionService) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -113,6 +116,7 @@ public class OrderServiceImpl implements OrderService {
         this.pickupTimeSlotRepository = pickupTimeSlotRepository;
         this.kdsService = kdsService;
         this.eventPublisher = eventPublisher;
+        this.posMaterialConsumptionService = posMaterialConsumptionService;
     }
 
     @Override
@@ -375,6 +379,8 @@ public class OrderServiceImpl implements OrderService {
             o.setConfirmedAt(Instant.now());
             orderRepository.save(o);
             reserveAll(o);
+            // Trừ NVL realtime cùng lúc reserve tồn-ly (1 lần duy nhất tại CONFIRMED).
+            posMaterialConsumptionService.deductForOrder(o);
             posShipperAssignService.autoAssign(o);
             writeHistory(o, confirmedOld, PosFlow.Order.CONFIRMED.name(),
                 "Tự động xác nhận: chi nhánh mở cửa và thanh toán tiền mặt/COD");
@@ -485,6 +491,8 @@ public class OrderServiceImpl implements OrderService {
                 o.setConfirmedAt(now);
                 // Giả thiết C1: reserve tồn ngay khi quán nhận đơn (lock + log), khỏi oversell.
                 reserveAll(o);
+                // Trừ NVL realtime cùng lúc (thiếu là chặn xác nhận ngay tại đây).
+                posMaterialConsumptionService.deductForOrder(o);
                 // Đơn giao: thử gán shipper rảnh nhất luôn, không có xe thì chờ gán tay.
                 posShipperAssignService.autoAssign(o);
             }
@@ -493,6 +501,7 @@ public class OrderServiceImpl implements OrderService {
             case DELIVERING -> o.setDeliveringAt(now);
             case COMPLETED -> {
                 // Đã reserve ở CONFIRMED nên không trừ lần 2 (lỗi ẩn double-deduct cũ).
+                // NVL cũng đã trừ realtime lúc CONFIRMED, hoàn tất không động tồn nữa.
                 o.setCompletedAt(now);
             }
             case CANCELLED -> {
@@ -502,6 +511,7 @@ public class OrderServiceImpl implements OrderService {
                 // READY hậu giao thất bại cũng không hoàn: hàng đã làm xong, tính hao hụt.
                 if (current != PosFlow.Order.PENDING && !failedReturnCancel) {
                     releaseAll(o);
+                    posMaterialConsumptionService.releaseForOrder(o);
                 }
                 cancelDelivery(o);
                 // Hủy đơn đã PAID phải sinh refund cho kế toán (kể cả hủy tay qua updateStatus).
@@ -512,6 +522,7 @@ public class OrderServiceImpl implements OrderService {
                 restoreVoucher(o);
                 if (current != PosFlow.Order.PENDING) {
                     releaseAll(o);
+                    posMaterialConsumptionService.releaseForOrder(o);
                 }
                 cancelDelivery(o);
             }
@@ -563,6 +574,7 @@ public class OrderServiceImpl implements OrderService {
         // READY hậu giao thất bại không hoàn: hàng đã làm xong, tính hao hụt.
         if (current != PosFlow.Order.PENDING && !failedReturn) {
             releaseAll(o);
+            posMaterialConsumptionService.releaseForOrder(o);
         }
         cancelDelivery(o);
         // Giả thiết D1: hủy đơn đã PAID phải sinh refund PENDING cho kế toán, tránh mất tiền khách.

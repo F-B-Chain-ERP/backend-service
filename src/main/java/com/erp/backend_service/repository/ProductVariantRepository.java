@@ -51,6 +51,11 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     long countByProductId(UUID productId);
 
     /**
+     * Lấy các biến thể ACTIVE của nhiều sản phẩm một lần (màn Tồn lấy nền hàng đang bán).
+     */
+    List<ProductVariant> findByProductIdInAndStatus(java.util.Collection<UUID> productIds, String status);
+
+    /**
      * Truy vấn phân trang danh sách biến thể phục vụ màn hình BOM overview.
      * Lọc theo từ khóa (mã/tên biến thể hoặc mã/tên sản phẩm), danh mục và trạng thái công thức
      * ngay trong SQL để page + total nguyên nhất quán, tránh N+1.

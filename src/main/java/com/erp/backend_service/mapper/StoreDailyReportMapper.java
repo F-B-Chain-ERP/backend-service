@@ -12,6 +12,10 @@ import org.springframework.stereotype.Component;
 public class StoreDailyReportMapper {
 
     public StoreDailyReportResponse toResponse(StoreDailyReport report, Account submitter) {
+        return toResponse(report, submitter, java.math.BigDecimal.ZERO);
+    }
+
+    public StoreDailyReportResponse toResponse(StoreDailyReport report, Account submitter, java.math.BigDecimal cashPayout) {
         if (report == null) {
             return null;
         }
@@ -30,6 +34,7 @@ public class StoreDailyReportMapper {
                 report.getNetRevenue(),
                 report.getCashAmount(),
                 report.getTransferAmount(),
+                cashPayout != null ? cashPayout : java.math.BigDecimal.ZERO,
                 report.getStatus(),
                 report.getSubmittedById(),
                 submitterName,

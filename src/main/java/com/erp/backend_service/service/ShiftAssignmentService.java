@@ -24,4 +24,8 @@ public interface ShiftAssignmentService {
     PageResponse<ShiftAssignmentResponse> searchAssignments(UUID branchId, LocalDate startDate, LocalDate endDate, UUID accountId, String status, Pageable pageable);
 
     void cancelAssignment(UUID id, String reason);
+
+    ShiftAssignmentResponse checkInAttendance(UUID id, UUID currentUserId);
+
+    ShiftAssignmentResponse checkOutAttendance(UUID id, UUID currentUserId);
 }

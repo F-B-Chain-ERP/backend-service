@@ -5,6 +5,8 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.ShiftAssignmentMapper;
 import com.erp.backend_service.mapper.ShiftReportMapper;
 import com.erp.backend_service.repository.AccountRepository;
+import com.erp.backend_service.repository.AccountRoleRepository;
+import com.erp.backend_service.repository.BranchRepository;
 import com.erp.backend_service.repository.OrderRepository;
 import com.erp.backend_service.repository.ShiftAssignmentRepository;
 import com.erp.backend_service.repository.ShiftReportRepository;
@@ -12,6 +14,7 @@ import com.erp.backend_service.repository.ShiftRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.service.impl.ShiftOperationServiceImpl;
 import com.erp.core.domain.Account;
+import com.erp.core.domain.Branch;
 import com.erp.core.domain.Order;
 import com.erp.core.domain.Shift;
 import com.erp.core.domain.ShiftAssignment;
@@ -59,6 +62,12 @@ class ShiftOperationServiceImplTest {
     private AccountRepository accountRepository;
 
     @Mock
+    private AccountRoleRepository accountRoleRepository;
+
+    @Mock
+    private BranchRepository branchRepository;
+
+    @Mock
     private DataScopeHelper dataScopeHelper;
 
     private ShiftAssignmentMapper shiftAssignmentMapper;
@@ -84,6 +93,8 @@ class ShiftOperationServiceImplTest {
                 shiftReportRepository,
                 orderRepository,
                 accountRepository,
+                accountRoleRepository,
+                branchRepository,
                 shiftAssignmentMapper,
                 shiftReportMapper,
                 dataScopeHelper
@@ -107,11 +118,20 @@ class ShiftOperationServiceImplTest {
         account.setEmail("cashier@erp.vn");
 
         assignment = new ShiftAssignment();
+        assignment.setId(assignmentId);
         assignment.setBranchId(branchId);
         assignment.setAccountId(accountId);
         assignment.setShiftId(shiftId);
         assignment.setWorkDate(LocalDate.now());
         assignment.setStatus("SCHEDULED");
+
+        lenient().when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                        eq(List.of(accountId)), eq(List.of("ADMIN", "ROLE_MANAGER", "ROLE_CASHIER")),
+                        eq(branchId), any(), any()))
+                .thenReturn(List.of(accountId));
+        lenient().when(branchRepository.findByIdForUpdate(branchId)).thenReturn(Optional.of(new Branch()));
+        lenient().when(shiftAssignmentRepository.findByBranchIdAndStatus(branchId, "CHECKED_IN"))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -129,6 +149,7 @@ class ShiftOperationServiceImplTest {
         assertNotNull(response);
         assertEquals("CHECKED_IN", response.status());
         assertEquals(new BigDecimal("1500000"), response.initialCash());
+        verify(branchRepository).findByIdForUpdate(branchId);
         verify(shiftAssignmentRepository).save(assignment);
     }
 
@@ -203,7 +224,7 @@ class ShiftOperationServiceImplTest {
                 new BigDecimal("1000000"),
                 BigDecimal.ZERO,
                 null,
-                "[]",
+                null,
                 "Ca chạy tốt"
         );
 
@@ -249,6 +270,9 @@ class ShiftOperationServiceImplTest {
         report.setSubmittedById(accountId);
 
         when(shiftReportRepository.findById(reportId)).thenReturn(Optional.of(report));
+        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                eq(List.of(managerId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
+                eq(branchId), any(), any())).thenReturn(List.of(managerId));
         when(shiftReportRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.findById(accountId)).thenReturn(Optional.of(account));
 
@@ -260,5 +284,43 @@ class ShiftOperationServiceImplTest {
         assertNotNull(response);
         assertEquals("CONFIRMED", response.status());
         assertEquals(managerId, response.approvedById());
+    }
+
+    @Test
+    @DisplayName("Thu ngân không được mở ca của người khác")
+    void testOpenShift_Fail_NotOwner() {
+        UUID otherUserId = UUID.randomUUID();
+        when(shiftAssignmentRepository.findById(assignmentId)).thenReturn(Optional.of(assignment));
+        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                eq(List.of(otherUserId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
+                eq(branchId), any(), any())).thenReturn(List.of());
+
+        OpenShiftRequest request = new OpenShiftRequest(new BigDecimal("1000000"), null);
+        BaseException ex = assertThrows(BaseException.class,
+                () -> shiftOperationService.openShift(assignmentId, request, otherUserId));
+
+        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getErrorCode());
+        verify(branchRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    @DisplayName("Quản lý đúng chi nhánh được mở ca thay thu ngân")
+    void testOpenShift_Success_ManagerOverride() {
+        UUID managerId = UUID.randomUUID();
+        when(shiftAssignmentRepository.findById(assignmentId)).thenReturn(Optional.of(assignment));
+        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                eq(List.of(managerId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
+                eq(branchId), any(), any())).thenReturn(List.of(managerId));
+        when(shiftAssignmentRepository.findFirstByAccountIdAndStatus(accountId, "CHECKED_IN"))
+                .thenReturn(Optional.empty());
+        when(shiftAssignmentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(shiftRepository.findById(shiftId)).thenReturn(Optional.of(shift));
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
+        ShiftAssignmentResponse response = shiftOperationService.openShift(
+                assignmentId, new OpenShiftRequest(new BigDecimal("1000000"), null), managerId);
+
+        assertEquals("CHECKED_IN", response.status());
+        verify(branchRepository).findByIdForUpdate(branchId);
     }
 }

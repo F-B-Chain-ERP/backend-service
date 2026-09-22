@@ -13,6 +13,10 @@ import org.springframework.stereotype.Component;
 public class ShiftAssignmentMapper {
 
     public ShiftAssignmentResponse toResponse(ShiftAssignment assignment, Shift shift, Account account) {
+        return toResponse(assignment, shift, account, null);
+    }
+
+    public ShiftAssignmentResponse toResponse(ShiftAssignment assignment, Shift shift, Account account, Boolean cashHandler) {
         if (assignment == null) {
             return null;
         }
@@ -44,7 +48,8 @@ public class ShiftAssignmentMapper {
                 assignment.getFinalCash(),
                 assignment.getCashDifference(),
                 assignment.getNote(),
-                assignment.getCreatedAt()
+                assignment.getCreatedAt(),
+                cashHandler
         );
     }
 }

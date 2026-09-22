@@ -63,9 +63,10 @@ public class StoreDailyReportController {
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(ApiResponse.success(
-                storeDailyReportService.searchDailyReports(branchId, startDate, endDate, pageable)));
+                storeDailyReportService.searchDailyReports(branchId, startDate, endDate, status, pageable)));
     }
 
     @PutMapping("/{id}")

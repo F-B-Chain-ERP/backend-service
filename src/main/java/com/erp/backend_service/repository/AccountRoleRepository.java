@@ -51,6 +51,31 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, UUID> 
             @Param("now") Instant now
     );
 
+    /**
+     * Lấy tài khoản có vai trò hiệu lực tại đúng chi nhánh hoặc phạm vi toàn hệ thống.
+     */
+    @Query("""
+            select distinct ar.accountId
+            from AccountRole ar, Role r, Scope s
+            where ar.accountId in :accountIds
+              and ar.roleId = r.id
+              and ar.scopeId = s.id
+              and r.code in :roleCodes
+              and ar.status = :status
+              and r.status = :status
+              and s.status = :status
+              and (ar.expiresAt is null or ar.expiresAt > :now)
+              and (s.scopeType = com.erp.core.enums.ScopeType.ALL_SYSTEM
+                   or (s.scopeType = com.erp.core.enums.ScopeType.STORE and s.branchId = :branchId))
+            """)
+    List<UUID> findEffectiveAccountIdsByRoleCodesAndBranchId(
+            @Param("accountIds") Collection<UUID> accountIds,
+            @Param("roleCodes") Collection<String> roleCodes,
+            @Param("branchId") UUID branchId,
+            @Param("status") EntityStatus status,
+            @Param("now") Instant now
+    );
+
     /** Kiểm tra phạm vi còn được gán cho bất kỳ tài khoản nào không (dùng chặn xóa). */
     boolean existsByScopeId(UUID scopeId);
 

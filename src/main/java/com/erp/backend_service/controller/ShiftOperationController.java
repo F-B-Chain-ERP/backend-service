@@ -21,6 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -45,7 +46,7 @@ public class ShiftOperationController {
     }
 
     @PostMapping("/{id}/open")
-    @PreAuthorize("hasAuthority('store:shift_assignment:update')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:update','ROLE_CASHIER','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> openShift(
             @PathVariable UUID id,
             @Valid @RequestBody OpenShiftRequest request) {
@@ -55,7 +56,7 @@ public class ShiftOperationController {
     }
 
     @GetMapping("/{id}/closing-summary")
-    @PreAuthorize("hasAuthority('store:shift_assignment:view')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:view','ROLE_CASHIER','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ClosingSummaryResponse>> getClosingSummary(@PathVariable UUID id) {
         UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
@@ -63,7 +64,7 @@ public class ShiftOperationController {
     }
 
     @PostMapping("/{id}/close")
-    @PreAuthorize("hasAuthority('store:shift_report:create')")
+    @PreAuthorize("hasAnyAuthority('store:shift_report:create','ROLE_CASHIER','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ShiftReportResponse>> closeShift(
             @PathVariable UUID id,
             @Valid @RequestBody CloseShiftRequest request) {
@@ -73,13 +74,16 @@ public class ShiftOperationController {
     }
 
     @GetMapping("/assignment/{assignmentId}/report")
-    @PreAuthorize("hasAuthority('store:shift_report:view')")
+    @PreAuthorize("hasAnyAuthority('store:shift_report:view','ROLE_CASHIER','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ShiftReportResponse>> getReportByAssignment(@PathVariable UUID assignmentId) {
-        return ResponseEntity.ok(ApiResponse.success(shiftOperationService.getShiftReportByAssignmentId(assignmentId)));
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
+                .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        return ResponseEntity.ok(ApiResponse.success(
+                shiftOperationService.getShiftReportByAssignmentId(assignmentId, currentUserId)));
     }
 
     @PutMapping("/reports/{id}/confirm")
-    @PreAuthorize("hasAuthority('store:shift_report:confirm')")
+    @PreAuthorize("hasAnyAuthority('store:shift_report:confirm','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ShiftReportResponse>> confirmReport(
             @PathVariable UUID id,
             @RequestBody(required = false) ConfirmShiftReportRequest request) {
@@ -87,6 +91,17 @@ public class ShiftOperationController {
                 .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
         String note = request != null ? request.note() : null;
         return ResponseEntity.ok(ApiResponse.success(shiftOperationService.confirmShiftReport(id, managerId, note)));
+    }
+
+    @PutMapping("/reports/{id}/reject")
+    @PreAuthorize("hasAnyAuthority('store:shift_report:confirm','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
+    public ResponseEntity<ApiResponse<ShiftReportResponse>> rejectReport(
+            @PathVariable UUID id,
+            @RequestBody(required = false) Map<String, String> body) {
+        UUID managerId = SecurityUtils.getCurrentPrincipalId()
+                .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        String reason = body != null ? body.get("reason") : null;
+        return ResponseEntity.ok(ApiResponse.success(shiftOperationService.rejectShiftReport(id, managerId, reason)));
     }
 
     @GetMapping("/reports")

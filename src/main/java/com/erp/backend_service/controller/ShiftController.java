@@ -54,8 +54,9 @@ public class ShiftController {
     public ResponseEntity<ApiResponse<PageResponse<ShiftResponse>>> search(
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String query,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(ApiResponse.success(shiftService.searchShifts(branchId, status, pageable)));
+        return ResponseEntity.ok(ApiResponse.success(shiftService.searchShifts(branchId, status, query, pageable)));
     }
 
     @PutMapping("/{id}")

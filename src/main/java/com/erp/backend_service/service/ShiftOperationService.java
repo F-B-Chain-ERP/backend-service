@@ -26,7 +26,9 @@ public interface ShiftOperationService {
 
     ShiftReportResponse confirmShiftReport(UUID reportId, UUID managerId, String note);
 
-    ShiftReportResponse getShiftReportByAssignmentId(UUID assignmentId);
+    ShiftReportResponse rejectShiftReport(UUID reportId, UUID managerId, String reason);
+
+    ShiftReportResponse getShiftReportByAssignmentId(UUID assignmentId, UUID currentUserId);
 
     PageResponse<ShiftReportResponse> searchShiftReports(UUID branchId, LocalDate businessDate, Pageable pageable);
 }

@@ -1,5 +1,8 @@
 package com.erp.backend_service.controller;
 
+import com.erp.backend_service.exception.BaseException;
+import com.erp.backend_service.exception.ErrorCode;
+import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.ShiftAssignmentService;
 import com.erp.core.dto.request.store.BulkAssignShiftRequest;
 import com.erp.core.dto.request.store.CreateShiftAssignmentRequest;
@@ -53,7 +56,7 @@ public class ShiftAssignmentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('store:shift_assignment:view')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:view','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<PageResponse<ShiftAssignmentResponse>>> search(
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -73,5 +76,22 @@ public class ShiftAssignmentController {
         String reason = body != null ? body.get("reason") : null;
         shiftAssignmentService.cancelAssignment(id, reason);
         return ResponseEntity.ok(ApiResponse.success(null, "Đã hủy ca phân công thành công"));
+    }
+
+    // Điểm danh vào/ra cho nhân viên không cầm két (chấm công, không đụng tiền).
+    @PostMapping("/{id}/check-in")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:update','ROLE_BARISTA','ROLE_USER','ROLE_STAFF','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
+    public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> checkIn(@PathVariable UUID id) {
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
+                .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        return ResponseEntity.ok(ApiResponse.success(shiftAssignmentService.checkInAttendance(id, currentUserId)));
+    }
+
+    @PostMapping("/{id}/check-out")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:update','ROLE_BARISTA','ROLE_USER','ROLE_STAFF','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
+    public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> checkOut(@PathVariable UUID id) {
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId()
+                .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHORIZED));
+        return ResponseEntity.ok(ApiResponse.success(shiftAssignmentService.checkOutAttendance(id, currentUserId)));
     }
 }

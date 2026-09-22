@@ -24,5 +24,5 @@ public interface StoreDailyReportService {
 
     StoreDailyReportResponse getDailyReportByDate(UUID branchId, LocalDate businessDate);
 
-    PageResponse<StoreDailyReportResponse> searchDailyReports(UUID branchId, LocalDate startDate, LocalDate endDate, Pageable pageable);
+    PageResponse<StoreDailyReportResponse> searchDailyReports(UUID branchId, LocalDate startDate, LocalDate endDate, String status, Pageable pageable);
 }

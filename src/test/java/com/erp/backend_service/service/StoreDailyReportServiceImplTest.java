@@ -4,13 +4,18 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.StoreDailyReportMapper;
 import com.erp.backend_service.repository.AccountRepository;
+import com.erp.backend_service.repository.AccountRoleRepository;
 import com.erp.backend_service.repository.BranchRepository;
+import com.erp.backend_service.repository.RoleRepository;
 import com.erp.backend_service.repository.ShiftAssignmentRepository;
 import com.erp.backend_service.repository.ShiftReportRepository;
 import com.erp.backend_service.repository.StoreDailyReportRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.service.impl.StoreDailyReportServiceImpl;
 import com.erp.core.domain.Account;
+import com.erp.core.domain.AccountRole;
+import com.erp.core.domain.Role;
+import com.erp.core.domain.ShiftAssignment;
 import com.erp.core.domain.ShiftReport;
 import com.erp.core.domain.StoreDailyReport;
 import com.erp.core.dto.request.store.CreateDailyReportRequest;
@@ -24,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,6 +58,12 @@ class StoreDailyReportServiceImplTest {
     private AccountRepository accountRepository;
 
     @Mock
+    private AccountRoleRepository accountRoleRepository;
+
+    @Mock
+    private RoleRepository roleRepository;
+
+    @Mock
     private DataScopeHelper dataScopeHelper;
 
     private StoreDailyReportMapper storeDailyReportMapper;
@@ -70,6 +82,8 @@ class StoreDailyReportServiceImplTest {
                 shiftReportRepository,
                 branchRepository,
                 accountRepository,
+                accountRoleRepository,
+                roleRepository,
                 storeDailyReportMapper,
                 dataScopeHelper
         );
@@ -83,9 +97,21 @@ class StoreDailyReportServiceImplTest {
     @DisplayName("Chặn chốt sổ ngày theo BR-STORE-07: Còn ca đang CHECKED_IN hoặc SCHEDULED")
     void testGenerateDailyReport_Fail_ActiveShiftsRemaining() {
         when(branchRepository.existsById(branchId)).thenReturn(true);
-        // Có 1 ca đang hoạt động
-        when(shiftAssignmentRepository.countByBranchIdAndWorkDateAndStatusIn(eq(branchId), eq(reportDate), any()))
-                .thenReturn(1L);
+        UUID roleId = UUID.randomUUID();
+        ShiftAssignment activeAssignment = new ShiftAssignment();
+        activeAssignment.setAccountId(accountId);
+        activeAssignment.setBranchId(branchId);
+        activeAssignment.setStatus("CHECKED_IN");
+        Role cashierRole = new Role();
+        cashierRole.setId(roleId);
+        AccountRole accountRole = new AccountRole();
+        accountRole.setAccountId(accountId);
+        accountRole.setRoleId(roleId);
+        when(shiftAssignmentRepository.findByBranchIdAndWorkDateAndStatusIn(eq(branchId), eq(reportDate), any()))
+                .thenReturn(List.of(activeAssignment));
+        when(roleRepository.findByCodeIn(any())).thenReturn(List.of(cashierRole));
+        when(accountRoleRepository.findEffectiveByAccountIdIn(any(), any(), any(Instant.class)))
+                .thenReturn(List.of(accountRole));
 
         CreateDailyReportRequest request = new CreateDailyReportRequest(branchId, reportDate, BigDecimal.ZERO, "Chốt ngày");
 
@@ -98,17 +124,19 @@ class StoreDailyReportServiceImplTest {
     @DisplayName("Chốt sổ ngày thành công: Tổng hợp chính xác doanh thu từ tất cả các ca trong ngày")
     void testGenerateDailyReport_Success() {
         when(branchRepository.existsById(branchId)).thenReturn(true);
-        when(shiftAssignmentRepository.countByBranchIdAndWorkDateAndStatusIn(eq(branchId), eq(reportDate), any()))
-                .thenReturn(0L);
+        when(shiftAssignmentRepository.findByBranchIdAndWorkDateAndStatusIn(eq(branchId), eq(reportDate), any()))
+                .thenReturn(List.of());
 
         ShiftReport shift1 = new ShiftReport();
         shift1.setOrdersCount(10);
+        shift1.setStatus("CONFIRMED");
         shift1.setTotalSales(new BigDecimal("2000000"));
         shift1.setCashSales(new BigDecimal("1000000"));
         shift1.setBankTransferSales(new BigDecimal("1000000"));
 
         ShiftReport shift2 = new ShiftReport();
         shift2.setOrdersCount(15);
+        shift2.setStatus("CONFIRMED");
         shift2.setTotalSales(new BigDecimal("3500000"));
         shift2.setCashSales(new BigDecimal("1500000"));
         shift2.setBankTransferSales(new BigDecimal("2000000"));

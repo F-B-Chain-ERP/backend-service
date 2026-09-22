@@ -227,7 +227,7 @@ public enum ErrorCode {
     STORE_404_REPORT_NOT_FOUND(404, "STORE_404_REPORT_NOT_FOUND", "Không tìm thấy biên bản chốt ca."),
     STORE_404_DAILY_REPORT_NOT_FOUND(404, "STORE_404_DAILY_REPORT_NOT_FOUND", "Không tìm thấy báo cáo ngày của chi nhánh."),
     STORE_409_SHIFT_CODE_EXISTS(409, "STORE_409_SHIFT_CODE_EXISTS", "Mã ca đã tồn tại trong chi nhánh."),
-    STORE_409_ASSIGNMENT_EXISTS(409, "STORE_409_ASSIGNMENT_EXISTS", "Nhân viên đã được phân ca này trong ngày."),
+    STORE_409_ASSIGNMENT_EXISTS(409, "STORE_409_ASSIGNMENT_EXISTS", "Nhân viên đã được phân ca khác trong ngày."),
     STORE_409_DAILY_REPORT_EXISTS(409, "STORE_409_DAILY_REPORT_EXISTS", "Báo cáo ngày của chi nhánh đã tồn tại."),
     STORE_400_INVALID_HOURS(400, "STORE_400_INVALID_HOURS", "Giờ bắt đầu và kết thúc ca không hợp lệ."),
     STORE_400_INVALID_STATUS_TRANSITION(400, "STORE_400_INVALID_STATUS_TRANSITION", "Chuyển trạng thái ca không hợp lệ."),

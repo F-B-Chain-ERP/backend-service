@@ -22,7 +22,7 @@ public interface ShiftService {
 
     List<ShiftResponse> getShiftsByBranch(UUID branchId, String status);
 
-    PageResponse<ShiftResponse> searchShifts(UUID branchId, String status, Pageable pageable);
+    PageResponse<ShiftResponse> searchShifts(UUID branchId, String status, String query, Pageable pageable);
 
     void deleteShift(UUID id);
 }

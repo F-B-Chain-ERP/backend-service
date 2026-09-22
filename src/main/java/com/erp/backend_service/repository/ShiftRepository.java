@@ -25,5 +25,7 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID>, JpaSpecific
 
     boolean existsByBranchIdAndShiftCode(UUID branchId, String shiftCode);
 
+    java.util.Optional<Shift> findByBranchIdAndShiftCode(UUID branchId, String shiftCode);
+
     boolean existsByBranchIdAndShiftCodeAndIdNot(UUID branchId, String shiftCode, UUID id);
 }

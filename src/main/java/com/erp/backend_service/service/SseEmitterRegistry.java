@@ -89,7 +89,9 @@ public class SseEmitterRegistry {
     public void push(UUID accountId, String eventName, String payload) {
         List<SseClient> clients = emitterMap.get(accountId);
         if (clients == null || clients.isEmpty()) {
-            log.debug("No active SSE emitters found for account: {}", accountId);
+            // Trường hợp bình thường (đa số account offline): TRACE để khỏi spam
+            // log mỗi khi có event fan-out tới hàng chục staff không online.
+            log.trace("No active SSE emitters found for account: {}", accountId);
             return;
         }
 

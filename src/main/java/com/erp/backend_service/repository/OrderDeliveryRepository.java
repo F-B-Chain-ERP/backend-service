@@ -14,6 +14,9 @@ import java.util.UUID;
 public interface OrderDeliveryRepository extends JpaRepository<OrderDelivery, UUID> {
     Optional<OrderDelivery> findByOrderId(UUID orderId);
 
+    /** Tải giao hàng cho cả trang đơn 1 lần (chống N+1 ở màn Giao hàng). */
+    java.util.List<OrderDelivery> findByOrderIdIn(java.util.Collection<UUID> orderIds);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from OrderDelivery d where d.orderId = :orderId")
     Optional<OrderDelivery> findByOrderIdForUpdate(@Param("orderId") UUID orderId);

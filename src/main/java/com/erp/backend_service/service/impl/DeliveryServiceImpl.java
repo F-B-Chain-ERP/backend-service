@@ -58,6 +58,37 @@ public class DeliveryServiceImpl implements DeliveryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<DeliveryResponse> listByOrderIds(List<UUID> orderIds) {
+        requireViewPermission();
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        if (orderIds.size() > 100) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Tối đa 100 đơn mỗi lần tải giao hàng.");
+        }
+        List<UUID> ids = orderIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        // Gộp 2 query: deliveries theo lô + orders theo lô, rồi lọc scope từng đơn
+        // (đơn ngoài phạm vi bị bỏ qua thay vì làm sập cả lô).
+        Map<UUID, Order> ordersById = new HashMap<>();
+        for (Order o : orderRepository.findAllById(ids)) {
+            ordersById.put(o.getId(), o);
+        }
+        List<DeliveryResponse> result = new ArrayList<>();
+        for (OrderDelivery d : deliveryRepository.findByOrderIdIn(ids)) {
+            Order o = ordersById.get(d.getOrderId());
+            if (o == null || !hasAccess(o)) {
+                continue;
+            }
+            result.add(toResponse(d));
+        }
+        return result;
+    }
+
+    @Override
     @Transactional
     public DeliveryResponse assign(UUID orderId, AssignDeliveryRequest request) {
         requireUpdatePermission();
@@ -225,6 +256,20 @@ public class DeliveryServiceImpl implements DeliveryService {
             dataScopeHelper.enforceBranchAccess(o.getBranchId());
         }
         return o;
+    }
+
+    /** Bản không ném lỗi của accessibleOrder, dùng lọc theo lô (ngoài scope thì bỏ qua). */
+    private boolean hasAccess(Order o) {
+        PrincipalType type = SecurityUtils.getCurrentPrincipalType().orElse(null);
+        UUID pid = SecurityUtils.getCurrentPrincipalId().orElse(null);
+        if (type == PrincipalType.CUSTOMER) {
+            return pid != null && Objects.equals(o.getCustomerId(), pid);
+        }
+        if (dataScopeHelper.isAllSystem()) {
+            return true;
+        }
+        UUID current = dataScopeHelper.getCurrentBranchId().orElse(null);
+        return current != null && current.equals(o.getBranchId());
     }
 
     private Order accessibleOrderForUpdate(UUID id) {

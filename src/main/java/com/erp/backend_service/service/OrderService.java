@@ -19,6 +19,13 @@ public interface OrderService {
         return list(branchId, orderType, status, fromDate, toDate, null, page, size);
     }
 
+    default PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status,
+                                                    String paymentStatus, String paymentMethod,
+                                                    LocalDate fromDate, LocalDate toDate,
+                                                    String search, int page, int size) {
+        return list(branchId, orderType, status, fromDate, toDate, search, page, size);
+    }
+
     OrderResponse get(UUID id);
 
     OrderStatusResponse updateStatus(UUID id, UpdateOrderStatusRequest request);

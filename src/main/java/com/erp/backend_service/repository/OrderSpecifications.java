@@ -26,6 +26,12 @@ public final class OrderSpecifications {
 
     public static Specification<Order> filter(UUID branchId, UUID customerId, String orderType, String status,
                                               Instant fromDate, Instant toDate, String search) {
+        return filter(branchId, customerId, orderType, status, null, null, fromDate, toDate, search);
+    }
+
+    public static Specification<Order> filter(UUID branchId, UUID customerId, String orderType, String status,
+                                              String paymentStatus, String paymentMethod,
+                                              Instant fromDate, Instant toDate, String search) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (branchId != null) {
@@ -39,6 +45,12 @@ public final class OrderSpecifications {
             }
             if (status != null && !status.isBlank()) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (paymentStatus != null && !paymentStatus.isBlank()) {
+                predicates.add(cb.equal(root.get("paymentStatus"), paymentStatus.trim().toUpperCase()));
+            }
+            if (paymentMethod != null && !paymentMethod.isBlank()) {
+                predicates.add(cb.equal(root.get("paymentMethod"), paymentMethod.trim().toUpperCase()));
             }
             if (fromDate != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.<Instant>get("createdAt"), fromDate));

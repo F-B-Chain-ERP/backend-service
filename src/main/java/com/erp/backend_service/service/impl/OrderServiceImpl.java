@@ -415,6 +415,15 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status, LocalDate fromDate,
                                                    LocalDate toDate, String search, int page, int size) {
+        return list(branchId, orderType, status, null, null, fromDate, toDate, search, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<OrderSummaryResponse> list(UUID branchId, String orderType, String status,
+                                                   String paymentStatus, String paymentMethod,
+                                                   LocalDate fromDate, LocalDate toDate,
+                                                   String search, int page, int size) {
         requirePermission("pos:order:view");
         if (page < 0 || size < 1 || size > 100) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "page/size không hợp lệ.");
@@ -428,15 +437,34 @@ public class OrderServiceImpl implements OrderService {
         }
         Instant from = fromDate == null ? null : fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant to = toDate == null ? null : toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        String safePaymentStatus = normalizePaymentStatus(paymentStatus);
+        String safePaymentMethod = normalizePaymentMethod(paymentMethod);
         Page<Order> p = orderRepository.findAll(
-            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status, from, to, search),
+            OrderSpecifications.filter(effectiveBranch, customerId, orderType, status,
+                safePaymentStatus, safePaymentMethod, from, to, search),
             PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
         return new PageResponse<>(p.getNumber(), p.getSize(), p.getTotalElements(), p.getTotalPages(),
                                   p.getContent().stream().map(
                                       o -> new OrderSummaryResponse(o.getId(), o.getOrderCode(), o.getBranchId(),
                                                                     o.getOrderType(), o.getCustomerName(),
                                                                     o.getTotalAmount(), o.getStatus(),
-                                                                    o.getCreatedAt())).toList());
+                                                                    o.getCreatedAt(),
+                                                                    o.getPaymentMethod(), o.getPaymentStatus())).toList());
+    }
+
+    private String normalizePaymentStatus(String v) {
+        if (v == null || v.isBlank()) return null;
+        String s = v.trim().toUpperCase();
+        if (s.equals("UNPAID") || s.equals("PAID") || s.equals("REFUNDED")) return s;
+        return null;
+    }
+
+    private String normalizePaymentMethod(String v) {
+        if (v == null || v.isBlank()) return null;
+        String s = v.trim().toUpperCase();
+        if (s.equals("CASH") || s.equals("COD") || s.equals("VNPAY") || s.equals("MOMO")
+                || s.equals("BANK_TRANSFER")) return s;
+        return null;
     }
 
     @Override

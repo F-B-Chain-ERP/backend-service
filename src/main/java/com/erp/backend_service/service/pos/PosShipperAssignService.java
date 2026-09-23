@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.stream.Collectors;
 
 /**
  * Gán shipper TỰ ĐỘNG khi đơn DELIVERY vào CONFIRMED: chọn nhân viên ACTIVE
@@ -58,19 +61,27 @@ public class PosShipperAssignService {
         Instant now = Instant.now();
         // Truyền "" thay vì null cho search để Postgres khỏi đoán kiểu param
         // (cùng họ bug "? is null" từng sập màn list đơn).
-        List<Account> candidates = accountRepository
+        List<Account> branchAccounts = accountRepository
             .searchWithFilters("", order.getBranchId(), EntityStatus.ACTIVE, PageRequest.of(0, 100))
-            .getContent()
-            .stream()
-            .filter(a -> !accountRoleRepository.findEffectiveByAccountId(a.getId(), EntityStatus.ACTIVE, now)
-                .isEmpty())
-            .toList();
+            .getContent();
+        if (branchAccounts.isEmpty()) {
+            return Optional.empty();
+        }
+        Set<UUID> effectiveAccountIds = accountRoleRepository.findEffectiveByAccountIdIn(
+                branchAccounts.stream().map(Account::getId).toList(), EntityStatus.ACTIVE, now).stream()
+            .map(com.erp.core.domain.AccountRole::getAccountId).collect(Collectors.toSet());
+        List<Account> candidates = branchAccounts.stream()
+            .filter(a -> effectiveAccountIds.contains(a.getId())).toList();
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
+        Map<UUID, Long> busyByShipper = new HashMap<>();
+        for (Object[] row : deliveryRepository.countBusyByShipperIds(
+            candidates.stream().map(Account::getId).toList(), BUSY)) {
+            busyByShipper.put((UUID) row[0], (Long) row[1]);
+        }
         Account chosen = candidates.stream()
-            .min(Comparator.comparingLong(
-                a -> deliveryRepository.countByShipperIdAndStatusIn(a.getId(), BUSY)))
+            .min(Comparator.comparingLong(a -> busyByShipper.getOrDefault(a.getId(), 0L)))
             .orElse(null);
         if (chosen == null) {
             return Optional.empty();

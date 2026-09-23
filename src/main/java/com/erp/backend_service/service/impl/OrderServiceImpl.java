@@ -6,7 +6,6 @@ import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.OrderService;
-import com.erp.backend_service.service.KdsService;
 import com.erp.backend_service.service.pos.PosCogsService;
 import com.erp.backend_service.service.pos.PosComboService;
 import com.erp.backend_service.service.pos.PosBranchOpenService;
@@ -27,11 +26,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.erp.backend_service.event.OrderRealtimeEvent;
+import com.erp.backend_service.event.KdsOrderEvent;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.*;
 import java.util.*;
+import java.time.format.DateTimeFormatter;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -69,7 +70,6 @@ public class OrderServiceImpl implements OrderService {
     private final PosShipperAssignService posShipperAssignService;
     private final PickupTimeSlotRepository pickupTimeSlotRepository;
     private final ApplicationEventPublisher eventPublisher;
-    private final KdsService kdsService;
     private final PosMaterialConsumptionService posMaterialConsumptionService;
 
     public OrderServiceImpl(OrderRepository orderRepository, OrderItemRepository itemRepository,
@@ -87,7 +87,7 @@ public class OrderServiceImpl implements OrderService {
                             PosBranchOpenService posBranchOpenService,
                             PosShipperAssignService posShipperAssignService,
                             PickupTimeSlotRepository pickupTimeSlotRepository,
-                            KdsService kdsService, ApplicationEventPublisher eventPublisher,
+                            ApplicationEventPublisher eventPublisher,
                             PosMaterialConsumptionService posMaterialConsumptionService) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
@@ -114,7 +114,6 @@ public class OrderServiceImpl implements OrderService {
         this.posBranchOpenService = posBranchOpenService;
         this.posShipperAssignService = posShipperAssignService;
         this.pickupTimeSlotRepository = pickupTimeSlotRepository;
-        this.kdsService = kdsService;
         this.eventPublisher = eventPublisher;
         this.posMaterialConsumptionService = posMaterialConsumptionService;
     }
@@ -146,7 +145,8 @@ public class OrderServiceImpl implements OrderService {
             posIdempotencyService.succeeded(record, response.id());
             return response;
         } catch (RuntimeException e) {
-            posIdempotencyService.failed(record);
+            // claim nằm cùng transaction; rollback sẽ tự xóa PROCESSING vừa tạo.
+            // Không ghi FAILED trong catch vì transaction có thể đã rollback-only.
             throw e;
         }
     }
@@ -173,7 +173,8 @@ public class OrderServiceImpl implements OrderService {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "Chi nhánh không hỗ trợ nhận tại cửa hàng.");
         }
 
-        Cart cart = findCart(customerId, request.branchId(), request.sessionToken());
+        // Checkout độc quyền cart: chặn double-click/hai request cùng copy và consume một giỏ.
+        Cart cart = cartRepository.findActiveForUpdate(customerId, request.branchId(), ACTIVE).orElse(null);
         if (cart == null) {
             throw new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND);
         }
@@ -181,6 +182,30 @@ public class OrderServiceImpl implements OrderService {
         if (cartItems.isEmpty()) {
             throw new BaseException(ErrorCode.ORDER_400_CART_EMPTY);
         }
+        Set<UUID> productIds = cartItems.stream().map(CartItem::getProductId)
+            .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Map<UUID, Product> productsById = productRepository.findAllById(productIds).stream()
+            .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
+        Map<UUID, BranchProductAvailability> availabilityByProduct = availabilityRepository
+            .findByBranchIdAndProductIdInAndStatus(request.branchId(), productIds, ACTIVE).stream()
+            .collect(java.util.stream.Collectors.toMap(BranchProductAvailability::getProductId,
+                a -> a, (a, b) -> a));
+        Set<UUID> variantIds = cartItems.stream().map(CartItem::getVariantId)
+            .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Map<UUID, ProductVariant> variantsById = variantRepository.findAllById(variantIds).stream()
+            .collect(java.util.stream.Collectors.toMap(ProductVariant::getId, v -> v));
+        Set<UUID> productsWithActiveVariants = variantRepository
+            .findByProductIdInAndStatus(productIds, ACTIVE).stream()
+            .map(ProductVariant::getProductId).collect(java.util.stream.Collectors.toSet());
+        List<CartItemTopping> allCartToppings = cartItems.isEmpty() ? List.of()
+            : cartItemToppingRepository.findByCartItemIdInAndStatus(
+                cartItems.stream().map(CartItem::getId).toList(), ACTIVE);
+        Map<UUID, List<CartItemTopping>> cartToppingsByItem = allCartToppings.stream()
+            .collect(java.util.stream.Collectors.groupingBy(CartItemTopping::getCartItemId));
+        Set<UUID> toppingIds = allCartToppings.stream().map(CartItemTopping::getToppingId)
+            .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Map<UUID, Topping> toppingsById = toppingRepository.findAllById(toppingIds).stream()
+            .collect(java.util.stream.Collectors.toMap(Topping::getId, t -> t));
         if ("DELIVERY".equals(request.orderType()) &&
             (request.shippingAddress() == null || request.shippingAddress().isBlank())) {
             throw new BaseException(ErrorCode.ORDER_400_INVALID_RECEIVER_DATA);
@@ -196,34 +221,38 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal subtotal = BigDecimal.ZERO;
         List<CartItem> checked = new ArrayList<>();
         for (CartItem ci : cartItems) {
-            Product p = productRepository.findById(ci.getProductId())
-                                         .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND));
+            Product p = productsById.get(ci.getProductId());
+            if (p == null) {
+                throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
+            }
             if (!"ACTIVE".equals(p.getStatus())) {
                 throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
             }
-            availabilityRepository.findByBranchIdAndProductIdAndStatus(request.branchId(), p.getId(), ACTIVE)
-                                  .filter(BranchProductAvailability::isAvailable)
-                                  .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND));
+            BranchProductAvailability productAvailability = availabilityByProduct.get(p.getId());
+            if (productAvailability == null || !productAvailability.isAvailable()) {
+                throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
+            }
             if (ci.getVariantId() != null) {
-                ProductVariant variant = variantRepository.findByIdAndProductId(ci.getVariantId(), p.getId()).orElseThrow(
-                    () -> new BaseException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm không hợp lệ."));
+                ProductVariant variant = variantsById.get(ci.getVariantId());
+                if (variant == null || !p.getId().equals(variant.getProductId())) {
+                    throw new BaseException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm không hợp lệ.");
+                }
                 if (!ACTIVE.equals(variant.getStatus())) {
                     throw new BaseException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm không còn khả dụng.");
                 }
             } else {
                 // Chốt trừ kho: SP có variant ACTIVE thì bắt buộc chọn variant (giả thiết A1,
                 // giống CartServiceImpl). Chặn đơn lọt với variantId=null bypass kho dù giỏ đã check.
-                boolean hasActiveVariant = !variantRepository
-                    .findByProductIdAndStatusOrderByDisplayOrderAsc(p.getId(), ACTIVE).isEmpty();
+                boolean hasActiveVariant = productsWithActiveVariants.contains(p.getId());
                 if (hasActiveVariant) {
                     throw new BaseException(ErrorCode.INVALID_REQUEST, "Sản phẩm có size, vui lòng chọn biến thể.");
                 }
             }
             // Giả thiết B1: subtotal phải khớp Cart (item + topping). Giả thiết combo A4 tái validate ở chốt đơn.
-            posComboService.validateForSale(ci.getProductId(), ci.getVariantId(), ci.getQuantity(),
+            posComboService.validateForSale(p, ci.getVariantId(), ci.getQuantity(),
                 request.branchId());
             subtotal = subtotal.add(ci.getTotalPrice());
-            BigDecimal toppingsTotal = cartItemToppingRepository.findByCartItemIdAndStatus(ci.getId(), ACTIVE)
+            BigDecimal toppingsTotal = cartToppingsByItem.getOrDefault(ci.getId(), List.of())
                 .stream()
                 .map(CartItemTopping::getTotalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -249,27 +278,11 @@ public class OrderServiceImpl implements OrderService {
             if (subtotal.compareTo(preview.getMinOrderAmount()) < 0) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
             }
-            // Lock bi quan row voucher: check hạn mức + ghi usage + tăng usedCount thành 1 khối,
-            // 2 đơn cùng lúc không thể cùng lọt (kể cả limit-theo-khách vì count nằm trong lock).
-            voucher = voucherRepository.findByIdForUpdate(preview.getId()).orElseThrow(
-                () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
-            if (voucher.getUsageLimit() != null && voucher.getUsedCount() >= voucher.getUsageLimit()) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher đã hết lượt sử dụng.");
-            }
-            if (voucher.getUsageLimitPerCustomer() != null &&
-                voucherUsageRepository.countByVoucherIdAndCustomerIdAndStatus(voucher.getId(), customerId, ACTIVE) >=
-                    voucher.getUsageLimitPerCustomer()) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST, "Bạn đã sử dụng voucher quá số lần cho phép.");
-            }
+            // Chỉ preview ở đây. Lock hạn mức được dời sát lúc ghi usage để không khóa
+            // voucher phổ biến trong toàn bộ quá trình copy item/trừ tồn/tạo delivery.
+            voucher = preview;
             // Giả thiết B2: PERCENT làm tròn HALF_UP 2 decimals để không crash số lẻ.
-            discount = "PERCENT".equalsIgnoreCase(voucher.getDiscountType()) ?
-                subtotal.multiply(voucher.getDiscountValue())
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP) :
-                voucher.getDiscountValue();
-            if (voucher.getMaxDiscountAmount() != null) {
-                discount = discount.min(voucher.getMaxDiscountAmount());
-            }
-            discount = discount.min(subtotal).max(BigDecimal.ZERO);
+            discount = calculateDiscount(voucher, subtotal);
         }
         BigDecimal fee = "DELIVERY".equals(request.orderType()) ? DEFAULT_DELIVERY_FEE : BigDecimal.ZERO;
         BigDecimal total = subtotal.subtract(discount).add(fee).max(BigDecimal.ZERO);
@@ -320,10 +333,11 @@ public class OrderServiceImpl implements OrderService {
 
         o = orderRepository.save(o);
 
+        Map<UUID, BigDecimal> cogsByVariant = posCogsService.unitCogsByVariantIds(variantIds);
+        List<OrderItemTopping> orderToppings = new ArrayList<>();
         for (CartItem ci : checked) {
-            Product p = productRepository.findById(ci.getProductId()).orElseThrow();
-            ProductVariant v =
-                ci.getVariantId() == null ? null : variantRepository.findById(ci.getVariantId()).orElse(null);
+            Product p = productsById.get(ci.getProductId());
+            ProductVariant v = ci.getVariantId() == null ? null : variantsById.get(ci.getVariantId());
             OrderItem oi = new OrderItem();
             oi.setOrderId(o.getId());
             oi.setProductId(p.getId());
@@ -338,13 +352,17 @@ public class OrderServiceImpl implements OrderService {
             oi.setUnitPrice(ci.getUnitPrice());
             oi.setTotalPrice(ci.getTotalPrice());
             // Giả thiết B3: COGS từ BOM × giá NCC ưu tiên, thiếu thì ZERO (không chặn bán).
-            BigDecimal unitCogs = posCogsService.unitCogs(ci.getVariantId());
+            BigDecimal unitCogs = ci.getVariantId() == null ? BigDecimal.ZERO
+                : cogsByVariant.getOrDefault(ci.getVariantId(), BigDecimal.ZERO);
             oi.setUnitCogsAmount(unitCogs);
             oi.setStatus(ACTIVE);
             oi = itemRepository.save(oi);
             o.setTotalCogsAmount(o.getTotalCogsAmount().add(unitCogs.multiply(BigDecimal.valueOf(ci.getQuantity()))));
-            for (CartItemTopping ct : cartItemToppingRepository.findByCartItemIdAndStatus(ci.getId(), ACTIVE)) {
-                Topping t = toppingRepository.findById(ct.getToppingId()).orElseThrow();
+            for (CartItemTopping ct : cartToppingsByItem.getOrDefault(ci.getId(), List.of())) {
+                Topping t = toppingsById.get(ct.getToppingId());
+                if (t == null) {
+                    throw new BaseException(ErrorCode.INVALID_REQUEST, "Topping không tồn tại.");
+                }
                 OrderItemTopping ot = new OrderItemTopping();
                 ot.setOrderItemId(oi.getId());
                 ot.setToppingId(t.getId());
@@ -354,9 +372,10 @@ public class OrderServiceImpl implements OrderService {
                 ot.setUnitPrice(ct.getUnitPrice());
                 ot.setTotalPrice(ct.getTotalPrice());
                 ot.setStatus(ACTIVE);
-                itemToppingRepository.save(ot);
+                orderToppings.add(ot);
             }
         }
+        itemToppingRepository.saveAll(orderToppings);
         writeHistory(o, null, "PENDING", "Khởi tạo đơn hàng từ Cart");
         // Tạo delivery record TRƯỚC auto-confirm để auto-assign tìm thấy (bug cũ:
         // record tạo sau nên autoAssign luôn thấy trống và bỏ qua).
@@ -385,9 +404,27 @@ public class OrderServiceImpl implements OrderService {
             writeHistory(o, confirmedOld, PosFlow.Order.CONFIRMED.name(),
                 "Tự động xác nhận: chi nhánh mở cửa và thanh toán tiền mặt/COD");
             // KDS: 1 đơn CONFIRMED = 1 ticket BAR (station cố định, queue_no theo ngày).
-            kdsService.createOnOrderConfirmed(o.getId());
+            publishKdsEvent(KdsOrderEvent.Action.CREATE, o.getId(), o.getStatus(), null);
         }
         if (voucher != null) {
+            voucher = voucherRepository.findByIdForUpdate(voucher.getId()).orElseThrow(
+                () -> new BaseException(ErrorCode.INVALID_REQUEST, "Voucher không hợp lệ."));
+            Instant lockedNow = Instant.now();
+            if (!ACTIVE.equals(voucher.getStatus()) || lockedNow.isBefore(voucher.getStartAt())
+                || lockedNow.isAfter(voucher.getEndAt()) || subtotal.compareTo(voucher.getMinOrderAmount()) < 0) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, VOUCHER_INVALID_MSG);
+            }
+            if (voucher.getUsageLimit() != null && voucher.getUsedCount() >= voucher.getUsageLimit()) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Voucher đã hết lượt sử dụng.");
+            }
+            if (voucher.getUsageLimitPerCustomer() != null &&
+                voucherUsageRepository.countByVoucherIdAndCustomerIdAndStatus(voucher.getId(), customerId, ACTIVE) >=
+                    voucher.getUsageLimitPerCustomer()) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Bạn đã sử dụng voucher quá số lần cho phép.");
+            }
+            discount = calculateDiscount(voucher, subtotal);
+            o.setDiscountAmount(discount);
+            o.setTotalAmount(subtotal.subtract(discount).add(fee).max(BigDecimal.ZERO));
             VoucherUsage vu = new VoucherUsage();
             vu.setVoucherId(voucher.getId());
             vu.setOrderId(o.getId());
@@ -399,8 +436,7 @@ public class OrderServiceImpl implements OrderService {
             voucher.setUsedCount(voucher.getUsedCount() + 1);
             voucherRepository.save(voucher);
         }
-        cartItemToppingRepository.deleteAll(cartItems.stream().flatMap(
-            i -> cartItemToppingRepository.findByCartItemIdAndStatus(i.getId(), ACTIVE).stream()).toList());
+        cartItemToppingRepository.deleteAll(allCartToppings);
         cartItemRepository.deleteAll(cartItems);
         cart.setStatus("CONVERTED");
         cart.setSubtotalAmount(BigDecimal.ZERO);
@@ -451,7 +487,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderStatusResponse updateStatus(UUID id, UpdateOrderStatusRequest request) {
         requirePermission("pos:order:update");
-        Order o = findAccessible(id);
+        Order o = findAccessibleForUpdate(id);
         PosFlow.Order target = PosFlow.parseOrder(request.status());
         PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
         // Chốt hủy: đơn DELIVERY đang READY sau giao thất bại (delivery FAILED) được hủy
@@ -506,24 +542,25 @@ public class OrderServiceImpl implements OrderService {
             }
             case CANCELLED -> {
                 o.setCancelledAt(now);
-                restoreVoucher(o);
                 // PENDING chưa reserve nên không hoàn (hoàn thừa sẽ phình tồn).
                 // READY hậu giao thất bại cũng không hoàn: hàng đã làm xong, tính hao hụt.
                 if (current != PosFlow.Order.PENDING && !failedReturnCancel) {
                     releaseAll(o);
                     posMaterialConsumptionService.releaseForOrder(o);
                 }
+                // Giữ thứ tự lock giống lúc tạo đơn: tồn/NVL trước, voucher sau.
+                restoreVoucher(o);
                 cancelDelivery(o);
                 // Hủy đơn đã PAID phải sinh refund cho kế toán (kể cả hủy tay qua updateStatus).
                 refundIfPaid(o, request.note());
             }
             case REJECTED -> {
                 o.setRejectedAt(now);
-                restoreVoucher(o);
                 if (current != PosFlow.Order.PENDING) {
                     releaseAll(o);
                     posMaterialConsumptionService.releaseForOrder(o);
                 }
+                restoreVoucher(o);
                 cancelDelivery(o);
             }
             default -> {
@@ -535,13 +572,13 @@ public class OrderServiceImpl implements OrderService {
         // DELIVERING/COMPLETED -> dọn board (SERVED); CANCELLED/REJECTED -> hủy ticket.
         // KDS chỉ làm tới READY, Order bấm nốt phần còn lại.
         if (target == PosFlow.Order.CONFIRMED) {
-            kdsService.createOnOrderConfirmed(o.getId());
+            publishKdsEvent(KdsOrderEvent.Action.CREATE, o.getId(), target.name(), null);
         } else if (target == PosFlow.Order.PREPARING || target == PosFlow.Order.READY) {
-            kdsService.syncFromOrder(o.getId(), target.name());
+            publishKdsEvent(KdsOrderEvent.Action.SYNC, o.getId(), target.name(), null);
         } else if (target == PosFlow.Order.DELIVERING || target == PosFlow.Order.COMPLETED) {
-            kdsService.markServedByOrderId(o.getId());
+            publishKdsEvent(KdsOrderEvent.Action.SERVE, o.getId(), target.name(), null);
         } else if (target == PosFlow.Order.CANCELLED || target == PosFlow.Order.REJECTED) {
-            kdsService.cancelByOrderId(o.getId(), request.note());
+            publishKdsEvent(KdsOrderEvent.Action.CANCEL, o.getId(), target.name(), request.note());
         }
         UUID by = currentPrincipalId();
         writeHistory(o, old, target.name(), request.note());
@@ -555,7 +592,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse cancel(UUID id, CancelOrderRequest request) {
         requirePermission("pos:order:cancel");
-        Order o = findAccessible(id);
+        Order o = findAccessibleForUpdate(id);
         PosFlow.Order current = PosFlow.parseOrder(o.getStatus());
         // Chốt hủy: thêm READY hậu giao thất bại (đơn DELIVERY + delivery FAILED, khách từ
         // chối hàng) để thoát kẹt. Các ca READY khác vẫn cấm hủy (hàng đã làm xong).
@@ -569,17 +606,17 @@ public class OrderServiceImpl implements OrderService {
         o.setCancelReason(request.reason());
         o.setCancelledAt(Instant.now());
         orderRepository.save(o);
-        restoreVoucher(o);
         // Chỉ hoàn tồn nếu đơn đã từng reserve (CONFIRMED trở đi); PENDING thì chưa trừ.
         // READY hậu giao thất bại không hoàn: hàng đã làm xong, tính hao hụt.
         if (current != PosFlow.Order.PENDING && !failedReturn) {
             releaseAll(o);
             posMaterialConsumptionService.releaseForOrder(o);
         }
+        restoreVoucher(o);
         cancelDelivery(o);
         // Giả thiết D1: hủy đơn đã PAID phải sinh refund PENDING cho kế toán, tránh mất tiền khách.
         refundIfPaid(o, request.reason());
-        kdsService.cancelByOrderId(o.getId(), request.reason());
+        publishKdsEvent(KdsOrderEvent.Action.CANCEL, o.getId(), o.getStatus(), request.reason());
         writeHistory(o, old, PosFlow.Order.CANCELLED.name(), request.note() != null ? request.note() : request.reason());
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Đơn hàng #" + o.getOrderCode() + " đã bị hủy",
@@ -591,7 +628,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse complete(UUID id, CompleteOrderRequest request) {
         requirePermission("pos:order:update");
-        Order o = findAccessible(id);
+        Order o = findAccessibleForUpdate(id);
         if (!PosFlow.Payment.PAID.name().equalsIgnoreCase(o.getPaymentStatus())) {
             throw new BaseException(ErrorCode.ORDER_400_UNPAID);
         }
@@ -610,7 +647,7 @@ public class OrderServiceImpl implements OrderService {
         o.setCompletedAt(now);
         orderRepository.save(o);
         // Hoàn tất đơn -> dọn board bếp (ticket -> SERVED).
-        kdsService.markServedByOrderId(o.getId());
+        publishKdsEvent(KdsOrderEvent.Action.SERVE, o.getId(), o.getStatus(), null);
         writeHistory(o, old, PosFlow.Order.COMPLETED.name(), request.note());
         publishRealtimeEvent(o, OrderRealtimeEvent.TYPE_ORDER_STATUS_CHANGED,
             "Đơn hàng #" + o.getOrderCode() + " đã hoàn tất",
@@ -683,10 +720,17 @@ public class OrderServiceImpl implements OrderService {
         return o;
     }
 
-    // Quyết định nghiệp vụ: bỏ luồng guest, checkout bắt buộc CUSTOMER login.
-    // Tham số token giữ ở DTO để tương thích FE nhưng backend ignore hoàn toàn.
-    private Cart findCart(UUID customerId, UUID branchId, String token) {
-        return cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, ACTIVE).orElse(null);
+    private Order findAccessibleForUpdate(UUID id) {
+        Order o = orderRepository.findByIdForUpdate(id)
+            .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_ORDER_NOT_FOUND));
+        if (isCustomer()) {
+            if (!Objects.equals(o.getCustomerId(), currentPrincipalId())) {
+                throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
+            }
+        } else {
+            dataScopeHelper.enforceBranchAccess(o.getBranchId());
+        }
+        return o;
     }
 
     private void writeHistory(Order o, String old, String target, String reason) {
@@ -705,7 +749,7 @@ public class OrderServiceImpl implements OrderService {
         voucherUsageRepository.findByOrderIdAndStatus(o.getId(), ACTIVE).ifPresent(vu -> {
             vu.setStatus("CANCELLED");
             voucherUsageRepository.save(vu);
-            voucherRepository.findById(vu.getVoucherId()).ifPresent(v -> {
+            voucherRepository.findByIdForUpdate(vu.getVoucherId()).ifPresent(v -> {
                 v.setUsedCount(Math.max(0, v.getUsedCount() - 1));
                 voucherRepository.save(v);
             });
@@ -754,17 +798,39 @@ public class OrderServiceImpl implements OrderService {
             .orElse(false);
     }
 
-    private void reserveAll(Order order) {        for (OrderItem oi : itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE)) {
-            posComboService.reserveForSale(order.getBranchId(), oi.getProductId(), oi.getVariantId(),
-                oi.getQuantity(), order.getId());
+    private void reserveAll(Order order) {
+        List<OrderItem> items = new ArrayList<>(
+            itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE));
+        Map<UUID, Product> products = productRepository.findAllById(
+                items.stream().map(OrderItem::getProductId).filter(Objects::nonNull).distinct().toList()).stream()
+            .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
+        List<PosComboService.SaleLine> lines = new ArrayList<>();
+        for (OrderItem oi : items) {
+            Product product = products.get(oi.getProductId());
+            if (product == null) {
+                throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
+            }
+            lines.add(new PosComboService.SaleLine(oi.getProductId(), oi.getVariantId(), oi.getQuantity(),
+                product.isCombo()));
         }
+        posComboService.reserveAllForSale(order.getBranchId(), lines, order.getId());
     }
 
     private void releaseAll(Order order) {
-        for (OrderItem oi : itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE)) {
-            posComboService.releaseForSale(order.getBranchId(), oi.getProductId(), oi.getVariantId(),
-                oi.getQuantity(), order.getId());
+        List<OrderItem> items = new ArrayList<>(
+            itemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(order.getId(), ACTIVE));
+        Map<UUID, Product> products = productRepository.findAllById(
+                items.stream().map(OrderItem::getProductId).filter(Objects::nonNull).distinct().toList()).stream()
+            .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
+        List<PosComboService.SaleLine> lines = new ArrayList<>();
+        for (OrderItem oi : items) {
+            Product product = products.get(oi.getProductId());
+            if (product != null) {
+                lines.add(new PosComboService.SaleLine(oi.getProductId(), oi.getVariantId(), oi.getQuantity(),
+                    product.isCombo()));
+            }
         }
+        posComboService.releaseAllForSale(order.getBranchId(), lines, order.getId());
     }
 
     private void cancelDelivery(Order o) {
@@ -796,10 +862,21 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private String generateOrderCode() {
-        return CodeGenerator.nextDailySequence("HD-",
-            prefix -> orderRepository.findTopByOrderCodeStartsWithOrderByOrderCodeDesc(prefix)
-                                     .map(Order::getOrderCode),
-            orderRepository::existsByOrderCode);
+        // Không dùng max+1: DB server không có unique order_code, hai instance có thể đọc
+        // cùng max rồi sinh trùng. Hậu tố ngẫu nhiên giữ prefix ngày và không cần khóa dài.
+        String prefix = "HD-" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE) + "-";
+        return CodeGenerator.random(prefix, 12, orderRepository::existsByOrderCode);
+    }
+
+    private BigDecimal calculateDiscount(Voucher voucher, BigDecimal subtotal) {
+        BigDecimal value = "PERCENT".equalsIgnoreCase(voucher.getDiscountType())
+            ? subtotal.multiply(voucher.getDiscountValue())
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+            : voucher.getDiscountValue();
+        if (voucher.getMaxDiscountAmount() != null) {
+            value = value.min(voucher.getMaxDiscountAmount());
+        }
+        return value.min(subtotal).max(BigDecimal.ZERO);
     }
 
     private OrderResponse toResponse(Order o) {
@@ -916,6 +993,12 @@ public class OrderServiceImpl implements OrderService {
                 Instant.now()
             ));
         } catch (Exception ignored) {
+        }
+    }
+
+    private void publishKdsEvent(KdsOrderEvent.Action action, UUID orderId, String status, String reason) {
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new KdsOrderEvent(action, orderId, status, reason));
         }
     }
 

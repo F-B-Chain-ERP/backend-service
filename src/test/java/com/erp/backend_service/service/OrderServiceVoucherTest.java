@@ -92,7 +92,7 @@ class OrderServiceVoucherTest {
                 branchRepository, availabilityRepository, voucherRepository, voucherUsageRepository,
                 voucherBranchRepository, dataScopeHelper, posComboService, posCogsService,
                 refundRepository, posIdempotencyService, posBranchOpenService,
-                posShipperAssignService, pickupTimeSlotRepository, kdsService, eventPublisher,
+                posShipperAssignService, pickupTimeSlotRepository, eventPublisher,
                 posMaterialConsumptionService
         );
 
@@ -131,15 +131,19 @@ class OrderServiceVoucherTest {
         product.setStatus("ACTIVE");
 
         bpa = new BranchProductAvailability();
+        bpa.setProductId(cartItem.getProductId());
         bpa.setAvailable(true);
 
         lenient().when(branchRepository.findById(branchId)).thenReturn(Optional.of(branch));
-        lenient().when(cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, "ACTIVE"))
+        lenient().when(cartRepository.findActiveForUpdate(customerId, branchId, "ACTIVE"))
                 .thenReturn(Optional.of(cart));
         lenient().when(cartItemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cartId, "ACTIVE"))
                 .thenReturn(List.of(cartItem));
         lenient().when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
         lenient().when(productRepository.findById(cartItem.getProductId())).thenReturn(Optional.of(product));
+        lenient().when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        lenient().when(availabilityRepository.findByBranchIdAndProductIdInAndStatus(eq(branchId), any(), eq("ACTIVE")))
+                .thenReturn(List.of(bpa));
         lenient().when(availabilityRepository.findByBranchIdAndProductIdAndStatus(branchId, cartItem.getProductId(), "ACTIVE"))
                 .thenReturn(Optional.of(bpa));
 

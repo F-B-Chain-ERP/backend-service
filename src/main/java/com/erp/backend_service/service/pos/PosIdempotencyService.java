@@ -5,7 +5,6 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.repository.IdempotencyKeyRepository;
 import com.erp.core.domain.IdempotencyKey;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
@@ -16,6 +15,8 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * Chống tạo trùng đơn khi F5/double-click/retry mạng.
@@ -51,7 +52,7 @@ public class PosIdempotencyService {
         if (key == null || key.isBlank()) {
             return Optional.empty();
         }
-        return repository.findByIdempotencyKey(key.trim());
+        return repository.findAllByIdempotencyKeyOrderByCreatedAtDesc(key.trim()).stream().findFirst();
     }
 
     /**
@@ -60,14 +61,19 @@ public class PosIdempotencyService {
      */
     @Transactional(readOnly = true)
     public Optional<UUID> replayOrderId(String key, String hash) {
-        IdempotencyKey record = find(key).orElse(null);
-        if (record == null) {
+        List<IdempotencyKey> records = repository.findAllByIdempotencyKeyOrderByCreatedAtDesc(key.trim());
+        if (records.isEmpty()) {
             return Optional.empty();
         }
-        if (!hash.equals(record.getRequestHash())) {
+        List<IdempotencyKey> matching = records.stream()
+            .filter(record -> hash.equals(record.getRequestHash())).toList();
+        if (matching.isEmpty()) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE,
                 "Idempotency-Key đã dùng cho đơn khác, vui lòng tạo key mới.");
         }
+        IdempotencyKey record = matching.stream()
+            .filter(r -> "SUCCEEDED".equals(r.getStatus()))
+            .findFirst().orElse(matching.get(0));
         if ("SUCCEEDED".equals(record.getStatus())) {
             Object orderId = record.getResponsePayload() == null ? null : record.getResponsePayload().get("orderId");
             if (orderId != null) {
@@ -75,8 +81,9 @@ public class PosIdempotencyService {
             }
             return Optional.empty();
         }
-        if ("PROCESSING".equals(record.getStatus()) && record.getExpiresAt() != null &&
-            record.getExpiresAt().isAfter(Instant.now())) {
+        boolean processing = matching.stream().anyMatch(r -> "PROCESSING".equals(r.getStatus())
+            && r.getExpiresAt() != null && r.getExpiresAt().isAfter(Instant.now()));
+        if (processing) {
             throw new BaseException(ErrorCode.DUPLICATE_RESOURCE,
                 "Đơn đang được xử lý, vui lòng thử lại sau giây lát.");
         }
@@ -85,24 +92,36 @@ public class PosIdempotencyService {
 
     @Transactional
     public IdempotencyKey claim(String key, String hash) {
-        Optional<IdempotencyKey> existing = find(key);
-        if (existing.isPresent()) {
-            IdempotencyKey rec = existing.get();
-            boolean dead = "FAILED".equals(rec.getStatus()) ||
-                (rec.getExpiresAt() != null && rec.getExpiresAt().isBefore(Instant.now()));
-            if (dead) {
-                repository.delete(rec);
-            } else {
+        String normalizedKey = key.trim();
+        repository.acquireTransactionLock(lockId(normalizedKey));
+        List<IdempotencyKey> existingRecords =
+            repository.findAllByIdempotencyKeyOrderByCreatedAtDesc(normalizedKey);
+        if (!existingRecords.isEmpty()) {
+            boolean hasLive = existingRecords.stream().anyMatch(rec ->
+                !("FAILED".equals(rec.getStatus()) ||
+                    (rec.getExpiresAt() != null && rec.getExpiresAt().isBefore(Instant.now()))));
+            if (hasLive) {
                 throw new BaseException(ErrorCode.DUPLICATE_RESOURCE,
                     "Key đang được xử lý hoặc đã dùng, vui lòng dùng key mới.");
             }
+            repository.deleteAll(existingRecords);
         }
         IdempotencyKey record = new IdempotencyKey();
-        record.setIdempotencyKey(key.trim());
+        record.setIdempotencyKey(normalizedKey);
         record.setRequestHash(hash);
         record.setStatus("PROCESSING");
         record.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
         return repository.save(record);
+    }
+
+    private long lockId(String key) {
+        try {
+            byte[] bytes = MessageDigest.getInstance("SHA-256")
+                .digest(("IDEMPOTENCY|" + key).getBytes(StandardCharsets.UTF_8));
+            return ByteBuffer.wrap(bytes).getLong();
+        } catch (Exception e) {
+            throw new BaseException(ErrorCode.INTERNAL_ERROR, "Không tạo được idempotency lock.");
+        }
     }
 
     @Transactional
@@ -112,9 +131,4 @@ public class PosIdempotencyService {
         repository.save(record);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void failed(IdempotencyKey record) {
-        record.setStatus("FAILED");
-        repository.save(record);
-    }
 }

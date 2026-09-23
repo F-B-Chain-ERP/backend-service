@@ -55,6 +55,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Gom mọi check/trừ/hoàn tồn bán trong ngày về một chỗ (A2, A3).
@@ -127,27 +128,35 @@ public class PosStockService {
     @Transactional
     public BranchVariantDailyStock ensureToday(UUID branchId, UUID variantId) {
         LocalDate today = businessDay.today(branchId);
-        return stockRepository
+        BranchVariantDailyStock existing = stockRepository
             .findByBranchIdAndVariantIdAndBusinessDateAndStatus(branchId, variantId, today, "ACTIVE")
-            .orElseGet(() -> {
-                int opening = stockRepository
-                    .findFirstByBranchIdAndVariantIdAndStatusOrderByBusinessDateDesc(branchId, variantId,
-                        "ACTIVE")
-                    .map(BranchVariantDailyStock::getRemainingQuantity)
-                    .orElse(0);
-                BranchVariantDailyStock created = new BranchVariantDailyStock();
-                created.setBranchId(branchId);
-                created.setVariantId(variantId);
-                created.setBusinessDate(today);
-                created.setOpeningQuantity(Math.max(0, opening));
-                created.setRemainingQuantity(Math.max(0, opening));
-                created.setSoldQuantity(0);
-                created.setStatus("ACTIVE");
-                BranchVariantDailyStock saved = stockRepository.save(created);
-                writeLog(branchId, variantId, 0, null, "RESTOCK",
-                    "Auto carryover tồn sang ngày " + today);
-                return saved;
-            });
+            .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        long lockId = UUID.nameUUIDFromBytes(("DAILY_STOCK|" + branchId + "|" + variantId + "|" + today)
+            .getBytes(StandardCharsets.UTF_8)).getMostSignificantBits();
+        stockRepository.acquireTransactionLock(lockId);
+        existing = stockRepository
+            .findByBranchIdAndVariantIdAndBusinessDateAndStatus(branchId, variantId, today, "ACTIVE")
+            .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        int opening = stockRepository
+            .findFirstByBranchIdAndVariantIdAndStatusOrderByBusinessDateDesc(branchId, variantId, "ACTIVE")
+            .map(BranchVariantDailyStock::getRemainingQuantity).orElse(0);
+        BranchVariantDailyStock created = new BranchVariantDailyStock();
+        created.setBranchId(branchId);
+        created.setVariantId(variantId);
+        created.setBusinessDate(today);
+        created.setOpeningQuantity(Math.max(0, opening));
+        created.setRemainingQuantity(Math.max(0, opening));
+        created.setSoldQuantity(0);
+        created.setStatus("ACTIVE");
+        BranchVariantDailyStock saved = stockRepository.save(created);
+        writeLog(branchId, variantId, 0, null, "RESTOCK", "Auto carryover tồn sang ngày " + today);
+        return saved;
     }
 
     /**

@@ -83,7 +83,7 @@ class OrderPickupSlotTest {
                 branchRepository, availabilityRepository, voucherRepository, voucherUsageRepository,
                 voucherBranchRepository, dataScopeHelper, posComboService, posCogsService,
                 refundRepository, posIdempotencyService, posBranchOpenService,
-                posShipperAssignService, pickupTimeSlotRepository, kdsService, eventPublisher,
+                posShipperAssignService, pickupTimeSlotRepository, eventPublisher,
                 posMaterialConsumptionService
         );
 
@@ -139,6 +139,7 @@ class OrderPickupSlotTest {
         product.setStatus("ACTIVE");
 
         BranchProductAvailability bpa = new BranchProductAvailability();
+        bpa.setProductId(cartItem.getProductId());
         bpa.setAvailable(true);
 
         Customer customer = new Customer();
@@ -147,14 +148,14 @@ class OrderPickupSlotTest {
         customer.setPhone("0987654321");
         customer.setEmail("a@test.com");
 
-        when(cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, "ACTIVE"))
+        when(cartRepository.findActiveForUpdate(customerId, branchId, "ACTIVE"))
                 .thenReturn(Optional.of(cart));
         when(cartItemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cartId, "ACTIVE"))
                 .thenReturn(List.of(cartItem));
         when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
-        when(productRepository.findById(cartItem.getProductId())).thenReturn(Optional.of(product));
-        when(availabilityRepository.findByBranchIdAndProductIdAndStatus(branchId, cartItem.getProductId(), "ACTIVE"))
-                .thenReturn(Optional.of(bpa));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        when(availabilityRepository.findByBranchIdAndProductIdInAndStatus(eq(branchId), any(), eq("ACTIVE")))
+                .thenReturn(List.of(bpa));
 
         // Pickup Slot có max_orders = 5
         PickupTimeSlot slot = new PickupTimeSlot();
@@ -201,6 +202,7 @@ class OrderPickupSlotTest {
         product.setStatus("ACTIVE");
 
         BranchProductAvailability bpa = new BranchProductAvailability();
+        bpa.setProductId(cartItem.getProductId());
         bpa.setAvailable(true);
 
         Customer customer = new Customer();
@@ -209,14 +211,14 @@ class OrderPickupSlotTest {
         customer.setPhone("0987654321");
         customer.setEmail("a@test.com");
 
-        when(cartRepository.findByCustomerIdAndBranchIdAndStatus(customerId, branchId, "ACTIVE"))
+        when(cartRepository.findActiveForUpdate(customerId, branchId, "ACTIVE"))
                 .thenReturn(Optional.of(cart));
         when(cartItemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cartId, "ACTIVE"))
                 .thenReturn(List.of(cartItem));
         when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
-        when(productRepository.findById(cartItem.getProductId())).thenReturn(Optional.of(product));
-        when(availabilityRepository.findByBranchIdAndProductIdAndStatus(branchId, cartItem.getProductId(), "ACTIVE"))
-                .thenReturn(Optional.of(bpa));
+        when(productRepository.findAllById(any())).thenReturn(List.of(product));
+        when(availabilityRepository.findByBranchIdAndProductIdInAndStatus(eq(branchId), any(), eq("ACTIVE")))
+                .thenReturn(List.of(bpa));
 
         when(pickupTimeSlotRepository.findByIdForUpdate(slotId)).thenReturn(Optional.empty());
 

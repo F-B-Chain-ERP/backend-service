@@ -13,6 +13,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BranchVariantDailyStockRepository extends JpaRepository<BranchVariantDailyStock, UUID> {
+    @Query(value = "select pg_advisory_xact_lock(:lockId)", nativeQuery = true)
+    void acquireTransactionLock(@Param("lockId") long lockId);
     Optional<BranchVariantDailyStock> findByBranchIdAndVariantIdAndBusinessDateAndStatus(UUID branchId, UUID variantId,
                                                                                          LocalDate date, String status);
 

@@ -32,6 +32,7 @@ public class CartServiceImpl implements CartService {
     private final BranchToppingAvailabilityRepository branchToppingAvailabilityRepository;
     private final BranchProductAvailabilityRepository availabilityRepository;
     private final PosComboService posComboService;
+    private final CustomerRepository customerRepository;
 
     public CartServiceImpl(CartRepository cartRepository, CartItemRepository itemRepository,
                            CartItemToppingRepository itemToppingRepository, ProductRepository productRepository,
@@ -39,7 +40,7 @@ public class CartServiceImpl implements CartService {
                            ProductToppingRepository productToppingRepository,
                            BranchToppingAvailabilityRepository branchToppingAvailabilityRepository,
                            BranchProductAvailabilityRepository availabilityRepository,
-                           PosComboService posComboService) {
+                           PosComboService posComboService, CustomerRepository customerRepository) {
         this.cartRepository = cartRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -50,6 +51,7 @@ public class CartServiceImpl implements CartService {
         this.branchToppingAvailabilityRepository = branchToppingAvailabilityRepository;
         this.availabilityRepository = availabilityRepository;
         this.posComboService = posComboService;
+        this.customerRepository = customerRepository;
     }
 
     @Override
@@ -69,6 +71,10 @@ public class CartServiceImpl implements CartService {
     public CartMutationResponse addItem(AddCartItemRequest request) {
         requireCustomerPermission("pos:cart:create");
         UUID customerId = currentCustomerId();
+        // Serialize cả thao tác tạo cart đầu tiên của cùng customer. Khóa cart riêng không
+        // bảo vệ được trường hợp cả hai request cùng thấy "chưa có cart".
+        customerRepository.findByIdForUpdate(customerId)
+            .orElseThrow(() -> new BaseException(ErrorCode.CUSTOMER_NOT_FOUND));
         Product product = productRepository.findById(request.productId())
                                            .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
         if (!ACTIVE.equals(product.getStatus())) {
@@ -99,10 +105,6 @@ public class CartServiceImpl implements CartService {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Sản phẩm có size, vui lòng chọn biến thể.");
             }
         }
-        // Validate tồn + combo (theo ngày kinh doanh chi nhánh, nổ thành phần combo) thay cho checkStock cũ.
-        posComboService.validateForSale(product.getId(), request.variantId(), request.quantity(),
-            request.branchId());
-
         Cart cart = getOrCreateCart(customerId, request.branchId(), request.sessionToken());
         String ice = normalize(request.iceLevel(), "NORMAL");
         String sugar = normalize(request.sugarLevel(), "NORMAL");
@@ -128,8 +130,10 @@ public class CartServiceImpl implements CartService {
         int newQuantity = request.quantity();
         if (item != null) {
             newQuantity += item.getQuantity();
-            posComboService.validateForSale(product.getId(), request.variantId(), newQuantity,
-                request.branchId());
+        }
+        // Validate đúng một lần với tổng quantity sau merge.
+        posComboService.validateForSale(product, request.variantId(), newQuantity, request.branchId());
+        if (item != null) {
             item.setQuantity(newQuantity);
             item.setUnitPrice(unitPrice);
             item.setTotalPrice(unitPrice.multiply(BigDecimal.valueOf(newQuantity)));
@@ -159,11 +163,13 @@ public class CartServiceImpl implements CartService {
     public CartMutationResponse updateItem(UUID itemId, UpdateCartItemRequest request) {
         requireCustomerPermission("pos:cart:update");
         UUID customerId = currentCustomerId();
-        CartItem item =
+        CartItem snapshot =
             itemRepository.findById(itemId).orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
-        Cart cart = cartRepository.findById(item.getCartId())
-                                  .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
+        Cart cart = cartRepository.findByIdForUpdate(snapshot.getCartId())
+                                   .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
         ensureOwner(cart, customerId);
+        CartItem item = itemRepository.findByIdAndCartIdAndStatusForUpdate(itemId, cart.getId(), ACTIVE)
+            .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
         if (!ACTIVE.equals(item.getStatus())) {
             throw new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND);
         }
@@ -194,11 +200,13 @@ public class CartServiceImpl implements CartService {
     public CartMutationResponse deleteItem(UUID itemId) {
         requireCustomerPermission("pos:cart:delete");
         UUID customerId = currentCustomerId();
-        CartItem item =
+        CartItem snapshot =
             itemRepository.findById(itemId).orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
-        Cart cart = cartRepository.findById(item.getCartId())
-                                  .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
+        Cart cart = cartRepository.findByIdForUpdate(snapshot.getCartId())
+                                   .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
         ensureOwner(cart, customerId);
+        CartItem item = itemRepository.findByIdAndCartIdAndStatusForUpdate(itemId, cart.getId(), ACTIVE)
+            .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND));
         if (!ACTIVE.equals(item.getStatus())) {
             throw new BaseException(ErrorCode.ORDER_404_CART_NOT_FOUND);
         }
@@ -219,24 +227,16 @@ public class CartServiceImpl implements CartService {
     }
 
     private Cart getOrCreateCart(UUID customerId, UUID branchId, String sessionToken) {
-        Cart cart = findCart(customerId, branchId, sessionToken);
+        Cart cart = cartRepository.findActiveForUpdate(customerId, branchId, ACTIVE).orElse(null);
         if (cart != null) {
             return cart;
         }
-        try {
-            Cart c = new Cart();
-            c.setCustomerId(customerId);
-            c.setBranchId(branchId);
-            c.setStatus(ACTIVE);
-            c.setSubtotalAmount(BigDecimal.ZERO);
-            return cartRepository.save(c);
-        } catch (Exception e) {
-            Cart existing = findCart(customerId, branchId, sessionToken);
-            if (existing != null) {
-                return existing;
-            }
-            throw e;
-        }
+        Cart c = new Cart();
+        c.setCustomerId(customerId);
+        c.setBranchId(branchId);
+        c.setStatus(ACTIVE);
+        c.setSubtotalAmount(BigDecimal.ZERO);
+        return cartRepository.save(c);
     }
 
     private void saveToppings(CartItem item, List<AddCartItemRequest.ToppingRequest> toppings,
@@ -254,27 +254,40 @@ public class CartServiceImpl implements CartService {
             }
         }
         itemToppingRepository.deleteByCartItemId(item.getId());
+        if (mergedToppings.isEmpty()) {
+            return;
+        }
+        Set<UUID> toppingIds = mergedToppings.keySet();
+        Map<UUID, Topping> toppingsById = toppingRepository.findAllById(toppingIds).stream()
+            .collect(Collectors.toMap(Topping::getId, t -> t));
+        Map<UUID, ProductTopping> productToppingsById = productToppingRepository
+            .findByProductIdAndToppingIdInAndStatus(productId, toppingIds, ACTIVE).stream()
+            .collect(Collectors.toMap(ProductTopping::getToppingId, pt -> pt, (a, b) -> a));
+        Map<UUID, BranchToppingAvailability> availabilityById = branchToppingAvailabilityRepository
+            .findByBranchIdAndToppingIdInAndStatus(branchId, toppingIds, ACTIVE).stream()
+            .collect(Collectors.toMap(BranchToppingAvailability::getToppingId, a -> a, (a, b) -> a));
+        List<CartItemTopping> rows = new ArrayList<>();
         for (Map.Entry<UUID, Integer> entry : mergedToppings.entrySet()) {
             UUID toppingId = entry.getKey();
             int quantity = entry.getValue();
-            Topping topping = toppingRepository.findById(toppingId)
-                                               .orElseThrow(() -> new BaseException(ErrorCode.INVALID_REQUEST,
-                                                                                    "Topping không tồn tại."));
+            Topping topping = toppingsById.get(toppingId);
+            if (topping == null) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Topping không tồn tại.");
+            }
             if (!ACTIVE.equals(topping.getStatus())) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Topping không còn khả dụng.");
             }
-            ProductTopping productTopping = productToppingRepository
-                .findByProductIdAndToppingIdAndStatus(productId, toppingId, ACTIVE)
-                .orElseThrow(() -> new BaseException(ErrorCode.INVALID_REQUEST,
-                                                      "Topping không thuộc sản phẩm."));
+            ProductTopping productTopping = productToppingsById.get(toppingId);
+            if (productTopping == null) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Topping không thuộc sản phẩm.");
+            }
             if (quantity > productTopping.getMaxQuantity() * item.getQuantity()) {
                 throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
             }
-            branchToppingAvailabilityRepository
-                .findByBranchIdAndToppingIdAndStatus(branchId, toppingId, ACTIVE)
-                .filter(BranchToppingAvailability::isAvailable)
-                .orElseThrow(() -> new BaseException(ErrorCode.INVALID_REQUEST,
-                                                      "Topping không khả dụng tại chi nhánh."));
+            BranchToppingAvailability toppingAvailability = availabilityById.get(toppingId);
+            if (toppingAvailability == null || !toppingAvailability.isAvailable()) {
+                throw new BaseException(ErrorCode.INVALID_REQUEST, "Topping không khả dụng tại chi nhánh.");
+            }
             CartItemTopping ct = new CartItemTopping();
             ct.setCartItemId(item.getId());
             ct.setToppingId(topping.getId());
@@ -282,8 +295,9 @@ public class CartServiceImpl implements CartService {
             ct.setUnitPrice(topping.getPrice());
             ct.setTotalPrice(topping.getPrice().multiply(BigDecimal.valueOf(quantity)));
             ct.setStatus(ACTIVE);
-            itemToppingRepository.save(ct);
+            rows.add(ct);
         }
+        itemToppingRepository.saveAll(rows);
     }
 
     private BigDecimal resolveUnitPrice(Product p, ProductVariant v, BranchProductAvailability a) {
@@ -292,13 +306,15 @@ public class CartServiceImpl implements CartService {
     }
 
     private void recalculate(Cart cart) {
-        BigDecimal subtotal = itemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cart.getId(), ACTIVE).stream()
-                                            .map(i -> i.getTotalPrice().add(
-                                                itemToppingRepository.findByCartItemIdAndStatus(i.getId(), ACTIVE)
-                                                                     .stream()
-                                                                     .map(CartItemTopping::getTotalPrice)
-                                                                     .reduce(BigDecimal.ZERO, BigDecimal::add)))
-                                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<CartItem> items = itemRepository.findByCartIdAndStatusOrderByCreatedAtAsc(cart.getId(), ACTIVE);
+        BigDecimal itemTotal = items.stream().map(CartItem::getTotalPrice)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal toppingTotal = items.isEmpty() ? BigDecimal.ZERO
+            : itemToppingRepository.findByCartItemIdInAndStatus(
+                    items.stream().map(CartItem::getId).toList(), ACTIVE).stream()
+                .map(CartItemTopping::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal subtotal = itemTotal.add(toppingTotal);
         cart.setSubtotalAmount(subtotal);
         cartRepository.save(cart);
     }
@@ -397,9 +413,12 @@ public class CartServiceImpl implements CartService {
             variantRepository.findAllById(variantIds).stream()
                               .collect(Collectors.toMap(ProductVariant::getId, v -> v));
 
-        Map<UUID, List<CartItemTopping>> toppingsByItem = cartItems.stream()
-            .collect(Collectors.toMap(CartItem::getId,
-                i -> itemToppingRepository.findByCartItemIdAndStatus(i.getId(), ACTIVE)));
+        Map<UUID, List<CartItemTopping>> toppingsByItem = new HashMap<>();
+        if (!cartItems.isEmpty()) {
+            itemToppingRepository.findByCartItemIdInAndStatus(
+                    cartItems.stream().map(CartItem::getId).toList(), ACTIVE)
+                .forEach(t -> toppingsByItem.computeIfAbsent(t.getCartItemId(), ignored -> new ArrayList<>()).add(t));
+        }
 
         Set<UUID> toppingIds = toppingsByItem.values().stream()
             .flatMap(Collection::stream)
@@ -446,8 +465,9 @@ public class CartServiceImpl implements CartService {
             int scaled = perUnit * newQty;
             topping.setQuantity(scaled);
             topping.setTotalPrice(topping.getUnitPrice().multiply(BigDecimal.valueOf(scaled)));
-            itemToppingRepository.save(topping);
+            // flush một batch ở cuối thay vì một save/row.
         }
+        itemToppingRepository.saveAll(toppings);
     }
 
     private void requireCustomerPermission(String permission) {

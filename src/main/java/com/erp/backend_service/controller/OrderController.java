@@ -35,9 +35,11 @@ public class OrderController {
         @RequestParam(required = false) UUID branchId, @RequestParam(required = false) String orderType,
         @RequestParam(required = false) String status, @RequestParam(required = false) LocalDate fromDate,
         @RequestParam(required = false) LocalDate toDate, @RequestParam(required = false) String search,
+        @RequestParam(required = false) String paymentStatus, @RequestParam(required = false) String paymentMethod,
         @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(
-            ApiResponse.success(service.list(branchId, orderType, status, fromDate, toDate, search, page, size),
+            ApiResponse.success(service.list(branchId, orderType, status, paymentStatus, paymentMethod,
+                    fromDate, toDate, search, page, size),
                                 "Lấy danh sách đơn hàng thành công"));
     }
 

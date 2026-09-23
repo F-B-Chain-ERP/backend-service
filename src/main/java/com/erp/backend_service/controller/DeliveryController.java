@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -17,6 +18,13 @@ public class DeliveryController {
 
     public DeliveryController(DeliveryService service) {
         this.service = service;
+    }
+
+    /** Tải giao hàng cho nhiều đơn trong 1 lần (màn Giao hàng gọi sau khi list đơn). */
+    @GetMapping("/by-orders")
+    public ResponseEntity<ApiResponse<List<DeliveryResponse>>> byOrders(@RequestParam List<UUID> orderIds) {
+        return ResponseEntity.ok(
+            ApiResponse.success(service.listByOrderIds(orderIds), "Lấy danh sách giao hàng thành công"));
     }
 
     @GetMapping("/{orderId}")

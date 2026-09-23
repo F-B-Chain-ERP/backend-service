@@ -37,6 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class KdsServiceImpl implements KdsService {
@@ -122,11 +123,18 @@ public class KdsServiceImpl implements KdsService {
     @Override
     @Transactional
     public KdsTicketResponse createOnOrderConfirmed(UUID orderId) {
-        Order o = orderRepository.findById(orderId)
+        // Khóa order làm mutex liên tiến trình; synchronized trong JVM không đủ khi chạy nhiều instance.
+        Order o = orderRepository.findByIdForUpdate(orderId)
             .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_ORDER_NOT_FOUND));
         // Idempotent: 1 order chỉ 1 ticket BAR.
-        if (ticketRepository.findByOrderId(o.getId()).isPresent()) {
-            return toResponse(ticketRepository.findByOrderId(o.getId()).get());
+        KdsTicket existing = ticketRepository.findByOrderId(o.getId()).orElse(null);
+        if (existing != null) {
+            return toResponse(existing);
+        }
+        PosFlow.Order orderStatus = PosFlow.parseOrder(o.getStatus());
+        if (orderStatus == PosFlow.Order.CANCELLED || orderStatus == PosFlow.Order.REJECTED) {
+            throw new BaseException(ErrorCode.KDS_400_INVALID_STATUS_TRANSITION,
+                "Không tạo phiếu bếp cho đơn đã hủy hoặc từ chối.");
         }
         List<OrderItem> items = orderItemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(o.getId(), "ACTIVE");
         if (items.isEmpty()) {
@@ -154,7 +162,7 @@ public class KdsServiceImpl implements KdsService {
     @Override
     @Transactional
     public void cancelByOrderId(UUID orderId, String reason) {
-        ticketRepository.findByOrderId(orderId).ifPresent(t -> {
+        ticketRepository.findByOrderIdForUpdate(orderId).ifPresent(t -> {
             PosFlow.Kds current = PosFlow.parseKds(t.getStatus());
             if (current == PosFlow.Kds.CANCELLED || current == PosFlow.Kds.SERVED) {
                 return;
@@ -214,9 +222,11 @@ public class KdsServiceImpl implements KdsService {
     @Transactional
     public KdsTicketResponse progressItem(UUID itemId, KdsTicketItemProgressRequest request) {
         requireUpdatePermission();
-        KdsTicketItem ti = ticketItemRepository.findById(itemId)
+        KdsTicketItem snapshot = ticketItemRepository.findById(itemId)
             .orElseThrow(() -> new BaseException(ErrorCode.KDS_404_TICKET_ITEM_NOT_FOUND));
-        KdsTicket t = accessibleTicket(ti.getKdsTicketId());
+        KdsTicket t = accessibleTicket(snapshot.getKdsTicketId());
+        KdsTicketItem ti = ticketItemRepository.findByIdForUpdate(itemId)
+            .orElseThrow(() -> new BaseException(ErrorCode.KDS_404_TICKET_ITEM_NOT_FOUND));
         OrderItem oi = orderItemRepository.findById(ti.getOrderItemId())
             .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_ORDER_NOT_FOUND));
         PosFlow.Kds current = PosFlow.parseKds(ti.getStatus());
@@ -276,6 +286,8 @@ public class KdsServiceImpl implements KdsService {
         Instant dayStart = today.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant dayEnd = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
         String lockKey = branchId + "|" + today;
+        ticketRepository.acquireTransactionLock(UUID.nameUUIDFromBytes(
+            ("KDS_QUEUE|" + lockKey).getBytes(StandardCharsets.UTF_8)).getMostSignificantBits());
         Object lock = queueLocks.computeIfAbsent(lockKey, k -> new Object());
         synchronized (lock) {
             int max = ticketRepository.maxQueueNoToday(branchId, dayStart, dayEnd);
@@ -305,7 +317,7 @@ public class KdsServiceImpl implements KdsService {
      * CONFIRMED -> PREPARING -> READY. Bỏ qua nếu Order đã đi xa hơn hoặc đã hủy.
      */
     private void syncOrderStatus(KdsTicket t, PosFlow.Order target) {
-        Order o = orderRepository.findById(t.getOrderId()).orElse(null);
+        Order o = orderRepository.findByIdForUpdate(t.getOrderId()).orElse(null);
         if (o == null) {
             return;
         }
@@ -334,7 +346,7 @@ public class KdsServiceImpl implements KdsService {
     }
 
     private KdsTicket accessibleTicket(UUID id) {
-        KdsTicket t = ticketRepository.findById(id)
+        KdsTicket t = ticketRepository.findByIdForUpdate(id)
             .orElseThrow(() -> new BaseException(ErrorCode.KDS_404_TICKET_NOT_FOUND));
         dataScopeHelper.enforceBranchAccess(t.getBranchId());
         return t;
@@ -353,7 +365,7 @@ public class KdsServiceImpl implements KdsService {
             return;
         }
         // Đảm bảo có ticket để kéo theo (Order CONFIRMED/PREPARING mà thiếu ticket do lỗi cũ).
-        KdsTicket t = ticketRepository.findByOrderId(orderId).orElse(null);
+        KdsTicket t = ticketRepository.findByOrderIdForUpdate(orderId).orElse(null);
         if (t == null) {
             if (target == PosFlow.Order.CONFIRMED || target == PosFlow.Order.PREPARING
                 || target == PosFlow.Order.READY) {
@@ -409,7 +421,7 @@ public class KdsServiceImpl implements KdsService {
         if (orderId == null) {
             return;
         }
-        ticketRepository.findByOrderId(orderId).ifPresent(t -> {
+        ticketRepository.findByOrderIdForUpdate(orderId).ifPresent(t -> {
             PosFlow.Kds current = PosFlow.parseKds(t.getStatus());
             if (current == PosFlow.Kds.CANCELLED || current == PosFlow.Kds.SERVED) {
                 return;

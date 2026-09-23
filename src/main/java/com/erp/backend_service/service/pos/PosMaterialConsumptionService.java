@@ -30,6 +30,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 /**
@@ -100,7 +103,7 @@ public class PosMaterialConsumptionService {
         }
         Map<UUID, Material> materials = materialRepository.findAllById(needed.keySet()).stream()
             .collect(java.util.stream.Collectors.toMap(Material::getId, m -> m, (a, b) -> a));
-        for (Map.Entry<UUID, BigDecimal> entry : needed.entrySet()) {
+        for (Map.Entry<UUID, BigDecimal> entry : sortedEntries(needed)) {
             BigDecimal quantity = entry.getValue().setScale(3, RoundingMode.HALF_UP);
             if (quantity.signum() <= 0) {
                 continue;
@@ -130,7 +133,7 @@ public class PosMaterialConsumptionService {
             return;
         }
         Map<UUID, BigDecimal> needed = aggregateNeed(order);
-        for (Map.Entry<UUID, BigDecimal> entry : needed.entrySet()) {
+        for (Map.Entry<UUID, BigDecimal> entry : sortedEntries(needed)) {
             BigDecimal quantity = entry.getValue().setScale(3, RoundingMode.HALF_UP);
             if (quantity.signum() <= 0) {
                 continue;
@@ -144,19 +147,32 @@ public class PosMaterialConsumptionService {
         Map<UUID, BigDecimal> needed = new HashMap<>();
         List<OrderItem> items = orderItemRepository.findByOrderIdAndStatusOrderByCreatedAtAsc(
             order.getId(), ACTIVE);
+        Set<UUID> variantIds = items.stream().map(OrderItem::getVariantId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, List<ProductRecipeItem>> recipesByVariant = variantIds.isEmpty() ? Map.of()
+            : recipeRepository.findByVariantIdInAndStatus(variantIds, ACTIVE).stream()
+                .collect(Collectors.groupingBy(ProductRecipeItem::getVariantId));
+        Set<UUID> materialIds = recipesByVariant.values().stream().flatMap(List::stream)
+            .map(ProductRecipeItem::getMaterialId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, Material> materials = materialIds.isEmpty() ? Map.of()
+            : materialRepository.findAllById(materialIds).stream()
+                .collect(Collectors.toMap(Material::getId, m -> m, (a, b) -> a));
+        List<OrderItemTopping> allOrderToppings = items.isEmpty() ? List.of()
+            : orderItemToppingRepository.findByOrderItemIdInAndStatus(
+                items.stream().map(OrderItem::getId).toList(), ACTIVE);
+        Map<UUID, List<OrderItemTopping>> toppingsByItem = allOrderToppings.stream()
+            .collect(Collectors.groupingBy(OrderItemTopping::getOrderItemId));
+        Set<UUID> toppingIds = allOrderToppings.stream().map(OrderItemTopping::getToppingId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, Topping> toppingsById = toppingIds.isEmpty() ? Map.of()
+            : toppingRepository.findAllById(toppingIds).stream()
+                .collect(Collectors.toMap(Topping::getId, t -> t, (a, b) -> a));
         for (OrderItem item : items) {
-            if (item.getVariantId() == null || item.getQuantity() == null) {
+            if (item.getQuantity() == null) {
                 continue;
             }
-            List<ProductRecipeItem> recipes =
-                recipeRepository.findByVariantIdAndStatusOrderByCreatedAtAsc(
-                    item.getVariantId(), ACTIVE);
-            if (recipes.isEmpty()) {
-                continue;
-            }
-            Map<UUID, Material> materials = materialRepository.findAllById(recipes.stream()
-                    .map(ProductRecipeItem::getMaterialId).filter(Objects::nonNull).distinct().toList())
-                .stream().collect(java.util.stream.Collectors.toMap(Material::getId, m -> m, (a, b) -> a));
+            List<ProductRecipeItem> recipes = item.getVariantId() == null ? List.of()
+                : recipesByVariant.getOrDefault(item.getVariantId(), List.of());
             for (ProductRecipeItem recipe : recipes) {
                 Material material = materials.get(recipe.getMaterialId());
                 if (material == null) {
@@ -171,20 +187,19 @@ public class PosMaterialConsumptionService {
                 needed.merge(recipe.getMaterialId(),
                     perCupBase.multiply(BigDecimal.valueOf(item.getQuantity())), BigDecimal::add);
             }
-            aggregateToppings(item, needed);
+            aggregateToppings(toppingsByItem.getOrDefault(item.getId(), List.of()), toppingsById, needed);
         }
         return needed;
     }
 
     /** Topping: số lượng lưu là TỔNG cả line (giả thiết A2), nhân với định mức NVL/topping. */
-    private void aggregateToppings(OrderItem item, Map<UUID, BigDecimal> needed) {
-        List<OrderItemTopping> toppings =
-            orderItemToppingRepository.findByOrderItemIdAndStatus(item.getId(), ACTIVE);
+    private void aggregateToppings(List<OrderItemTopping> toppings, Map<UUID, Topping> toppingsById,
+                                   Map<UUID, BigDecimal> needed) {
         for (OrderItemTopping orderTopping : toppings) {
             if (orderTopping.getQuantity() == null || orderTopping.getQuantity() <= 0) {
                 continue;
             }
-            Topping topping = toppingRepository.findById(orderTopping.getToppingId()).orElse(null);
+            Topping topping = toppingsById.get(orderTopping.getToppingId());
             if (topping == null || topping.getMaterialId() == null
                 || topping.getMaterialQuantity() == null) {
                 log.debug("Bỏ qua trừ NVL topping {} của đơn: thiếu link material/số lượng",
@@ -195,6 +210,12 @@ public class PosMaterialConsumptionService {
                 topping.getMaterialQuantity().multiply(BigDecimal.valueOf(orderTopping.getQuantity())),
                 BigDecimal::add);
         }
+    }
+
+    private List<Map.Entry<UUID, BigDecimal>> sortedEntries(Map<UUID, BigDecimal> values) {
+        List<Map.Entry<UUID, BigDecimal>> entries = new ArrayList<>(values.entrySet());
+        entries.sort(Map.Entry.comparingByKey());
+        return entries;
     }
 
     /** Kho bán hàng duy nhất của chi nhánh; null = chưa cấu hình (bỏ qua + warn ở caller). */

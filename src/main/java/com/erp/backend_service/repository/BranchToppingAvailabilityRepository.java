@@ -46,4 +46,8 @@ public interface BranchToppingAvailabilityRepository extends JpaRepository<Branc
     );
     Optional<BranchToppingAvailability> findByBranchIdAndToppingIdAndStatus(UUID branchId, UUID toppingId,
                                                                               String status);
+
+    List<BranchToppingAvailability> findByBranchIdAndToppingIdInAndStatus(UUID branchId,
+                                                                          Collection<UUID> toppingIds,
+                                                                          String status);
 }

@@ -9,8 +9,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.UUID;
+import java.util.Collection;
+import java.util.List;
 
 public interface SupplierMaterialRepository extends JpaRepository<SupplierMaterial, UUID> {
+    List<SupplierMaterial> findByMaterialIdInAndStatus(Collection<UUID> materialIds, String status);
     boolean existsBySupplierIdAndMaterialId(UUID supplierID, UUID materialID);
     boolean existsBySupplierIdAndMaterialIdAndIdNot(UUID supplierID, UUID materialID, UUID id);
     boolean existsBySupplierSku(String supplierSku);

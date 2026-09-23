@@ -6,7 +6,6 @@ import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.DeliveryService;
-import com.erp.backend_service.service.KdsService;
 import com.erp.backend_service.service.pos.PosFlow;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.pos.*;
@@ -14,6 +13,7 @@ import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.PrincipalType;
 import com.erp.backend_service.event.OrderRealtimeEvent;
+import com.erp.backend_service.event.KdsOrderEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,14 +32,12 @@ public class DeliveryServiceImpl implements DeliveryService {
     private final AccountRoleRepository accountRoleRepository;
     private final DataScopeHelper dataScopeHelper;
     private final ApplicationEventPublisher eventPublisher;
-    private final KdsService kdsService;
 
     public DeliveryServiceImpl(OrderDeliveryRepository deliveryRepository, OrderRepository orderRepository,
                                 OrderStatusHistoryRepository historyRepository,
                                 AccountRepository accountRepository,
                                 AccountRoleRepository accountRoleRepository,
-                                DataScopeHelper dataScopeHelper, ApplicationEventPublisher eventPublisher,
-                                KdsService kdsService) {
+                                 DataScopeHelper dataScopeHelper, ApplicationEventPublisher eventPublisher) {
         this.deliveryRepository = deliveryRepository;
         this.orderRepository = orderRepository;
         this.historyRepository = historyRepository;
@@ -47,7 +45,6 @@ public class DeliveryServiceImpl implements DeliveryService {
         this.accountRoleRepository = accountRoleRepository;
         this.dataScopeHelper = dataScopeHelper;
         this.eventPublisher = eventPublisher;
-        this.kdsService = kdsService;
     }
 
     @Override
@@ -64,11 +61,11 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Transactional
     public DeliveryResponse assign(UUID orderId, AssignDeliveryRequest request) {
         requireUpdatePermission();
-        Order o = accessibleOrder(orderId);
+        Order o = accessibleOrderForUpdate(orderId);
         if (!"DELIVERY".equals(o.getOrderType())) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "Đơn hàng không phải đơn giao.");
         }
-        OrderDelivery d = deliveryRepository.findByOrderId(o.getId()).orElseThrow(
+        OrderDelivery d = deliveryRepository.findByOrderIdForUpdate(o.getId()).orElseThrow(
             () -> new BaseException(ErrorCode.ORDER_404_DELIVERY_NOT_FOUND));
         PosFlow.Delivery current = PosFlow.parseDelivery(d.getStatus());
         if (!(current == PosFlow.Delivery.PENDING || current == PosFlow.Delivery.FAILED ||
@@ -111,8 +108,8 @@ public class DeliveryServiceImpl implements DeliveryService {
         if (request.status() == null || request.status().isBlank()) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "Trạng thái không được để trống.");
         }
-        Order o = accessibleOrder(orderId);
-        OrderDelivery d = deliveryRepository.findByOrderId(o.getId()).orElseThrow(
+        Order o = accessibleOrderForUpdate(orderId);
+        OrderDelivery d = deliveryRepository.findByOrderIdForUpdate(o.getId()).orElseThrow(
             () -> new BaseException(ErrorCode.ORDER_404_DELIVERY_NOT_FOUND));
         PosFlow.Delivery target = PosFlow.parseDelivery(request.status());
         PosFlow.Delivery current = PosFlow.parseDelivery(d.getStatus());
@@ -142,7 +139,7 @@ public class DeliveryServiceImpl implements DeliveryService {
                     orderRepository.save(o);
                     writeHistory(o, previousOrderStatus, PosFlow.Order.DELIVERING.name(), request.note());
                     // Đơn đi giao -> bếp đã xong, dọn board (ticket -> SERVED).
-                    safeMarkServed(o.getId());
+                    publishKdsEvent(KdsOrderEvent.Action.SERVE, o.getId(), o.getStatus(), null);
                 }
             }
             case DELIVERED -> {
@@ -161,10 +158,10 @@ public class DeliveryServiceImpl implements DeliveryService {
                     o.setCompletedAt(now);
                     orderRepository.save(o);
                     writeHistory(o, previousOrderStatus, PosFlow.Order.COMPLETED.name(), request.note());
-                    safeMarkServed(o.getId());
+                    publishKdsEvent(KdsOrderEvent.Action.SERVE, o.getId(), o.getStatus(), null);
                 } else {
                     // Giao xong nhưng chưa đủ ĐK hoàn tất (VD chưa PAID): bếp vẫn coi là xong.
-                    safeMarkServed(o.getId());
+                    publishKdsEvent(KdsOrderEvent.Action.SERVE, o.getId(), o.getStatus(), null);
                 }
             }
             case FAILED -> {
@@ -182,7 +179,7 @@ public class DeliveryServiceImpl implements DeliveryService {
                     writeHistory(o, previousOrderStatus, PosFlow.Order.READY.name(),
                         "Giao hàng thất bại, chuyển về READY để giao lại.");
                     // Giao thất bại không nấu lại: ticket đã SERVED thì giữ, chưa thì đảm bảo READY.
-                    safeSyncFromOrder(o.getId(), PosFlow.Order.READY.name());
+                    publishKdsEvent(KdsOrderEvent.Action.SYNC, o.getId(), PosFlow.Order.READY.name(), null);
                 }
             }
             default -> {
@@ -220,6 +217,22 @@ public class DeliveryServiceImpl implements DeliveryService {
         PrincipalType type = SecurityUtils.getCurrentPrincipalType().orElse(null);
         UUID pid =
             SecurityUtils.getCurrentPrincipalId().orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
+        if (type == PrincipalType.CUSTOMER) {
+            if (!Objects.equals(o.getCustomerId(), pid)) {
+                throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
+            }
+        } else {
+            dataScopeHelper.enforceBranchAccess(o.getBranchId());
+        }
+        return o;
+    }
+
+    private Order accessibleOrderForUpdate(UUID id) {
+        Order o = orderRepository.findByIdForUpdate(id)
+            .orElseThrow(() -> new BaseException(ErrorCode.ORDER_404_ORDER_NOT_FOUND));
+        PrincipalType type = SecurityUtils.getCurrentPrincipalType().orElse(null);
+        UUID pid = SecurityUtils.getCurrentPrincipalId()
+            .orElseThrow(() -> new BaseException(ErrorCode.UNAUTHENTICATED));
         if (type == PrincipalType.CUSTOMER) {
             if (!Objects.equals(o.getCustomerId(), pid)) {
                 throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
@@ -272,22 +285,9 @@ public class DeliveryServiceImpl implements DeliveryService {
         historyRepository.save(history);
     }
 
-    /** KDS là phụ: lỗi sync không được làm fail luồng giao hàng chính. */
-    private void safeMarkServed(UUID orderId) {
-        try {
-            if (kdsService != null) {
-                kdsService.markServedByOrderId(orderId);
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void safeSyncFromOrder(UUID orderId, String orderStatus) {
-        try {
-            if (kdsService != null) {
-                kdsService.syncFromOrder(orderId, orderStatus);
-            }
-        } catch (Exception ignored) {
+    private void publishKdsEvent(KdsOrderEvent.Action action, UUID orderId, String status, String reason) {
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new KdsOrderEvent(action, orderId, status, reason));
         }
     }
 }

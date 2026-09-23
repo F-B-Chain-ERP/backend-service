@@ -11,6 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Collection;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 /**
@@ -48,6 +53,38 @@ public class PosCogsService {
             total = total.add(price.multiply(qty).multiply(factor));
         }
         return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Tính COGS cho mọi variant của đơn với đúng hai bulk query. */
+    @Transactional(readOnly = true)
+    public Map<UUID, BigDecimal> unitCogsByVariantIds(Collection<UUID> variantIds) {
+        if (variantIds == null || variantIds.isEmpty()) {
+            return Map.of();
+        }
+        List<ProductRecipeItem> lines = recipeRepository.findByVariantIdInAndStatus(variantIds, "ACTIVE");
+        Set<UUID> materialIds = lines.stream().map(ProductRecipeItem::getMaterialId)
+            .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, BigDecimal> priceByMaterial = new HashMap<>();
+        if (!materialIds.isEmpty()) {
+            supplierMaterialRepository.findByMaterialIdInAndStatus(materialIds, "ACTIVE").stream()
+                .collect(Collectors.groupingBy(SupplierMaterial::getMaterialId))
+                .forEach((materialId, prices) -> priceByMaterial.put(materialId, prices.stream()
+                    .sorted((a, b) -> Boolean.compare(b.isPreferred(), a.isPreferred()))
+                    .map(SupplierMaterial::getPurchasePrice).filter(java.util.Objects::nonNull)
+                    .findFirst().orElse(BigDecimal.ZERO)));
+        }
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        for (ProductRecipeItem line : lines) {
+            BigDecimal price = priceByMaterial.getOrDefault(line.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal qty = line.getQuantity() != null ? line.getQuantity() : BigDecimal.ZERO;
+            BigDecimal wastage = line.getWastagePercent() != null ? line.getWastagePercent() : BigDecimal.ZERO;
+            BigDecimal factor = BigDecimal.ONE.add(
+                wastage.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP));
+            result.merge(line.getVariantId(), price.multiply(qty).multiply(factor), BigDecimal::add);
+        }
+        variantIds.forEach(id -> result.put(id,
+            result.getOrDefault(id, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP)));
+        return result;
     }
 
     private BigDecimal materialPrice(UUID materialId) {

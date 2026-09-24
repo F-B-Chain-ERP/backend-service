@@ -229,7 +229,7 @@ public class OrderServiceImpl implements OrderService {
                 throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
             }
             BranchProductAvailability productAvailability = availabilityByProduct.get(p.getId());
-            if (productAvailability == null || !productAvailability.isAvailable()) {
+            if (!com.erp.backend_service.service.BranchAvailabilityPolicy.isProductSellable(productAvailability)) {
                 throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
             }
             if (ci.getVariantId() != null) {

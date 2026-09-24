@@ -49,6 +49,7 @@ public class ComboMapper {
                 variant != null ? variant.getVariantCode() : "",
                 variant != null ? variant.getVariantName() : "",
                 variant != null ? variant.getSizeLabel() : "",
+                variantProduct != null ? variantProduct.getId().toString() : null,
                 variantProduct != null ? variantProduct.getCode() : "",
                 variantProduct != null ? variantProduct.getName() : "",
                 variantPrice,

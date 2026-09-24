@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -85,4 +86,54 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
                                       @Param("slotId") UUID slotId,
                                       @Param("startOfDay") Instant startOfDay,
                                       @Param("endOfDay") Instant endOfDay);
+
+    /**
+     * Tổng hợp Order COMPLETED trong khoảng [fromInstant, toInstant) dùng cho báo cáo tài chính.
+     * Trả về một dòng: [orderCount, sumSubtotalAmount, sumDiscountAmount, sumTotalCogsAmount].
+     */
+    @Query("""
+        select count(o),
+               coalesce(sum(o.subtotalAmount), 0),
+               coalesce(sum(o.discountAmount), 0),
+               coalesce(sum(o.totalCogsAmount), 0)
+        from Order o
+        where o.branchId = :branchId
+          and o.status = 'COMPLETED'
+          and o.completedAt >= :fromInstant
+          and o.completedAt < :toInstant
+        """)
+    java.util.List<Object[]> summarizeCompletedByBranchBetween(@Param("branchId") UUID branchId,
+                                                               @Param("fromInstant") Instant fromInstant,
+                                                               @Param("toInstant") Instant toInstant);
+
+    /**
+     * Số Order COMPLETED trong khoảng có thiếu dữ liệu bắt buộc (COGS/doanh thu) — làm không thể tổng hợp chính xác.
+     */
+    @Query("""
+        select count(o) from Order o
+        where o.branchId = :branchId
+          and o.status = 'COMPLETED'
+          and o.completedAt >= :fromInstant
+          and o.completedAt < :toInstant
+          and (o.totalCogsAmount is null or o.subtotalAmount is null or o.discountAmount is null)
+        """)
+    long countCompletedWithMissingAmounts(@Param("branchId") UUID branchId,
+                                          @Param("fromInstant") Instant fromInstant,
+                                          @Param("toInstant") Instant toInstant);
+
+    /**
+     * Định khoản dữ liệu nguồn Order COMPLETED để đối soát báo cáo tài chính.
+     */
+    @Query("""
+        select o from Order o
+        where o.branchId = :branchId
+          and o.status = 'COMPLETED'
+          and o.completedAt >= :fromInstant
+          and o.completedAt < :toInstant
+        order by o.completedAt asc
+        """)
+    Page<Order> findCompletedByBranchBetween(@Param("branchId") UUID branchId,
+                                             @Param("fromInstant") Instant fromInstant,
+                                             @Param("toInstant") Instant toInstant,
+                                             Pageable pageable);
 }

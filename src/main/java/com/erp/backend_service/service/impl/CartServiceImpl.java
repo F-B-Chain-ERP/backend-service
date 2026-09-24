@@ -5,10 +5,12 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.SecurityUtils;
 import com.erp.backend_service.service.CartService;
+import com.erp.backend_service.service.pos.ComboSalesService;
 import com.erp.backend_service.service.pos.PosComboService;
 import com.erp.core.domain.*;
 import com.erp.core.dto.request.pos.AddCartItemRequest;
 import com.erp.core.dto.request.pos.UpdateCartItemRequest;
+import com.erp.core.dto.response.menu.ComboItemResponse;
 import com.erp.core.dto.response.pos.*;
 import com.erp.core.enums.PrincipalType;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ public class CartServiceImpl implements CartService {
     private final BranchToppingAvailabilityRepository branchToppingAvailabilityRepository;
     private final BranchProductAvailabilityRepository availabilityRepository;
     private final PosComboService posComboService;
+    private final ComboSalesService comboSalesService;
     private final CustomerRepository customerRepository;
 
     public CartServiceImpl(CartRepository cartRepository, CartItemRepository itemRepository,
@@ -40,7 +43,8 @@ public class CartServiceImpl implements CartService {
                            ProductToppingRepository productToppingRepository,
                            BranchToppingAvailabilityRepository branchToppingAvailabilityRepository,
                            BranchProductAvailabilityRepository availabilityRepository,
-                           PosComboService posComboService, CustomerRepository customerRepository) {
+                           PosComboService posComboService, ComboSalesService comboSalesService,
+                           CustomerRepository customerRepository) {
         this.cartRepository = cartRepository;
         this.itemRepository = itemRepository;
         this.itemToppingRepository = itemToppingRepository;
@@ -51,6 +55,7 @@ public class CartServiceImpl implements CartService {
         this.branchToppingAvailabilityRepository = branchToppingAvailabilityRepository;
         this.availabilityRepository = availabilityRepository;
         this.posComboService = posComboService;
+        this.comboSalesService = comboSalesService;
         this.customerRepository = customerRepository;
     }
 
@@ -408,6 +413,15 @@ public class CartServiceImpl implements CartService {
         Map<UUID, Product> productMap = productRepository.findAllById(productIds).stream()
                                                           .collect(Collectors.toMap(Product::getId, p -> p));
 
+        // Toàn bộ combo trong giỏ, batch một lần (combo_item -> variant -> product), không N+1 theo line.
+        List<UUID> comboProductIds = productMap.values().stream()
+                .filter(Product::isCombo)
+                .map(Product::getId)
+                .toList();
+        Map<UUID, List<ComboItemResponse>> comboMap = comboProductIds.isEmpty()
+                ? Map.of()
+                : comboSalesService.comboItemsByProduct(comboProductIds);
+
         Set<UUID> variantIds = cartItems.stream().map(CartItem::getVariantId).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<UUID, ProductVariant> variantMap = variantIds.isEmpty() ? Map.of() :
             variantRepository.findAllById(variantIds).stream()
@@ -436,13 +450,32 @@ public class CartServiceImpl implements CartService {
                 return new CartItemToppingResponse(t.getToppingId(), tp == null ? null : tp.getName(),
                                                    t.getQuantity(), t.getUnitPrice(), t.getTotalPrice());
             }).toList();
+            List<ComboItemResponse> comboItems = (p != null && p.isCombo())
+                    ? comboMap.getOrDefault(p.getId(), List.of()).stream()
+                            .map(c -> scaleQuantity(c, i.getQuantity()))
+                            .toList()
+                    : List.of();
             return new CartItemResponse(i.getId(), i.getProductId(), p == null ? null : p.getCode(),
                                         p == null ? null : p.getName(),
                                         i.getVariantId(), v == null ? null : v.getVariantName(), i.getQuantity(),
                                         i.getIceLevel(), i.getSugarLevel(), i.getNote(), i.getUnitPrice(),
-                                        i.getTotalPrice(), tops);
+                                        i.getTotalPrice(), tops, comboItems);
         }).toList();
         return new CartResponse(cart.getId(), cart.getBranchId(), cart.getSubtotalAmount(), items);
+    }
+
+    /** Nhân quantity thành phần combo theo số lượng combo đang ở trong giỏ. */
+    private ComboItemResponse scaleQuantity(ComboItemResponse item, int factor) {
+        if (factor <= 1) {
+            return item;
+        }
+        int newQty = item.quantity() * factor;
+        BigDecimal lineTotal = item.variantPrice() != null
+                ? item.variantPrice().multiply(BigDecimal.valueOf(newQty))
+                : null;
+        return new ComboItemResponse(item.comboItemId(), item.variantId(), item.variantCode(), item.variantName(),
+                item.sizeLabel(), item.productId(), item.productCode(), item.productName(), item.variantPrice(),
+                newQty, item.isSubstitutable(), item.status(), lineTotal);
     }
 
     /**

@@ -124,6 +124,10 @@ public class PosCapabilityService {
         if (variantId == null || quantity <= 0) {
             return;
         }
+        if (recipeRepository.findByVariantIdInAndStatus(List.of(variantId), ACTIVE).isEmpty()) {
+            throw new BaseException(ErrorCode.ORDER_400_RECIPE_REQUIRED,
+                    "Món " + variantLabel(variantId) + " chưa có công thức, không thể bán.");
+        }
         Integer capability = capabilityForVariant(branchId, variantId);
         if (capability == null || capability >= quantity) {
             return;

@@ -5,6 +5,7 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.ProductMapper;
 import com.erp.backend_service.repository.CategoryRepository;
 import com.erp.backend_service.repository.ProductRepository;
+import com.erp.backend_service.repository.ProductRecipeItemRepository;
 import com.erp.backend_service.repository.ProductVariantRepository;
 import com.erp.backend_service.service.ProductService;
 import com.erp.backend_service.service.pos.ComboSalesService;
@@ -43,6 +44,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ProductRecipeItemRepository productRecipeItemRepository;
     private final ProductMapper productMapper;
     private final ComboSalesService comboSalesService;
 
@@ -50,12 +52,14 @@ public class ProductServiceImpl implements ProductService {
             ProductRepository productRepository,
             CategoryRepository categoryRepository,
             ProductVariantRepository productVariantRepository,
+            ProductRecipeItemRepository productRecipeItemRepository,
             ProductMapper productMapper,
             ComboSalesService comboSalesService
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productVariantRepository = productVariantRepository;
+        this.productRecipeItemRepository = productRecipeItemRepository;
         this.productMapper = productMapper;
         this.comboSalesService = comboSalesService;
     }
@@ -167,13 +171,16 @@ public class ProductServiceImpl implements ProductService {
         Map<UUID, List<ComboItemResponse>> comboMap = comboIds.isEmpty()
                 ? Map.of()
                 : comboSalesService.comboItemsByProduct(comboIds);
+        SaleabilityContext saleabilityContext = buildSaleabilityContext(products);
 
         List<ProductSalesResponse> content = products.stream()
                 .map(p -> {
                     Category cat = categoryMap.get(p.getCategoryId());
                     String categoryName = cat != null ? cat.getName() : null;
                     int count = comboMap.getOrDefault(p.getId(), List.of()).size();
-                    return productMapper.toSalesResponse(p, categoryName, count);
+                    Saleability saleability = saleability(p, comboMap, saleabilityContext);
+                    return productMapper.toSalesResponse(p, categoryName, count,
+                            saleability.saleable(), saleability.reason());
                 })
                 .toList();
 
@@ -217,11 +224,63 @@ public class ProductServiceImpl implements ProductService {
                 .map(Category::getName)
                 .orElse(null);
         List<ProductVariant> variants = productVariantRepository.findByProductIdAndStatusOrderByDisplayOrderAsc(product.getId(), "ACTIVE");
-        List<ProductVariantResponse> variantResponses = variants.stream()
-                .map(productMapper::toVariantResponse)
-                .toList();
         List<ComboItemResponse> comboItems = comboItemsFor(product);
-        return productMapper.toDetailResponse(product, categoryName, variantResponses, comboItems);
+        Map<UUID, List<ComboItemResponse>> comboMap = product.isCombo()
+                ? Map.of(product.getId(), comboItems) : Map.of();
+        SaleabilityContext context = buildSaleabilityContext(List.of(product));
+        List<ProductVariantResponse> variantResponses = variants.stream()
+                .map(v -> {
+                    Saleability variantSaleability = variantSaleability(product, v, context);
+                    return productMapper.toVariantResponse(v, variantSaleability.saleable(),
+                            variantSaleability.reason());
+                })
+                .toList();
+        Saleability productSaleability = saleability(product, comboMap, context);
+        return productMapper.toDetailResponse(product, categoryName, variantResponses, comboItems,
+                productSaleability.saleable(), productSaleability.reason());
+    }
+
+    private SaleabilityContext buildSaleabilityContext(List<Product> products) {
+        Set<UUID> productIds = products.stream().map(Product::getId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        List<ProductVariant> ownVariants = productIds.isEmpty() ? List.of()
+                : productVariantRepository.findByProductIdInAndStatus(productIds, "ACTIVE");
+        Map<UUID, List<ProductVariant>> variantsByProduct = ownVariants.stream()
+                .collect(Collectors.groupingBy(ProductVariant::getProductId));
+        Set<UUID> variantIds = ownVariants.stream().map(ProductVariant::getId).collect(Collectors.toSet());
+        Set<UUID> variantIdsWithRecipe = variantIds.isEmpty() ? Set.of()
+                : productRecipeItemRepository.findByVariantIdInAndStatus(variantIds, "ACTIVE").stream()
+                    .map(item -> item.getVariantId()).filter(Objects::nonNull).collect(Collectors.toSet());
+        return new SaleabilityContext(variantsByProduct, variantIdsWithRecipe);
+    }
+
+    private Saleability saleability(Product product, Map<UUID, List<ComboItemResponse>> comboMap,
+                                    SaleabilityContext context) {
+        if (product.isCombo()) {
+            List<ComboItemResponse> items = comboMap.getOrDefault(product.getId(), List.of());
+            return items.isEmpty()
+                    ? new Saleability(false, "Combo chưa có thành phần.")
+                    : Saleability.AVAILABLE;
+        }
+        List<ProductVariant> variants = context.variantsByProduct().getOrDefault(product.getId(), List.of());
+        boolean anyRecipe = variants.stream().anyMatch(v -> context.variantIdsWithRecipe().contains(v.getId()));
+        return anyRecipe ? Saleability.AVAILABLE
+                : new Saleability(false, "Món " + product.getName() + " chưa có công thức.");
+    }
+
+    private Saleability variantSaleability(Product product, ProductVariant variant, SaleabilityContext context) {
+        if (!context.variantIdsWithRecipe().contains(variant.getId())) {
+            return new Saleability(false, "Size " + variant.getVariantName() + " chưa có công thức.");
+        }
+        return Saleability.AVAILABLE;
+    }
+
+    private record Saleability(boolean saleable, String reason) {
+        private static final Saleability AVAILABLE = new Saleability(true, null);
+    }
+
+    private record SaleabilityContext(Map<UUID, List<ProductVariant>> variantsByProduct,
+                                      Set<UUID> variantIdsWithRecipe) {
     }
 
     private List<ComboItemResponse> comboItemsFor(Product product) {

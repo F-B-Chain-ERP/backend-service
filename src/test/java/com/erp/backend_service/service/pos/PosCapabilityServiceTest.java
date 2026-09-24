@@ -121,20 +121,32 @@ class PosCapabilityServiceTest {
     }
 
     @Test
-    @DisplayName("Chưa có BOM: capability null, cho qua (chốt chặn cuối ở lúc trừ NVL)")
-    void testNoBomAllowsSale() {
+    @DisplayName("Món pha chế chưa có BOM: chặn bán và nêu rõ món chưa có công thức")
+    void testNoBomBlocksSale() {
         mockSellingWarehouse();
         when(recipeRepository.findByVariantIdInAndStatus(List.of(variantId), "ACTIVE"))
                 .thenReturn(List.of());
 
+        ProductVariant variant = new ProductVariant();
+        variant.setVariantCode("TS-TRUYEN-THONG");
+        variant.setVariantName("Trà sữa truyền thống");
+        when(variantRepository.findById(variantId)).thenReturn(Optional.of(variant));
+
         assertNull(capabilityService.capabilityForVariant(branchId, variantId));
-        assertDoesNotThrow(() -> capabilityService.checkSaleable(branchId, variantId, 100));
+        BaseException ex = assertThrows(BaseException.class,
+                () -> capabilityService.checkSaleable(branchId, variantId, 100));
+        assertEquals(ErrorCode.ORDER_400_RECIPE_REQUIRED, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("TS-TRUYEN-THONG"));
     }
 
     @Test
     @DisplayName("Chưa có kho bán hàng: capability null, cho qua + không gọi kho tồn")
     void testNoWarehouseAllowsSale() {
         when(warehouseRepository.findByBranchId(branchId)).thenReturn(List.of());
+        ProductRecipeItem recipe = new ProductRecipeItem();
+        recipe.setVariantId(variantId);
+        when(recipeRepository.findByVariantIdInAndStatus(List.of(variantId), "ACTIVE"))
+                .thenReturn(List.of(recipe));
 
         assertNull(capabilityService.capabilityForVariant(branchId, variantId));
         assertDoesNotThrow(() -> capabilityService.checkSaleable(branchId, variantId, 10));

@@ -5,6 +5,7 @@ import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.mapper.ProductMapper;
 import com.erp.backend_service.repository.CategoryRepository;
 import com.erp.backend_service.repository.ProductRepository;
+import com.erp.backend_service.repository.ProductRecipeItemRepository;
 import com.erp.backend_service.repository.ProductVariantRepository;
 import com.erp.backend_service.service.impl.ProductServiceImpl;
 import com.erp.backend_service.service.pos.ComboSalesService;
@@ -26,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,6 +47,9 @@ class ProductServiceImplTest {
     private ProductVariantRepository productVariantRepository;
 
     @Mock
+    private ProductRecipeItemRepository productRecipeItemRepository;
+
+    @Mock
     private ComboSalesService comboSalesService;
 
     private ProductMapper productMapper;
@@ -57,6 +62,7 @@ class ProductServiceImplTest {
                 productRepository,
                 categoryRepository,
                 productVariantRepository,
+                productRecipeItemRepository,
                 productMapper,
                 comboSalesService
         );
@@ -275,11 +281,17 @@ class ProductServiceImplTest {
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
         when(productVariantRepository.findByProductIdAndStatusOrderByDisplayOrderAsc(productId, "ACTIVE")).thenReturn(List.of(v1));
+        when(productVariantRepository.findByProductIdInAndStatus(Set.of(productId), "ACTIVE"))
+                .thenReturn(List.of(v1));
 
         ProductDetailResponse response = productService.getDetailForSales(productId);
 
         assertNotNull(response);
         assertEquals(1, response.variants().size());
+        assertFalse(response.saleable());
+        assertTrue(response.unavailableReason().contains("chưa có công thức"));
+        assertFalse(response.variants().get(0).saleable());
+        assertTrue(response.variants().get(0).unavailableReason().contains("chưa có công thức"));
     }
 
     @Test

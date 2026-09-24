@@ -7,6 +7,7 @@ import com.erp.backend_service.repository.CategoryRepository;
 import com.erp.backend_service.repository.ProductRepository;
 import com.erp.backend_service.repository.ProductVariantRepository;
 import com.erp.backend_service.service.impl.ProductServiceImpl;
+import com.erp.backend_service.service.pos.ComboSalesService;
 import com.erp.core.domain.Category;
 import com.erp.core.domain.Product;
 import com.erp.core.domain.ProductVariant;
@@ -43,6 +44,9 @@ class ProductServiceImplTest {
     @Mock
     private ProductVariantRepository productVariantRepository;
 
+    @Mock
+    private ComboSalesService comboSalesService;
+
     private ProductMapper productMapper;
     private ProductServiceImpl productService;
 
@@ -53,7 +57,8 @@ class ProductServiceImplTest {
                 productRepository,
                 categoryRepository,
                 productVariantRepository,
-                productMapper
+                productMapper,
+                comboSalesService
         );
     }
 

@@ -19,6 +19,7 @@ import com.erp.backend_service.repository.ShiftAssignmentRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.service.BranchHoursService;
 import com.erp.core.domain.Scope;
+import com.erp.core.domain.Warehouse;
 import com.erp.core.enums.EntityStatus;
 import com.erp.core.enums.ScopeType;
 import org.springframework.stereotype.Service;
@@ -153,7 +154,48 @@ public class BranchServiceImpl implements BranchService {
         // BR-ORG-07: Tự động khởi tạo 7 bản ghi branch_hours mặc định
         branchHoursService.initDefaultHours(saved.getId());
 
+        // BR-ORG-07 (mở rộng): Tự động tạo 1 kho bán hàng cho chi nhánh mới để
+        // Tab NVL, check năng lực NVL và đối soát tồn chạy ngay, khỏi cấu hình tay.
+        ensureSellingWarehouse(saved);
+
         return branchMapper.toResponse(saved, Map.of());
+    }
+
+    /**
+     * Đảm bảo chi nhánh có đúng 1 kho bán hàng (idempotent: có rồi thì thôi).
+     * Mã kho sinh từ mã chi nhánh, hậu tố số khi trùng.
+     */
+    private void ensureSellingWarehouse(Branch branch) {
+        boolean exists = warehouseRepository.findByBranchId(branch.getId()).stream()
+                .anyMatch(w -> "ACTIVE".equals(w.getStatus()) && !"CENTRAL".equals(w.getWarehouseType()));
+        if (exists) {
+            return;
+        }
+        Warehouse warehouse = new Warehouse();
+        warehouse.setCode(uniqueWarehouseCode(branch.getCode()));
+        warehouse.setName("Kho bar " + branch.getName());
+        warehouse.setWarehouseType("BRANCH");
+        warehouse.setBranchId(branch.getId());
+        warehouse.setAddress(branch.getAddress());
+        warehouse.setStatus("ACTIVE");
+        warehouseRepository.save(warehouse);
+    }
+
+    private String uniqueWarehouseCode(String branchCode) {
+        String base = (branchCode == null ? "BRANCH" : branchCode.trim().toUpperCase()) + "-BAR";
+        if (base.length() > 50) {
+            base = base.substring(0, 50);
+        }
+        String candidate = base;
+        int suffix = 2;
+        while (warehouseRepository.existsByCode(candidate)) {
+            String tail = "-" + suffix++;
+            String head = base.length() + tail.length() > 50
+                    ? base.substring(0, 50 - tail.length())
+                    : base;
+            candidate = head + tail;
+        }
+        return candidate;
     }
 
     /** {@inheritDoc} */

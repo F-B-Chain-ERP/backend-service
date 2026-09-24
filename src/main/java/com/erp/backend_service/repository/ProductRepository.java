@@ -14,6 +14,8 @@ import java.util.UUID;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
+    java.util.List<Product> findByStatus(String status);
+
     long countByCategoryId(UUID categoryId);
 
     boolean existsByCode(String code);

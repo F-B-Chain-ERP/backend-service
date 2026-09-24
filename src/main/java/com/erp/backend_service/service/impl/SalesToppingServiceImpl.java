@@ -86,7 +86,7 @@ public class SalesToppingServiceImpl implements SalesToppingService {
     }
 
     private boolean isAvailableAtBranch(Map<UUID, BranchToppingAvailability> availabilityMap, UUID toppingId) {
-        BranchToppingAvailability availability = availabilityMap.get(toppingId);
-        return availability != null && "ACTIVE".equals(availability.getStatus()) && availability.isAvailable();
+        return com.erp.backend_service.service.BranchAvailabilityPolicy
+            .isToppingVisible(availabilityMap.get(toppingId));
     }
 }

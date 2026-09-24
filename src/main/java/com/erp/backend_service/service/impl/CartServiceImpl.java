@@ -4,6 +4,7 @@ import com.erp.backend_service.exception.BaseException;
 import com.erp.backend_service.exception.ErrorCode;
 import com.erp.backend_service.repository.*;
 import com.erp.backend_service.security.SecurityUtils;
+import com.erp.backend_service.service.BranchAvailabilityPolicy;
 import com.erp.backend_service.service.CartService;
 import com.erp.backend_service.service.pos.ComboSalesService;
 import com.erp.backend_service.service.pos.PosComboService;
@@ -86,10 +87,11 @@ public class CartServiceImpl implements CartService {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
         }
 
+        // Thiếu dòng = mặc định bán (BranchAvailabilityPolicy), chỉ chặn khi tắt tường minh.
         BranchProductAvailability availability = availabilityRepository
             .findByBranchIdAndProductIdAndStatus(request.branchId(), product.getId(), ACTIVE)
-            .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND));
-        if (!availability.isAvailable()) {
+            .orElse(null);
+        if (!BranchAvailabilityPolicy.isProductSellable(availability)) {
             throw new BaseException(ErrorCode.MENU_404_PRODUCT_NOT_FOUND);
         }
 
@@ -290,7 +292,7 @@ public class CartServiceImpl implements CartService {
                 throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY);
             }
             BranchToppingAvailability toppingAvailability = availabilityById.get(toppingId);
-            if (toppingAvailability == null || !toppingAvailability.isAvailable()) {
+            if (!BranchAvailabilityPolicy.isToppingSellable(toppingAvailability)) {
                 throw new BaseException(ErrorCode.INVALID_REQUEST, "Topping không khả dụng tại chi nhánh.");
             }
             CartItemTopping ct = new CartItemTopping();
@@ -306,7 +308,7 @@ public class CartServiceImpl implements CartService {
     }
 
     private BigDecimal resolveUnitPrice(Product p, ProductVariant v, BranchProductAvailability a) {
-        BigDecimal base = a.getSalePrice() != null ? a.getSalePrice() : p.getBasePrice();
+        BigDecimal base = BranchAvailabilityPolicy.productSalePrice(a, p);
         return base.add(v == null || v.getPriceDelta() == null ? BigDecimal.ZERO : v.getPriceDelta());
     }
 

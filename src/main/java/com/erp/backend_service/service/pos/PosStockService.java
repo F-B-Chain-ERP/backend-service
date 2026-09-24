@@ -272,13 +272,16 @@ public class PosStockService {
         UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(branchId);
         LocalDate businessDate = date != null ? date : businessDay.today(effectiveBranch);
         // Nền: toàn bộ biến thể đang mở bán tại chi nhánh (kể cả chưa có dòng tồn hôm nay).
-        List<BranchProductAvailability> availabilities =
-            availabilityRepository.findByBranchIdAndStatus(effectiveBranch, "ACTIVE").stream()
-                .filter(BranchProductAvailability::isAvailable).toList();
-        Map<UUID, Product> products = productRepository.findAllById(
-            availabilities.stream().map(BranchProductAvailability::getProductId)
-                .filter(Objects::nonNull).distinct().toList()).stream()
-            .filter(p -> "ACTIVE".equals(p.getStatus()))
+        // Quy ước "chưa có dòng availability = mặc định bán" (đồng bộ với màn Khả dụng CN
+        // và ProductRepository.findActiveForSalesSlice): chỉ loại món bị tắt tường minh.
+        Set<UUID> disabledProductIds = availabilityRepository
+            .findByBranchIdAndStatus(effectiveBranch, "ACTIVE").stream()
+            .filter(bpa -> !bpa.isAvailable())
+            .map(BranchProductAvailability::getProductId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<UUID, Product> products = productRepository.findByStatus("ACTIVE").stream()
+            .filter(p -> !disabledProductIds.contains(p.getId()))
             .collect(Collectors.toMap(Product::getId, Function.identity(), (a, b) -> a));
         Map<UUID, ProductVariant> variants = products.isEmpty() ? Map.of()
             : variantRepository.findByProductIdInAndStatus(products.keySet(), "ACTIVE").stream()

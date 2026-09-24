@@ -416,14 +416,15 @@ public class AccountsPayableServiceImpl implements AccountsPayableService {
     }
 
     /**
-     * Tính trạng thái dựa trên paid_amount và invoice_amount.
+     * Tính trạng thái dựa trên số dư và hạn thanh toán: hết nợ thì PAID,
+     * còn nợ quá hạn thì giữ OVERDUE để nhắc nợ, còn lại PARTIALLY_PAID.
      */
     private String computeStatus(AccountsPayable ap) {
         BigDecimal remaining = computeRemainingAmount(ap);
         if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
             return STATUS_PAID;
         }
-        return STATUS_PARTIALLY_PAID;
+        return resolveStatus(ap.getDueDate(), ap.getPaidAmount());
     }
 
     private AccountsPayableSummaryResponse toSummaryResponse(AccountsPayable ap) {

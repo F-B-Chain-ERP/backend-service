@@ -57,6 +57,15 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
     private final DataScopeHelper dataScopeHelper;
 
     private static final List<String> CASH_ROLE_CODES = List.of("ADMIN", "ROLE_MANAGER", "ROLE_CASHIER");
+    private static final List<String> MANAGER_ROLE_CODES = List.of("ADMIN", "ROLE_MANAGER");
+
+    private boolean isManagerOrAdmin(UUID accountId, UUID branchId) {
+        if (accountId == null || branchId == null) {
+            return false;
+        }
+        return !accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                List.of(accountId), MANAGER_ROLE_CODES, branchId, EntityStatus.ACTIVE, Instant.now()).isEmpty();
+    }
 
     public StoreDailyReportServiceImpl(StoreDailyReportRepository storeDailyReportRepository,
                                         ShiftAssignmentRepository shiftAssignmentRepository,
@@ -101,6 +110,30 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
         return open.stream().anyMatch(a -> cashAccounts.contains(a.getAccountId()));
     }
 
+    // Liệt kê ca két đang kẹt để message lỗi chỉ rõ cách xử lý (không đổi DB).
+    private String describeOpenCashShifts(UUID branchId, LocalDate businessDate) {
+        try {
+            List<ShiftAssignment> open = shiftAssignmentRepository.findByBranchIdAndWorkDateAndStatusIn(
+                    branchId, businessDate, List.of("SCHEDULED", "CHECKED_IN"));
+            if (open.isEmpty()) {
+                return "vẫn còn ca chưa hoàn tất";
+            }
+            var accountIds = open.stream().map(ShiftAssignment::getAccountId).distinct().toList();
+            Map<UUID, Account> accountMap = accountRepository.findAllById(accountIds).stream()
+                    .collect(Collectors.toMap(Account::getId, java.util.function.Function.identity(), (a, b) -> a));
+            return open.stream().limit(5)
+                    .map(a -> {
+                        Account acc = accountMap.get(a.getAccountId());
+                        String who = acc != null && acc.getFullName() != null ? acc.getFullName() : a.getAccountId().toString();
+                        String hint = "SCHEDULED".equalsIgnoreCase(a.getStatus()) ? "chưa mở -> Hủy nếu quá hạn" : "đang mở -> Đóng ca";
+                        return who + " [" + a.getStatus() + ", " + hint + "]";
+                    })
+                    .collect(Collectors.joining("; "));
+        } catch (Exception ignored) {
+            return "vẫn còn ca chưa hoàn tất";
+        }
+    }
+
     @Override
     public StoreDailyReportResponse generateDailyReport(CreateDailyReportRequest request, UUID currentUserId) {
         dataScopeHelper.enforceBranchAccess(request.branchId());
@@ -112,7 +145,10 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
         // Quy tắc BR-STORE-07: Không được chốt ngày khi vẫn còn ca thu ngân
         // đang chạy hoặc chưa hoàn tất (pha chế điểm danh không tính).
         if (hasOpenCashShift(request.branchId(), request.businessDate())) {
-            throw new BaseException(ErrorCode.STORE_400_ACTIVE_SHIFTS_REMAINING);
+            throw new BaseException(ErrorCode.STORE_400_ACTIVE_SHIFTS_REMAINING,
+                    "Còn ca két chưa xong ngày " + request.businessDate() + ": "
+                            + describeOpenCashShifts(request.branchId(), request.businessDate()) + ". "
+                            + "Hủy ca quá hạn chưa mở, hoặc Đóng ca đang mở rồi chốt lại");
         }
 
         // Lấy hoặc khởi tạo báo cáo
@@ -217,7 +253,17 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
             report.setClosingCash(request.closingCash());
         }
         if (request.status() != null && !request.status().isBlank()) {
-            report.setStatus(request.status());
+            // Khóa sổ chỉ qua approve (có recompute + check quyền), update tay
+            // chỉ được chuyển OPEN <-> SUBMITTED.
+            String next = request.status().trim().toUpperCase();
+            if ("RECONCILED".equals(next)) {
+                throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION,
+                        "Khóa sổ phải dùng Phê duyệt, không đổi trạng thái tay");
+            }
+            if (!"OPEN".equals(next) && !"SUBMITTED".equals(next)) {
+                throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION);
+            }
+            report.setStatus(next);
         }
 
         StoreDailyReport saved = storeDailyReportRepository.save(report);
@@ -232,10 +278,51 @@ public class StoreDailyReportServiceImpl implements StoreDailyReportService {
 
         dataScopeHelper.enforceBranchAccess(report.getBranchId());
 
+        // Khóa sổ phải là quản lý/admin, và không được tự duyệt báo cáo mình lập.
+        if (!isManagerOrAdmin(approverId, report.getBranchId())) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED,
+                    "Chỉ quản lý mới được phê duyệt khóa sổ ngày");
+        }
+        if (approverId != null && approverId.equals(report.getSubmittedById())) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED,
+                    "Người lập không được tự khóa sổ, cần quản lý khác phê duyệt");
+        }
+
         // Khóa sổ ngày kinh doanh — chỉ khóa 1 lần.
         if ("RECONCILED".equalsIgnoreCase(report.getStatus())) {
             throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION);
         }
+
+        // Chốt lại số từ các ca ĐÃ DUYỆT mới nhất trước khi khóa, tránh khóa
+        // số cũ rồi két duyệt thêm gây lệch âm thầm (không thêm cột mới).
+        List<ShiftReport> confirmed = shiftReportRepository
+                .findByBranchIdAndBusinessDate(report.getBranchId(), report.getBusinessDate())
+                .stream()
+                .filter(sr -> "CONFIRMED".equalsIgnoreCase(sr.getStatus()))
+                .toList();
+        int totalOrders = 0;
+        BigDecimal grossRevenue = BigDecimal.ZERO;
+        BigDecimal cashAmount = BigDecimal.ZERO;
+        BigDecimal transferAmount = BigDecimal.ZERO;
+        BigDecimal payoutAmount = BigDecimal.ZERO;
+        for (ShiftReport sr : confirmed) {
+            totalOrders += sr.getOrdersCount() != null ? sr.getOrdersCount() : 0;
+            grossRevenue = grossRevenue.add(sr.getTotalSales() != null ? sr.getTotalSales() : BigDecimal.ZERO);
+            cashAmount = cashAmount.add(sr.getCashSales() != null ? sr.getCashSales() : BigDecimal.ZERO);
+            transferAmount = transferAmount
+                    .add(sr.getBankTransferSales() != null ? sr.getBankTransferSales() : BigDecimal.ZERO)
+                    .add(sr.getCardSales() != null ? sr.getCardSales() : BigDecimal.ZERO)
+                    .add(sr.getEwalletSales() != null ? sr.getEwalletSales() : BigDecimal.ZERO);
+            payoutAmount = payoutAmount.add(sr.getCashPayout() != null ? sr.getCashPayout() : BigDecimal.ZERO);
+        }
+        report.setTotalOrders(totalOrders);
+        report.setGrossRevenue(grossRevenue);
+        report.setDiscountAmount(BigDecimal.ZERO);
+        report.setNetRevenue(grossRevenue);
+        report.setCashAmount(cashAmount);
+        report.setTransferAmount(transferAmount);
+        BigDecimal opening = report.getOpeningCash() != null ? report.getOpeningCash() : BigDecimal.ZERO;
+        report.setClosingCash(opening.add(cashAmount).subtract(payoutAmount));
         report.setStatus("RECONCILED");
 
         StoreDailyReport saved = storeDailyReportRepository.save(report);

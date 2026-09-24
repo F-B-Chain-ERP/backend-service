@@ -50,6 +50,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
           and o.createdAt >= :fromInstant
           and o.createdAt <= :toInstant
           and o.status != 'CANCELLED'
+          and not (o.status = 'REJECTED' and o.paymentStatus != 'PAID')
         order by o.createdAt asc
         """)
     java.util.List<Order> findOrdersInShiftWindow(@Param("branchId") UUID branchId,

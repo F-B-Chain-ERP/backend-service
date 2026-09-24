@@ -54,6 +54,11 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
     // phân ca thoải mái, không check trùng giờ.
     private static final List<String> CASH_ROLE_CODES = List.of("ADMIN", "ROLE_MANAGER", "ROLE_CASHIER");
     private static final List<String> MANAGER_ROLE_CODES = List.of("ADMIN", "ROLE_MANAGER");
+    // Nhóm vai pha chế / phục vụ (không két). Dùng để phát hiện tài khoản
+    // giữ đồng thời 2 nghiệp vụ Barista + Thu ngân (dễ bị đánh nhau luồng
+    // check-in vs mở két) — danh sách role lấy theo 016-seed-pos-permissions.
+    private static final List<String> BARISTA_ROLE_CODES =
+            List.of("ROLE_BARISTA", "ROLE_USER", "STAFF", "ROLE_STAFF");
 
     public ShiftAssignmentServiceImpl(ShiftAssignmentRepository shiftAssignmentRepository,
                                        ShiftRepository shiftRepository,
@@ -90,9 +95,36 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
     }
 
     private void enforceAttendanceAccess(ShiftAssignment assignment, UUID currentUserId) {
+        // Chấm công (điểm danh vào/ra) là tự phục vụ: chỉ chủ ca được bấm.
+        // Quản lý/admin KHÔNG được chấm hộ (ngoài đời không thể) — muốn hỗ trợ
+        // ca két thì dùng luồng mở/đóng hộ bên ShiftOperationService.
         boolean ownsAssignment = currentUserId != null && currentUserId.equals(assignment.getAccountId());
-        if (!ownsAssignment && !isManagerOrAdmin(currentUserId, assignment.getBranchId())) {
-            throw new BaseException(ErrorCode.PERMISSION_DENIED);
+        if (!ownsAssignment) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED,
+                    "Chấm công phải do chính nhân viên thực hiện, quản lý không được chấm hộ");
+        }
+    }
+
+    // Tài khoản giữ đồng thời 2 nghiệp vụ (vừa Barista vừa Thu ngân) sẽ bị
+    // đánh nhau luồng check-in vs mở két. Chặn từ lúc phân ca để buộc tách
+    // thành 2 tài khoản (hoặc gỡ 1 role). Miễn trừ quản lý/admin vì họ cần
+    // mở/đóng hộ khi thu ngân quên.
+    private boolean isDualRoleAccount(UUID accountId, UUID branchId) {
+        if (accountId == null || branchId == null) {
+            return false;
+        }
+        if (isManagerOrAdmin(accountId, branchId)) {
+            return false;
+        }
+        return isCashHandler(accountId, branchId)
+                && hasEffectiveRole(accountId, branchId, BARISTA_ROLE_CODES);
+    }
+
+    private void validateSingleRole(UUID accountId, UUID branchId) {
+        if (isDualRoleAccount(accountId, branchId)) {
+            throw new BaseException(ErrorCode.STORE_409_ASSIGNMENT_EXISTS,
+                    "Tài khoản đang giữ đồng thời 2 quyền Barista và Thu ngân nên không thể phân ca. "
+                            + "Vui lòng tách thành 2 tài khoản (hoặc gỡ bớt 1 vai trò) rồi phân lại");
         }
     }
 
@@ -187,11 +219,17 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
         Account account = accountRepository.findById(request.accountId())
                 .orElseThrow(() -> new BaseException(ErrorCode.ACCOUNT_NOT_FOUND));
 
-        if (shiftAssignmentRepository.existsByShiftIdAndAccountIdAndWorkDate(request.shiftId(), request.accountId(), request.workDate())) {
+        // 1 tài khoản chỉ giữ 1 nghiệp vụ (Barista HOẶC Thu ngân) để khỏi đánh nhau.
+        validateSingleRole(request.accountId(), request.branchId());
+
+        // 1 người 1 ca/ngày: chỉ tính ca còn hiệu lực (bỏ qua ca đã Hủy/Vắng để phân lại).
+        if (shiftAssignmentRepository.existsByShiftIdAndAccountIdAndWorkDateAndStatusNotIn(
+                request.shiftId(), request.accountId(), request.workDate(), List.of("CANCELLED", "ABSENT"))) {
             throw new BaseException(ErrorCode.STORE_409_ASSIGNMENT_EXISTS);
         }
 
-        if (shiftAssignmentRepository.existsByBranchIdAndAccountIdAndWorkDate(request.branchId(), request.accountId(), request.workDate())) {
+        if (shiftAssignmentRepository.existsByBranchIdAndAccountIdAndWorkDateAndStatusNotIn(
+                request.branchId(), request.accountId(), request.workDate(), List.of("CANCELLED", "ABSENT"))) {
             throw new BaseException(ErrorCode.STORE_409_ASSIGNMENT_EXISTS);
         }
 
@@ -241,14 +279,20 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
             if (!accountRepository.existsById(item.accountId())) {
                 throw new BaseException(ErrorCode.ACCOUNT_NOT_FOUND);
             }
+            // Tài khoản 2 vai thì bỏ qua như trùng (báo số bỏ qua ở FE).
+            if (isDualRoleAccount(item.accountId(), request.branchId())) {
+                continue;
+            }
             String key = item.accountId() + "|" + item.workDate();
             if (!seenAccountDate.add(key)) {
                 continue;
             }
-            if (shiftAssignmentRepository.existsByShiftIdAndAccountIdAndWorkDate(item.shiftId(), item.accountId(), item.workDate())) {
+            if (shiftAssignmentRepository.existsByShiftIdAndAccountIdAndWorkDateAndStatusNotIn(
+                    item.shiftId(), item.accountId(), item.workDate(), List.of("CANCELLED", "ABSENT"))) {
                 continue;
             }
-            if (shiftAssignmentRepository.existsByBranchIdAndAccountIdAndWorkDate(request.branchId(), item.accountId(), item.workDate())) {
+            if (shiftAssignmentRepository.existsByBranchIdAndAccountIdAndWorkDateAndStatusNotIn(
+                    request.branchId(), item.accountId(), item.workDate(), List.of("CANCELLED", "ABSENT"))) {
                 continue;
             }
             // Thu ngân đè giờ thu ngân khác thì bỏ qua như trùng (báo số bỏ qua ở FE).
@@ -373,6 +417,21 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
         dataScopeHelper.enforceBranchAccess(assignment.getBranchId());
         enforceAttendanceAccess(assignment, currentUserId);
+
+        // Tự checkout ca pha chế kẹt qua đêm của chính owner (không két, không tiền,
+        // chỉ là timestamp chấm công) để ca mới điểm danh được.
+        shiftAssignmentRepository.findFirstByAccountIdAndStatus(assignment.getAccountId(), "CHECKED_IN")
+                .filter(other -> !other.getId().equals(assignment.getId()))
+                .filter(other -> other.getWorkDate() != null && other.getWorkDate().isBefore(LocalDate.now()))
+                .filter(other -> other.getInitialCash() == null
+                        && !isCashHandler(other.getAccountId(), other.getBranchId()))
+                .ifPresent(other -> {
+                    other.setStatus("CHECKED_OUT");
+                    other.setCheckOutAt(java.time.Instant.now());
+                    String tag = "Hệ thống tự đóng ca quá hạn (quên checkout)";
+                    other.setNote(other.getNote() != null ? other.getNote() + " | " + tag : tag);
+                    shiftAssignmentRepository.save(other);
+                });
 
         if (isCashHandler(assignment.getAccountId(), assignment.getBranchId())) {
             throw new BaseException(ErrorCode.PERMISSION_DENIED, "Ca cầm két phải sử dụng chức năng mở ca");

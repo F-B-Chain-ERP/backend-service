@@ -114,8 +114,93 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
         }
     }
 
+    // Ca CHECKED_IN mà ngày làm đã qua hôm nay là ca kẹt qua đêm.
+    private static boolean isStaleShift(ShiftAssignment a) {
+        return a.getWorkDate() != null && a.getWorkDate().isBefore(LocalDate.now());
+    }
+
+    private String describeShift(ShiftAssignment a) {
+        Shift s = shiftRepository.findById(a.getShiftId()).orElse(null);
+        Account acc = accountRepository.findById(a.getAccountId()).orElse(null);
+        String code = s != null && s.getShiftCode() != null ? s.getShiftCode() : "?";
+        String who = acc != null && acc.getFullName() != null ? acc.getFullName() : String.valueOf(a.getAccountId());
+        return "ca " + code + " ngày " + a.getWorkDate() + " của " + who;
+    }
+
+    // Tự đóng ca kẹt qua đêm để ca sau mở được (không cần cron, chạy lazy lúc mở ca).
+    // - Ca két: lập biên bản SUBMITTED với actual = expected (chênh lệch 0), người nộp
+    //   là chủ ca — vẫn phải chờ quản lý khác duyệt/từ chối, tiền không tự vào sổ.
+    // - Ca pha chế (không két): checkout thẳng, chỉ là timestamp chấm công.
+    private void autoCloseStaleShift(ShiftAssignment stale) {
+        Instant now = Instant.now();
+        boolean cashShift = isCashHandler(stale.getAccountId(), stale.getBranchId())
+                && stale.getInitialCash() != null;
+        if (cashShift) {
+            Instant checkInAt = stale.getCheckInAt() != null ? stale.getCheckInAt() : now;
+            List<Order> orders = orderRepository.findOrdersInShiftWindow(
+                    stale.getBranchId(), resolveWindowStart(stale, checkInAt), now);
+            SalesTotals totals = aggregateSales(orders);
+            BigDecimal initialCash = stale.getInitialCash() != null ? stale.getInitialCash() : BigDecimal.ZERO;
+            BigDecimal expectedCash = initialCash.add(totals.cashSales());
+
+            ShiftReport report = shiftReportRepository.findByAssignmentId(stale.getId())
+                    .orElse(new ShiftReport());
+            report.setAssignmentId(stale.getId());
+            report.setBranchId(stale.getBranchId());
+            report.setBusinessDate(stale.getWorkDate());
+            report.setInitialCash(initialCash);
+            report.setCashSales(totals.cashSales());
+            report.setCardSales(totals.cardSales());
+            report.setBankTransferSales(totals.bankTransferSales());
+            report.setEwalletSales(totals.ewalletSales());
+            report.setTotalSales(totals.totalSales());
+            report.setOrdersCount(orders.size());
+            report.setCashPayout(BigDecimal.ZERO);
+            report.setExpectedCash(expectedCash);
+            report.setActualCash(expectedCash);
+            report.setDifference(BigDecimal.ZERO);
+            report.setDifferenceReason("Hệ thống tự đóng ca quá hạn — quản lý kiểm tra số liệu, duyệt hoặc từ chối");
+            report.setStatus("SUBMITTED");
+            // Người nộp để trống (số do hệ thống tính, chênh lệch 0) để mọi quản lý
+            // đều duyệt được, tránh deadlock chi nhánh 1 quản lý tự giữ két.
+            report.setSubmittedById(null);
+            report.setSubmittedAt(now);
+            String tag = " | Hệ thống tự đóng ca quá hạn, chờ quản lý duyệt";
+            report.setNote(report.getNote() != null ? report.getNote() + tag : tag.replace("| ", ""));
+            shiftReportRepository.save(report);
+
+            stale.setStatus("CHECKED_OUT");
+            stale.setCheckOutAt(now);
+            stale.setFinalCash(expectedCash);
+            stale.setCashDifference(BigDecimal.ZERO);
+        } else {
+            stale.setStatus("CHECKED_OUT");
+            stale.setCheckOutAt(now);
+        }
+        String tag = " | Hệ thống tự đóng ca quá hạn";
+        stale.setNote(stale.getNote() != null ? stale.getNote() + tag : tag.replace("| ", ""));
+        shiftAssignmentRepository.save(stale);
+    }
+
     private record SalesTotals(BigDecimal cashSales, BigDecimal cardSales, BigDecimal bankTransferSales,
                                BigDecimal ewalletSales, BigDecimal totalSales, int ordersCount) {
+    }
+
+    // Đơn chưa thanh toán không được tính vào két: chặn chốt ca tới khi thu/hủy hết.
+    // Quy tắc đơn giản phase hiện tại (sau này mới tách luồng thu sau/ca sau).
+    private static List<Order> unpaidOrders(List<Order> orders) {
+        return orders.stream()
+                .filter(o -> !"PAID".equalsIgnoreCase(o.getPaymentStatus()))
+                .toList();
+    }
+
+    private static String describeUnpaid(List<Order> unpaid) {
+        String codes = unpaid.stream().limit(5)
+                .map(o -> o.getOrderCode() != null ? o.getOrderCode() : String.valueOf(o.getId()))
+                .collect(java.util.stream.Collectors.joining(", "));
+        return "Còn " + unpaid.size() + " đơn chưa thanh toán (" + codes
+                + (unpaid.size() > 5 ? ", ..." : "")
+                + ") — thu tiền hoặc hủy đơn rồi chốt ca";
     }
 
     // NOTE(P3-later): hiện cộng thẳng mọi đơn trong khung giờ (kể cả UNPAID) vì
@@ -287,6 +372,19 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
             throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION);
         }
 
+        // Ca quá hạn (quên mở nhiều ngày) không cho mở nữa — phải Hủy ca quá hạn
+        // rồi phân lại, tránh két dồn đơn và chặn khóa sổ ngày mới. Cho phép
+        // lệch 1 ngày để bao ca qua đêm.
+        if (assignment.getWorkDate() != null) {
+            long daysLate = Math.abs(
+                    java.time.temporal.ChronoUnit.DAYS.between(assignment.getWorkDate(), LocalDate.now()));
+            if (daysLate > 1) {
+                throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION,
+                        "Ca ngày " + assignment.getWorkDate() + " đã quá hạn mở. "
+                                + "Vui lòng Hủy ca quá hạn này rồi phân ca mới");
+            }
+        }
+
         // Mở két chỉ dành cho thu ngân/quản lý (người được phân ca).
         if (!isCashHandler(assignment.getAccountId(), assignment.getBranchId())) {
             throw new BaseException(ErrorCode.PERMISSION_DENIED, "Chỉ thu ngân hoặc quản lý được mở két");
@@ -295,21 +393,37 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
         branchRepository.findByIdForUpdate(assignment.getBranchId())
                 .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        // Kiểm tra xem nhân viên này đã có ca nào khác đang hoạt động không
-        shiftAssignmentRepository.findFirstByAccountIdAndStatus(assignment.getAccountId(), "CHECKED_IN")
-                .ifPresent(existing -> {
-                    if (!existing.getId().equals(assignment.getId())) {
-                        throw new BaseException(ErrorCode.STORE_400_ACTIVE_SHIFT_EXISTS);
-                    }
-                });
+        // Nhân viên này đã có ca nào khác đang hoạt động không. Ca kẹt qua đêm
+        // thì hệ thống tự đóng rồi mở tiếp; ca kẹt cùng ngày thì chặn để người xử lý.
+        var existingOpt = shiftAssignmentRepository.findFirstByAccountIdAndStatus(assignment.getAccountId(), "CHECKED_IN");
+        if (existingOpt.isPresent() && !existingOpt.get().getId().equals(assignment.getId())) {
+            ShiftAssignment existing = existingOpt.get();
+            if (isStaleShift(existing)) {
+                autoCloseStaleShift(existing);
+            } else {
+                throw new BaseException(ErrorCode.STORE_400_ACTIVE_SHIFT_EXISTS,
+                        "Nhân viên đang kẹt " + describeShift(existing) + " chưa kết thúc. "
+                                + "Đóng ca đó (hoặc dùng nút Đóng hộ) rồi mở ca mới");
+            }
+        }
 
         // 1 chi nhánh tại 1 thời điểm chỉ 1 két mở (chỉ tính ca thu ngân,
-        // pha chế điểm danh không ảnh hưởng).
-        boolean cashOpen = shiftAssignmentRepository.findByBranchIdAndStatus(assignment.getBranchId(), "CHECKED_IN")
+        // pha chế điểm danh không ảnh hưởng). Ca két kẹt qua đêm tự đóng.
+        List<ShiftAssignment> cashOpen = shiftAssignmentRepository.findByBranchIdAndStatus(assignment.getBranchId(), "CHECKED_IN")
                 .stream()
-                .anyMatch(a -> isCashHandler(a.getAccountId(), a.getBranchId()));
-        if (cashOpen) {
-            throw new BaseException(ErrorCode.STORE_400_ACTIVE_SHIFT_EXISTS);
+                .filter(a -> !a.getId().equals(assignment.getId()))
+                .filter(a -> isCashHandler(a.getAccountId(), a.getBranchId()))
+                .toList();
+        for (ShiftAssignment o : cashOpen) {
+            if (isStaleShift(o)) {
+                autoCloseStaleShift(o);
+            }
+        }
+        var stillOpen = cashOpen.stream().filter(o -> !isStaleShift(o)).toList();
+        if (!stillOpen.isEmpty()) {
+            throw new BaseException(ErrorCode.STORE_400_ACTIVE_SHIFT_EXISTS,
+                    "Két chi nhánh đang kẹt " + describeShift(stillOpen.get(0)) + " chưa đóng. "
+                            + "Đóng ca đó (hoặc dùng nút Đóng hộ) rồi mở ca mới");
         }
 
         assignment.setStatus("CHECKED_IN");
@@ -379,13 +493,15 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
                 totalSales,
                 orders.size(),
                 cashPayout,
-                expectedCash
+                expectedCash,
+                unpaidOrders(orders).size()
         );
     }
 
     @Override
     public ShiftReportResponse closeShift(UUID assignmentId, CloseShiftRequest request, UUID currentUserId) {
-        ShiftAssignment assignment = shiftAssignmentRepository.findById(assignmentId)
+        // Lock bi quan ca đang chốt để chống double-close concurrent (2 tab cùng bấm).
+        ShiftAssignment assignment = shiftAssignmentRepository.findByIdForUpdate(assignmentId)
                 .orElseThrow(() -> new BaseException(ErrorCode.STORE_404_ASSIGNMENT_NOT_FOUND));
 
         dataScopeHelper.enforceBranchAccess(assignment.getBranchId());
@@ -403,6 +519,12 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
         Instant checkOutAt = Instant.now();
 
         List<Order> orders = orderRepository.findOrdersInShiftWindow(assignment.getBranchId(), resolveWindowStart(assignment, checkInAt), checkOutAt);
+
+        // Phải thu hết mới được kết ca: còn đơn chưa thanh toán thì chặn chốt.
+        List<Order> unpaid = unpaidOrders(orders);
+        if (!unpaid.isEmpty()) {
+            throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION, describeUnpaid(unpaid));
+        }
 
         SalesTotals totals = aggregateSales(orders);
         BigDecimal cashSales = totals.cashSales();
@@ -481,6 +603,12 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
             throw new BaseException(ErrorCode.STORE_400_INVALID_STATUS_TRANSITION);
         }
 
+        // Người nộp không được tự duyệt cho chính mình (tách nộp — duyệt).
+        if (managerId != null && managerId.equals(report.getSubmittedById())) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED,
+                    "Người nộp két không được tự duyệt, cần quản lý khác xác nhận");
+        }
+
         report.setStatus("CONFIRMED");
         report.setApprovedById(managerId);
         report.setApprovedAt(Instant.now());
@@ -512,6 +640,12 @@ public class ShiftOperationServiceImpl implements ShiftOperationService {
         }
         if (reason == null || reason.trim().length() < 10) {
             throw new BaseException(ErrorCode.STORE_400_DIFFERENCE_REASON_REQUIRED);
+        }
+
+        // Người nộp cũng không được tự từ chối rồi mở lại ca của chính mình.
+        if (managerId != null && managerId.equals(report.getSubmittedById())) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED,
+                    "Người nộp két không được tự từ chối, cần quản lý khác xử lý");
         }
 
         report.setStatus("REJECTED");

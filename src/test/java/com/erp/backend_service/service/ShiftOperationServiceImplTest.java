@@ -212,7 +212,7 @@ class ShiftOperationServiceImplTest {
         assignment.setCheckInAt(Instant.now().minusSeconds(3600));
         assignment.setInitialCash(new BigDecimal("1000000"));
 
-        when(shiftAssignmentRepository.findById(assignmentId)).thenReturn(Optional.of(assignment));
+        when(shiftAssignmentRepository.findByIdForUpdate(assignmentId)).thenReturn(Optional.of(assignment));
         when(orderRepository.findOrdersInShiftWindow(eq(branchId), any(), any())).thenReturn(List.of());
         when(shiftReportRepository.findByAssignmentId(assignment.getId())).thenReturn(Optional.empty());
         when(shiftReportRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -242,7 +242,7 @@ class ShiftOperationServiceImplTest {
         assignment.setCheckInAt(Instant.now().minusSeconds(3600));
         assignment.setInitialCash(new BigDecimal("1000000"));
 
-        when(shiftAssignmentRepository.findById(assignmentId)).thenReturn(Optional.of(assignment));
+        when(shiftAssignmentRepository.findByIdForUpdate(assignmentId)).thenReturn(Optional.of(assignment));
         when(orderRepository.findOrdersInShiftWindow(eq(branchId), any(), any())).thenReturn(List.of());
 
         // Expected = 1.000.000, Thực tế = 950.000 -> Lệch -50.000 nhưng lý do để trống

@@ -36,21 +36,21 @@ public class ShiftAssignmentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('store:shift_assignment:create')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:create','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> assign(
             @Valid @RequestBody CreateShiftAssignmentRequest request) {
         return ResponseEntity.ok(ApiResponse.created(shiftAssignmentService.assignShift(request)));
     }
 
     @PostMapping("/bulk")
-    @PreAuthorize("hasAuthority('store:shift_assignment:create')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:create','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<List<ShiftAssignmentResponse>>> bulkAssign(
             @Valid @RequestBody BulkAssignShiftRequest request) {
         return ResponseEntity.ok(ApiResponse.created(shiftAssignmentService.bulkAssignShifts(request)));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('store:shift_assignment:view')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:view','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<ShiftAssignmentResponse>> get(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(shiftAssignmentService.getAssignmentById(id)));
     }
@@ -69,7 +69,7 @@ public class ShiftAssignmentController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasAuthority('store:shift_assignment:delete')")
+    @PreAuthorize("hasAnyAuthority('store:shift_assignment:delete','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<Void>> cancel(
             @PathVariable UUID id,
             @RequestBody(required = false) Map<String, String> body) {

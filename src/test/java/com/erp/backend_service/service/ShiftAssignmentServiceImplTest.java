@@ -124,9 +124,6 @@ class ShiftAssignmentServiceImplTest {
     void checkInAttendance_Fail_NotOwner() {
         UUID otherUserId = UUID.randomUUID();
         when(shiftAssignmentRepository.findById(assignmentId)).thenReturn(Optional.of(assignment));
-        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
-                eq(List.of(otherUserId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
-                eq(branchId), any(), any())).thenReturn(List.of());
 
         BaseException ex = assertThrows(BaseException.class,
                 () -> service.checkInAttendance(assignmentId, otherUserId));
@@ -136,22 +133,15 @@ class ShiftAssignmentServiceImplTest {
     }
 
     @Test
-    @DisplayName("Quản lý đúng chi nhánh được điểm danh thay nhân viên")
-    void checkInAttendance_Success_ManagerOverride() {
+    @DisplayName("Quản lý không được điểm danh thay nhân viên (chấm công tự phục vụ)")
+    void checkInAttendance_Fail_ManagerOverrideBlocked() {
         UUID managerId = UUID.randomUUID();
         when(shiftAssignmentRepository.findById(assignmentId)).thenReturn(Optional.of(assignment));
-        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
-                eq(List.of(managerId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
-                eq(branchId), any(), any())).thenReturn(List.of(managerId));
-        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
-                eq(List.of(accountId)), eq(List.of("ADMIN", "ROLE_MANAGER", "ROLE_CASHIER")),
-                eq(branchId), any(), any())).thenReturn(List.of());
-        when(shiftAssignmentRepository.save(assignment)).thenReturn(assignment);
-        when(shiftRepository.findById(shiftId)).thenReturn(Optional.of(new Shift()));
-        when(accountRepository.findById(accountId)).thenReturn(Optional.of(new Account()));
 
-        ShiftAssignmentResponse response = service.checkInAttendance(assignmentId, managerId);
+        BaseException ex = assertThrows(BaseException.class,
+                () -> service.checkInAttendance(assignmentId, managerId));
 
-        assertEquals("CHECKED_IN", response.status());
+        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getErrorCode());
+        verify(shiftAssignmentRepository, never()).save(any());
     }
 }

@@ -165,8 +165,36 @@ class StoreDailyReportServiceImplTest {
     }
 
     @Test
-    @DisplayName("Phê duyệt báo cáo ngày: Chuyển trạng thái sang RECONCILED")
+    @DisplayName("Phê duyệt báo cáo ngày: Quản lý khác người lập duyệt sang RECONCILED")
     void testApproveDailyReport_Success() {
+        UUID reportId = UUID.randomUUID();
+        UUID submitterId = UUID.randomUUID();
+        StoreDailyReport report = new StoreDailyReport();
+        report.setBranchId(branchId);
+        report.setBusinessDate(reportDate);
+        report.setStatus("OPEN");
+        report.setSubmittedById(submitterId);
+
+        when(storeDailyReportRepository.findById(reportId)).thenReturn(Optional.of(report));
+        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                eq(List.of(accountId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
+                eq(branchId), any(), any())).thenReturn(List.of(accountId));
+        when(shiftReportRepository.findByBranchIdAndBusinessDate(branchId, reportDate))
+                .thenReturn(List.of());
+        when(storeDailyReportRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Account submitter = new Account();
+        submitter.setFullName("Thu Ngân Lập Báo Cáo");
+        when(accountRepository.findById(submitterId)).thenReturn(Optional.of(submitter));
+
+        StoreDailyReportResponse response = storeDailyReportService.approveDailyReport(reportId, accountId, "Đã khớp quỹ");
+        assertNotNull(response);
+        assertEquals("RECONCILED", response.status());
+    }
+
+    @Test
+    @DisplayName("Phê duyệt báo cáo ngày: Người lập không được tự khóa sổ")
+    void testApproveDailyReport_Fail_SelfApprove() {
         UUID reportId = UUID.randomUUID();
         StoreDailyReport report = new StoreDailyReport();
         report.setBranchId(branchId);
@@ -174,14 +202,12 @@ class StoreDailyReportServiceImplTest {
         report.setSubmittedById(accountId);
 
         when(storeDailyReportRepository.findById(reportId)).thenReturn(Optional.of(report));
-        when(storeDailyReportRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountRoleRepository.findEffectiveAccountIdsByRoleCodesAndBranchId(
+                eq(List.of(accountId)), eq(List.of("ADMIN", "ROLE_MANAGER")),
+                eq(branchId), any(), any())).thenReturn(List.of(accountId));
 
-        Account approver = new Account();
-        approver.setFullName("Kế toán trưởng");
-        when(accountRepository.findById(accountId)).thenReturn(Optional.of(approver));
-
-        StoreDailyReportResponse response = storeDailyReportService.approveDailyReport(reportId, accountId, "Đã khớp quỹ");
-        assertNotNull(response);
-        assertEquals("RECONCILED", response.status());
+        BaseException ex = assertThrows(BaseException.class,
+                () -> storeDailyReportService.approveDailyReport(reportId, accountId, "Tự duyệt"));
+        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getErrorCode());
     }
 }

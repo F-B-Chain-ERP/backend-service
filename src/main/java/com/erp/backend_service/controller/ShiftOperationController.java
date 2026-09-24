@@ -105,7 +105,7 @@ public class ShiftOperationController {
     }
 
     @GetMapping("/reports")
-    @PreAuthorize("hasAuthority('store:shift_report:view')")
+    @PreAuthorize("hasAnyAuthority('store:shift_report:view','ROLE_MANAGER','ROLE_ADMIN','ADMIN','FULL_PERMISSION')")
     public ResponseEntity<ApiResponse<PageResponse<ShiftReportResponse>>> searchReports(
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate,

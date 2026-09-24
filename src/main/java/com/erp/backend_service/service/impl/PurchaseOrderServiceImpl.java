@@ -30,7 +30,6 @@ import com.erp.core.domain.Warehouse;
 import com.erp.core.dto.request.proc.CreatePurchaseOrderRequest;
 import com.erp.core.dto.request.proc.PurchaseOrderItemRequest;
 import com.erp.core.dto.request.proc.ReceivePurchaseOrderRequest;
-import com.erp.core.dto.request.proc.ReceivePurchaseOrderItemRequest;
 import com.erp.core.dto.request.proc.UpdatePurchaseOrderRequest;
 import com.erp.core.dto.response.PageResponse;
 import com.erp.core.dto.response.proc.ApprovedByResponse;
@@ -197,6 +196,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (!EntityStatus.ACTIVE.name().equals(warehouse.getStatus())) {
             throw new BaseException(ErrorCode.PROC_400_WAREHOUSE_INACTIVE);
         }
+        requireCentralWarehouse(warehouse);
         if (request.items() == null || request.items().isEmpty()) {
             throw new BaseException(ErrorCode.PROC_400_PO_ITEMS_EMPTY);
         }
@@ -261,6 +261,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             if (!EntityStatus.ACTIVE.name().equals(warehouse.getStatus())) {
                 throw new BaseException(ErrorCode.PROC_400_WAREHOUSE_INACTIVE);
             }
+            requireCentralWarehouse(warehouse);
             po.setWarehouseId(warehouse.getId());
         }
         if (request.orderDate() != null) {
@@ -470,46 +471,13 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional
     public PurchaseOrderResponse receive(UUID id, ReceivePurchaseOrderRequest request) {
-        PurchaseOrder po = findById(id);
-        dataScopeHelper.enforceWarehouseAccess(po.getWarehouseId());
-        if (!STATUS_APPROVED.equals(po.getStatus()) && !STATUS_PARTIALLY_RECEIVED.equals(po.getStatus())) {
-            throw new BaseException(ErrorCode.PROC_400_PO_INVALID_STATUS_FOR_RECEIVE);
-        }
-        List<PurchaseOrderItem> items = purchaseOrderItemRepository.findByPurchaseOrderId(id);
-        Map<UUID, PurchaseOrderItem> itemMap = items.stream()
-                .collect(Collectors.toMap(PurchaseOrderItem::getId, Function.identity(), (a, b) -> a));
-
-        for (ReceivePurchaseOrderItemRequest r : request.items()) {
-            PurchaseOrderItem item = itemMap.get(r.purchaseOrderItemId());
-            if (item == null) {
-                throw new BaseException(ErrorCode.PROC_400_PO_INVALID_ITEM);
-            }
-            // Phòng thủ khi Bean Validation bị bypass (gọi service trực tiếp): chặn số âm/0.
-            if (r.receivedQuantity() == null || r.receivedQuantity().signum() <= 0) {
-                throw new BaseException(ErrorCode.INVALID_QUANTITY);
-            }
-            BigDecimal remaining = item.getQuantity().subtract(item.getReceivedQuantity());
-            if (r.receivedQuantity().compareTo(remaining) > 0) {
-                throw new BaseException(ErrorCode.PROC_400_PO_RECEIVED_EXCEED);
-            }
-            item.setReceivedQuantity(item.getReceivedQuantity().add(r.receivedQuantity()));
-        }
-        items = purchaseOrderItemRepository.saveAll(items);
-
-        boolean allReceived = items.stream().allMatch(i -> i.getReceivedQuantity().compareTo(i.getQuantity()) >= 0);
-        boolean anyReceived = items.stream().anyMatch(i -> i.getReceivedQuantity().compareTo(BigDecimal.ZERO) > 0);
-        if (allReceived) {
-            po.setStatus(STATUS_RECEIVED);
-        } else if (anyReceived) {
-            po.setStatus(STATUS_PARTIALLY_RECEIVED);
-        }
-        po = purchaseOrderRepository.save(po);
-        notifyPoReceived(po, allReceived);
-
-        // Tự động tạo công nợ khi nhận hàng (1 PO = 1 Payable)
-        accountsPayableService.createFromPo(po.getId());
-
-        return toResponseWithNames(po, items);
+        // CHẶN ghi nhận tay: số lượng đã nhận + trạng thái RECEIVED/PARTIALLY_RECEIVED
+        // chỉ được cập nhật qua phiếu nhập kho (StockIn POSTED, xem StockInServiceImpl).
+        // Endpoint này từng bị màn PO gọi trực tiếp ("Ghi nhận nhập kho") khiến đơn
+        // nhảy lên Đã nhận đủ trong khi chưa nhập kho thật. Giữ chữ ký để tương thích,
+        // mọi lời gọi đều bị từ chối rõ lý do.
+        throw new BaseException(ErrorCode.INVALID_REQUEST,
+                "Ghi nhận nhận hàng chỉ thực hiện qua phiếu nhập kho. Hãy tạo phiếu nhập kho từ đơn này thay vì ghi sổ tay.");
     }
 
     /** Gửi thông báo in-app cho các quản lý chi nhánh và admin khi đơn được trình duyệt. */
@@ -547,25 +515,6 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         );
     }
 
-    /** Gửi thông báo in-app khi đơn mua hàng được nhập kho (hoàn tất hoặc một phần). */
-    private void notifyPoReceived(PurchaseOrder po, boolean allReceived) {
-        UUID branchId = resolveBranchId(po.getWarehouseId());
-        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
-        Set<UUID> recipients = new HashSet<>(notificationResolverService.resolveManagersAndAdmins(branchId, currentUserId));
-        UUID creatorId = resolvePoCreatorAccountId(po);
-        if (creatorId != null && !Objects.equals(creatorId, currentUserId)) {
-            recipients.add(creatorId);
-        }
-        String statusText = allReceived ? "hoàn tất nhập kho" : "nhập kho một phần";
-        for (UUID recipientId : recipients) {
-            notificationService.notifyAccount(
-                    recipientId,
-                    "Đơn mua hàng đã nhập kho",
-                    "Đơn mua hàng " + po.getPoCode() + " đã được cập nhật: " + statusText + "."
-            );
-        }
-    }
-
     private UUID resolveBranchId(UUID warehouseId) {
         if (warehouseId == null) {
             return null;
@@ -578,6 +527,16 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private PurchaseOrder findById(UUID id) {
         return purchaseOrderRepository.findById(id)
                 .orElseThrow(() -> new BaseException(ErrorCode.PROC_404_PO_NOT_FOUND));
+    }
+
+    /**
+     * Luồng gốc gác sạch: đơn mua NCC chỉ được nhập về kho tổng (CENTRAL),
+     * chi nhánh nhận hàng duy nhất qua phiếu chuyển kho từ kho tổng.
+     */
+    private void requireCentralWarehouse(Warehouse warehouse) {
+        if (!"CENTRAL".equals(warehouse.getWarehouseType())) {
+            throw new BaseException(ErrorCode.PROC_400_PO_WAREHOUSE_MUST_BE_CENTRAL);
+        }
     }
 
     private List<PurchaseOrderItem> buildItems(UUID purchaseOrderId, List<PurchaseOrderItemRequest> requests) {

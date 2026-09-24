@@ -78,6 +78,8 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BaseException(ErrorCode.INVALID_REQUEST);
         }
+        // Chuẩn: user chi nhánh bị ép về CN hiện tại; kho CENTRAL (master)
+        // luôn hiện nhờ query search (thấy cả khi lọc theo chi nhánh).
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(branchId);
 
         String normalizedWarehouseType = StringUtils.hasText(warehouseType) ? warehouseType.trim().toUpperCase() : null;
@@ -110,8 +112,9 @@ public class WarehouseServiceImpl implements WarehouseService {
     public List<WarehouseResponse> listAll(String status) {
         String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
         validateWarehouseStatus(normalizedStatus);
-        // Dropdown dùng ở mọi form kho: user chi nhánh chỉ thấy kho CN đang làm
-        // (+ kho CENTRAL), khớp với enforce ở đường ghi để khỏi "thấy mà không làm được".
+        // Dropdown dùng ở mọi form kho (PO/nhập/xuất/chuyển).
+        // Chuẩn: user chi nhánh chỉ thấy kho CN đang làm + kho CENTRAL (master),
+        // khớp với enforce ở đường ghi để khỏi "thấy mà không làm được".
         // ALL_SYSTEM giữ nguyên toàn bộ. Chưa chọn CN thì chặn như list() phân trang.
         UUID effectiveBranchId = dataScopeHelper.resolveEffectiveBranchId(null);
         List<Warehouse> list = effectiveBranchId == null

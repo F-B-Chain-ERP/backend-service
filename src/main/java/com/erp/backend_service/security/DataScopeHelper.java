@@ -74,20 +74,26 @@ public class DataScopeHelper {
     /**
      * Kiểm tra quyền truy cập trực tiếp vào một Chi nhánh.
      * Ném ngoại lệ {@link ErrorCode#CROSS_SCOPE_DENIED} nếu vi phạm.
+     * DEMO-RELAXED: kho tổng (CENTRAL) là kho master không thuộc chi nhánh nào
+     * (branchId = null) nên luôn cho qua để user chi nhánh thấy/xin hàng.
      */
     public void enforceBranchAccess(UUID targetBranchId) {
         if (isAllSystem()) {
             return;
         }
+        if (targetBranchId == null) {
+            return;
+        }
         UUID current = getCurrentBranchId().orElse(null);
-        if (current == null || targetBranchId == null || !current.equals(targetBranchId)) {
+        if (current == null || !current.equals(targetBranchId)) {
             throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
         }
     }
 
     /**
-     * Kiểm tra và trả về thực thể {@link Warehouse} nếu kho đó thuộc chi nhánh mà người dùng có quyền.
-     * Ném ngoại lệ {@link ErrorCode#CROSS_SCOPE_DENIED} nếu vi phạm.
+     * Kiểm tra và trả về thực thể {@link Warehouse} nếu user được phép tác động.
+     * Quy tắc chuẩn: kho của chi nhánh mình + kho CENTRAL (master, branchId = null)
+     * luôn cho qua; kho của chi nhánh khác bị chặn {@link ErrorCode#CROSS_SCOPE_DENIED}.
      */
     public Warehouse enforceWarehouseAccess(UUID warehouseId) {
         Warehouse warehouse = warehouseRepository.findById(warehouseId)
@@ -95,8 +101,11 @@ public class DataScopeHelper {
         if (isAllSystem()) {
             return warehouse;
         }
+        if (warehouse.getBranchId() == null) {
+            return warehouse;
+        }
         UUID currentBranch = getCurrentBranchId().orElse(null);
-        if (currentBranch == null || warehouse.getBranchId() == null || !warehouse.getBranchId().equals(currentBranch)) {
+        if (currentBranch == null || !warehouse.getBranchId().equals(currentBranch)) {
             throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
         }
         return warehouse;
@@ -105,8 +114,8 @@ public class DataScopeHelper {
     /**
      * Xác định danh sách ID các kho mà người dùng được phép truy vấn dữ liệu (PO, Stock):
      * - Nếu ALL_SYSTEM: Trả về {@code requestedWarehouseId} (nếu có) hoặc null (không giới hạn kho).
-     * - Nếu là nhân sự Chi nhánh: Trả về danh sách tất cả các kho thuộc chi nhánh hiện tại của họ.
-     *   Nếu client truyền {@code requestedWarehouseId}, kiểm tra kho đó có thuộc chi nhánh không.
+     * - Nếu là nhân sự Chi nhánh: kho thuộc CN hiện tại + kho CENTRAL (master).
+     *   Client truyền {@code requestedWarehouseId} là kho CN khác -> chặn.
      */
     public Collection<UUID> getAllowedWarehouseIds(UUID requestedWarehouseId) {
         if (isAllSystem()) {
@@ -114,17 +123,17 @@ public class DataScopeHelper {
         }
         UUID userBranchId = getCurrentBranchId()
                 .orElseThrow(() -> new BaseException(ErrorCode.CROSS_SCOPE_DENIED));
-        List<UUID> branchWarehouseIds = warehouseRepository.findByBranchId(userBranchId)
+        List<UUID> visibleWarehouseIds = warehouseRepository.findVisibleForBranch(userBranchId, null)
                 .stream()
                 .map(Warehouse::getId)
                 .toList();
 
         if (requestedWarehouseId != null) {
-            if (!branchWarehouseIds.contains(requestedWarehouseId)) {
+            if (!visibleWarehouseIds.contains(requestedWarehouseId)) {
                 throw new BaseException(ErrorCode.CROSS_SCOPE_DENIED);
             }
             return List.of(requestedWarehouseId);
         }
-        return branchWarehouseIds;
+        return visibleWarehouseIds;
     }
 }

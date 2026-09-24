@@ -15,6 +15,9 @@ import com.erp.backend_service.repository.StockInRepository;
 import com.erp.backend_service.repository.WarehouseRepository;
 import com.erp.backend_service.security.DataScopeHelper;
 import com.erp.backend_service.security.SecurityUtils;
+import com.erp.backend_service.service.AccountsPayableService;
+import com.erp.backend_service.service.NotificationResolverService;
+import com.erp.backend_service.service.NotificationService;
 import com.erp.backend_service.service.StockInService;
 import com.erp.backend_service.util.CodeGenerator;
 import com.erp.core.domain.Account;
@@ -50,6 +53,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -94,8 +98,11 @@ public class StockInServiceImpl implements StockInService {
     private final StockInItemMapper stockInItemMapper;
     private final DataScopeHelper dataScopeHelper;
     private final StockBalanceMutationService balanceMutationService;
+    private final AccountsPayableService accountsPayableService;
+    private final NotificationService notificationService;
+    private final NotificationResolverService notificationResolverService;
 
-    public StockInServiceImpl(StockInRepository stockInRepository, StockInItemRepository stockInItemRepository, MaterialStockBalanceRepository materialStockBalanceRepository, WarehouseRepository warehouseRepository, MaterialRepository materialRepository, AccountRepository accountRepository, PurchaseOrderRepository purchaseOrderRepository, PurchaseOrderItemRepository purchaseOrderItemRepository, StockCountRepository stockCountRepository, StockInMapper stockInMapper, StockInItemMapper stockInItemMapper, DataScopeHelper dataScopeHelper, StockBalanceMutationService balanceMutationService) {
+    public StockInServiceImpl(StockInRepository stockInRepository, StockInItemRepository stockInItemRepository, MaterialStockBalanceRepository materialStockBalanceRepository, WarehouseRepository warehouseRepository, MaterialRepository materialRepository, AccountRepository accountRepository, PurchaseOrderRepository purchaseOrderRepository, PurchaseOrderItemRepository purchaseOrderItemRepository, StockCountRepository stockCountRepository, StockInMapper stockInMapper, StockInItemMapper stockInItemMapper, DataScopeHelper dataScopeHelper, StockBalanceMutationService balanceMutationService, AccountsPayableService accountsPayableService, NotificationService notificationService, NotificationResolverService notificationResolverService) {
         this.stockInRepository = stockInRepository;
         this.stockInItemRepository = stockInItemRepository;
         this.materialStockBalanceRepository = materialStockBalanceRepository;
@@ -109,6 +116,9 @@ public class StockInServiceImpl implements StockInService {
         this.stockInItemMapper = stockInItemMapper;
         this.dataScopeHelper = dataScopeHelper;
         this.balanceMutationService = balanceMutationService;
+        this.accountsPayableService = accountsPayableService;
+        this.notificationService = notificationService;
+        this.notificationResolverService = notificationResolverService;
     }
 
     /**
@@ -330,6 +340,12 @@ public class StockInServiceImpl implements StockInService {
         if (!SOURCE_PURCHASE.equals(sourceType)) {
             return;
         }
+        // Luồng gốc gác sạch: nhập mua NCC chỉ vào kho tổng, chi nhánh nhận qua chuyển kho.
+        Warehouse purchaseWarehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new BaseException(ErrorCode.INV_404_WAREHOUSE_NOT_FOUND));
+        if (!"CENTRAL".equals(purchaseWarehouse.getWarehouseType())) {
+            throw new BaseException(ErrorCode.PROC_400_PO_WAREHOUSE_MUST_BE_CENTRAL);
+        }
         if (sourceReferenceId == null) {
             throw new BaseException(ErrorCode.INV_400_PO_INVALID_STATUS_FOR_RECEIVE);
         }
@@ -415,10 +431,57 @@ public class StockInServiceImpl implements StockInService {
             po.setStatus(STATUS_PARTIALLY_RECEIVED);
         }
         purchaseOrderRepository.save(po);
+        // Công nợ NCC phát sinh đúng lúc hàng vào kho thật (ghi sổ phiếu nhập).
+        // createFromPo idempotent: PO đã có công nợ thì bỏ qua, nhận nhiều đợt không trùng.
+        accountsPayableService.createFromPo(po.getId());
+        // Realtime (chuông/SSE): thay cho notifyPoReceived cũ đi theo nút ghi tay đã chặn.
+        notifyPoReceived(po, allReceived);
     }
 
-    private void applyStockInQuantity(StockIn stockIn, List<StockInItem> items) {
-        Map<UUID, BigDecimal> qtyByMaterial = new HashMap<>();
+    /** Gửi thông báo in-app khi ghi sổ phiếu nhập cập nhật nhận hàng của đơn mua (hoàn tất/một phần). */
+    private void notifyPoReceived(PurchaseOrder po, boolean allReceived) {
+        UUID branchId = resolveBranchId(po.getWarehouseId());
+        UUID currentUserId = SecurityUtils.getCurrentPrincipalId().orElse(null);
+        Set<UUID> recipients = new HashSet<>(notificationResolverService.resolveManagersAndAdmins(branchId, currentUserId));
+        UUID creatorId = resolvePoCreatorAccountId(po);
+        if (creatorId != null && !Objects.equals(creatorId, currentUserId)) {
+            recipients.add(creatorId);
+        }
+        String statusText = allReceived ? "hoàn tất nhập kho" : "nhập kho một phần";
+        for (UUID recipientId : recipients) {
+            notificationService.notifyAccount(
+                    recipientId,
+                    "Đơn mua hàng đã nhập kho",
+                    "Đơn mua hàng " + po.getPoCode() + " đã được cập nhật: " + statusText + ".");
+        }
+    }
+
+    private UUID resolveBranchId(UUID warehouseId) {
+        if (warehouseId == null) {
+            return null;
+        }
+        return warehouseRepository.findById(warehouseId)
+                .map(Warehouse::getBranchId)
+                .orElse(null);
+    }
+
+    /** Xác định account ID người tạo đơn (created_by lưu username hoặc UUID). */
+    private UUID resolvePoCreatorAccountId(PurchaseOrder po) {
+        String createdBy = po.getCreatedBy();
+        if (createdBy == null || createdBy.isBlank()) {
+            return null;
+        }
+        try {
+            UUID uuid = UUID.fromString(createdBy);
+            if (accountRepository.existsById(uuid)) {
+                return uuid;
+            }
+        } catch (IllegalArgumentException ignored) {
+        }
+        return accountRepository.findByUsername(createdBy).map(Account::getId).orElse(null);
+    }
+
+    private void applyStockInQuantity(StockIn stockIn, List<StockInItem> items) {        Map<UUID, BigDecimal> qtyByMaterial = new HashMap<>();
         for (StockInItem item : items) {
             qtyByMaterial.merge(item.getMaterialId(), item.getQuantity(), BigDecimal::add);
         }

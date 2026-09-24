@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -67,28 +68,34 @@ public class PosStockController {
     }
 
     /**
-     * Bảng đối soát NVL ngày (tab NVL &amp; Cấp hàng): kế hoạch × BOM vs tồn kho bar.
+     * Bảng ước lượng NVL (tab NVL &amp; Cấp hàng): TB dùng/ngày từ lịch sử bán ×
+     * số ngày kế hoạch × hệ số an toàn vs tồn kho bar.
+     * Mặc định: kế hoạch 7 ngày, an toàn 1.5, lịch sử 14 ngày.
      * Cùng đối tượng xem màn tồn nên dùng quyền store.
      */
     @GetMapping("/material-shortage")
     @PreAuthorize("hasAuthority('store:product_stock:view')")
     public ResponseEntity<ApiResponse<MaterialShortageResponse>> materialShortage(
         @RequestParam UUID branchId,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(ApiResponse.success(stockService.materialShortage(branchId, date),
-            "Lấy bảng đối soát NVL thành công"));
+        @RequestParam(required = false) Integer planDays,
+        @RequestParam(required = false) BigDecimal safetyFactor,
+        @RequestParam(required = false) Integer historyDays) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.materialShortage(branchId, planDays, safetyFactor, historyDays),
+            "Lấy bảng ước lượng NVL thành công"));
     }
 
     /**
-     * Tạo yêu cầu cấp hàng từ kho tổng theo số thiếu (trạng thái REQUESTED,
+     * Tạo yêu cầu cấp hàng từ kho tổng theo số thiếu ước tính (trạng thái REQUESTED,
      * đi tiếp luồng duyệt 2 phe ở màn điều chuyển).
      */
     @PostMapping("/request-replenishment")
     @PreAuthorize("hasAuthority('inv:stock_transfer:create')")
     public ResponseEntity<ApiResponse<StockTransferResponse>> requestReplenishment(
         @RequestParam UUID branchId,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(ApiResponse.success(stockService.requestReplenishment(branchId, date),
+        @RequestParam(required = false) Integer planDays,
+        @RequestParam(required = false) BigDecimal safetyFactor,
+        @RequestParam(required = false) Integer historyDays) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.requestReplenishment(branchId, planDays, safetyFactor, historyDays),
             "Tạo yêu cầu cấp hàng thành công, chờ kho tổng duyệt"));
     }
 

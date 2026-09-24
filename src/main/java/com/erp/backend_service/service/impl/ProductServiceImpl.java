@@ -7,12 +7,14 @@ import com.erp.backend_service.repository.CategoryRepository;
 import com.erp.backend_service.repository.ProductRepository;
 import com.erp.backend_service.repository.ProductVariantRepository;
 import com.erp.backend_service.service.ProductService;
+import com.erp.backend_service.service.pos.ComboSalesService;
 import com.erp.core.domain.Category;
 import com.erp.core.domain.Product;
 import com.erp.core.domain.ProductVariant;
 import com.erp.core.dto.request.menu.CreateProductRequest;
 import com.erp.core.dto.request.menu.UpdateProductRequest;
 import com.erp.core.dto.response.PageResponse;
+import com.erp.core.dto.response.menu.ComboItemResponse;
 import com.erp.core.dto.response.menu.CreateProductResponse;
 import com.erp.core.dto.response.menu.ProductDetailResponse;
 import com.erp.core.dto.response.menu.ProductResponse;
@@ -42,17 +44,20 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryRepository categoryRepository;
     private final ProductVariantRepository productVariantRepository;
     private final ProductMapper productMapper;
+    private final ComboSalesService comboSalesService;
 
     public ProductServiceImpl(
             ProductRepository productRepository,
             CategoryRepository categoryRepository,
             ProductVariantRepository productVariantRepository,
-            ProductMapper productMapper
+            ProductMapper productMapper,
+            ComboSalesService comboSalesService
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productVariantRepository = productVariantRepository;
         this.productMapper = productMapper;
+        this.comboSalesService = comboSalesService;
     }
 
     @Override
@@ -157,11 +162,18 @@ public class ProductServiceImpl implements ProductService {
         List<UUID> catIds = distinctNonNull(products, Product::getCategoryId);
         Map<UUID, Category> categoryMap = toMap(categoryRepository.findAllById(catIds), Category::getId);
 
+        // Số món trong combo cho toàn bộ page đó bằng một truy vấn batch (không N+1 theo từng combo).
+        List<UUID> comboIds = products.stream().filter(Product::isCombo).map(Product::getId).toList();
+        Map<UUID, List<ComboItemResponse>> comboMap = comboIds.isEmpty()
+                ? Map.of()
+                : comboSalesService.comboItemsByProduct(comboIds);
+
         List<ProductSalesResponse> content = products.stream()
                 .map(p -> {
                     Category cat = categoryMap.get(p.getCategoryId());
                     String categoryName = cat != null ? cat.getName() : null;
-                    return productMapper.toSalesResponse(p, categoryName);
+                    int count = comboMap.getOrDefault(p.getId(), List.of()).size();
+                    return productMapper.toSalesResponse(p, categoryName, count);
                 })
                 .toList();
 
@@ -190,7 +202,8 @@ public class ProductServiceImpl implements ProductService {
         List<ProductVariantResponse> variantResponses = variants.stream()
                 .map(productMapper::toVariantResponse)
                 .toList();
-        return productMapper.toDetailResponse(product, categoryName, variantResponses);
+        List<ComboItemResponse> comboItems = comboItemsFor(product);
+        return productMapper.toDetailResponse(product, categoryName, variantResponses, comboItems);
     }
 
     @Override
@@ -207,7 +220,16 @@ public class ProductServiceImpl implements ProductService {
         List<ProductVariantResponse> variantResponses = variants.stream()
                 .map(productMapper::toVariantResponse)
                 .toList();
-        return productMapper.toDetailResponse(product, categoryName, variantResponses);
+        List<ComboItemResponse> comboItems = comboItemsFor(product);
+        return productMapper.toDetailResponse(product, categoryName, variantResponses, comboItems);
+    }
+
+    private List<ComboItemResponse> comboItemsFor(Product product) {
+        if (!product.isCombo()) {
+            return List.of();
+        }
+        return comboSalesService.comboItemsByProduct(List.of(product.getId()))
+                .getOrDefault(product.getId(), List.of());
     }
 
     private <T> List<UUID> distinctNonNull(List<T> list, Function<T, UUID> idFn) {
@@ -231,6 +253,9 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_CATEGORY_NOT_FOUND));
         if (!"ACTIVE".equalsIgnoreCase(category.getStatus())) {
             throw new BaseException(ErrorCode.MENU_400_CATEGORY_INACTIVE);
+        }
+        if (!"PRODUCT".equalsIgnoreCase(category.getCategoryType())) {
+            throw new BaseException(ErrorCode.MENU_400_INVALID_PRODUCT_CATEGORY);
         }
 
         // 2. Validate code uniqueness (case-insensitive, normalize to upper)
@@ -276,6 +301,9 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new BaseException(ErrorCode.MENU_404_CATEGORY_NOT_FOUND));
         if (!"ACTIVE".equalsIgnoreCase(category.getStatus()) && !product.getCategoryId().equals(request.categoryId())) {
             throw new BaseException(ErrorCode.MENU_400_CATEGORY_INACTIVE);
+        }
+        if (!"PRODUCT".equalsIgnoreCase(category.getCategoryType())) {
+            throw new BaseException(ErrorCode.MENU_400_INVALID_PRODUCT_CATEGORY);
         }
 
         // 2. Validate code uniqueness (case-insensitive, normalize to upper)

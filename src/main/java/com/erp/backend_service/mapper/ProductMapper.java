@@ -2,6 +2,7 @@ package com.erp.backend_service.mapper;
 
 import com.erp.core.domain.Product;
 import com.erp.core.domain.ProductVariant;
+import com.erp.core.dto.response.menu.ComboItemResponse;
 import com.erp.core.dto.response.menu.ProductDetailResponse;
 import com.erp.core.dto.response.menu.ProductResponse;
 import com.erp.core.dto.response.menu.ProductSalesResponse;
@@ -46,7 +47,7 @@ public class ProductMapper {
     /**
      * Ánh xạ sang ProductSalesResponse dùng cho kênh bán hàng (public, thông tin món chi tiết).
      */
-    public ProductSalesResponse toSalesResponse(Product p, String categoryName) {
+    public ProductSalesResponse toSalesResponse(Product p, String categoryName, int comboItemCount) {
         return new ProductSalesResponse(
                 p.getId() != null ? p.getId().toString() : null,
                 p.getCode(),
@@ -62,6 +63,7 @@ public class ProductMapper {
                 p.isCombo(),
                 p.getAvailableIceLevels(),
                 p.getAvailableSugarLevels(),
+                comboItemCount,
                 p.getStatus()
         );
     }
@@ -83,9 +85,10 @@ public class ProductMapper {
     }
 
     /**
-     * Ánh xạ sang ProductDetailResponse chi tiết đầy đủ kèm variants.
+     * Ánh xạ sang ProductDetailResponse chi tiết đầy đủ kèm variants và combo items.
      */
-    public ProductDetailResponse toDetailResponse(Product p, String categoryName, List<ProductVariantResponse> variants) {
+    public ProductDetailResponse toDetailResponse(Product p, String categoryName, List<ProductVariantResponse> variants,
+                                                  List<ComboItemResponse> comboItems) {
         return new ProductDetailResponse(
                 p.getId() != null ? p.getId().toString() : null,
                 p.getCode(),
@@ -103,6 +106,7 @@ public class ProductMapper {
                 p.getAvailableSugarLevels(),
                 p.getStatus(),
                 variants != null ? variants : List.of(),
+                comboItems != null ? comboItems : List.of(),
                 p.getCreatedBy(),
                 p.getCreatedAt(),
                 p.getUpdatedBy(),

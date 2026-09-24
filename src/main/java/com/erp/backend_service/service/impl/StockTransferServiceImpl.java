@@ -93,6 +93,7 @@ public class StockTransferServiceImpl implements StockTransferService {
 
         Warehouse from = getActiveWarehouse(request.fromWarehouseId());
         Warehouse to = getActiveWarehouse(request.toWarehouseId());
+        requireCentralSourceForBranchDest(from, to);
 
         // Phe quán tạo yêu cầu: chỉ cần quyền kho đích (kho quán), kho nguồn (kho tổng)
         // để admin phe kho duyệt sau. Đủ quyền 2 kho (admin/thủ kho) thì vào thẳng PENDING.
@@ -145,6 +146,7 @@ public class StockTransferServiceImpl implements StockTransferService {
 
         Warehouse from = getActiveWarehouse(request.fromWarehouseId());
         Warehouse to = getActiveWarehouse(request.toWarehouseId());
+        requireCentralSourceForBranchDest(from, to);
 
         if (requestedEdit) {
             UUID me = currentUserId();
@@ -197,10 +199,8 @@ public class StockTransferServiceImpl implements StockTransferService {
         dataScopeHelper.enforceWarehouseAccess(transfer.getFromWarehouseId());
         UUID me = currentUserId();
         if (request.approved()) {
-            if (transfer.getRequestedBy() != null && transfer.getRequestedBy().equals(me)) {
-                throw new BaseException(ErrorCode.INVALID_REQUEST,
-                    "Người duyệt phải khác người tạo yêu cầu.");
-            }
+            // DEMO-RELAXED: cho phép 1 user tự duyệt yêu cầu mình tạo để dễ demo
+            // (bản chuẩn: người duyệt phải khác người tạo).
             getActiveWarehouse(transfer.getFromWarehouseId());
             getActiveWarehouse(transfer.getToWarehouseId());
             transfer.setStatus(PENDING);
@@ -319,11 +319,9 @@ public class StockTransferServiceImpl implements StockTransferService {
         }
 
         // Tách phe: người nhận (quán) phải khác người xuất (kho).
+        // DEMO-RELAXED: cho phép 1 user vừa xuất vừa nhận để dễ demo
+        // (bản chuẩn: chặn khi dispatchedBy == receiver).
         UUID receiverId = currentUserId();
-        if (transfer.getDispatchedBy() != null && transfer.getDispatchedBy().equals(receiverId)) {
-            throw new BaseException(ErrorCode.INVALID_REQUEST,
-                "Người nhận hàng phải khác người xuất kho.");
-        }
 
         // Kho đích có thể đã bị khóa giữa đường — không nhập vào kho ngừng hoạt động.
         getActiveWarehouse(transfer.getToWarehouseId());
@@ -613,6 +611,17 @@ public class StockTransferServiceImpl implements StockTransferService {
         }
 
         return warehouse;
+    }
+
+    /**
+     * Luồng gốc gác sạch: kho chi nhánh chỉ được NHẬN từ kho tổng
+     * (không nhập NCC trực tiếp, không nhận từ chi nhánh khác).
+     * Chiều trả hàng chi nhánh -> kho tổng vẫn cho phép.
+     */
+    private void requireCentralSourceForBranchDest(Warehouse from, Warehouse to) {
+        if ("BRANCH".equals(to.getWarehouseType()) && !"CENTRAL".equals(from.getWarehouseType())) {
+            throw new BaseException(ErrorCode.INV_400_TRANSFER_BRANCH_MUST_RECEIVE_FROM_CENTRAL);
+        }
     }
 
     private StockTransfer findAccessible(UUID id) {

@@ -22,6 +22,10 @@ public interface BranchVariantDailyStockRepository extends JpaRepository<BranchV
     List<BranchVariantDailyStock> findByBranchIdAndBusinessDateAndStatus(UUID branchId, LocalDate date,
                                                                          String status);
 
+    /** Lịch sử bán theo ngày của chi nhánh (ước lượng tiêu thụ NVL bình quân). */
+    List<BranchVariantDailyStock> findByBranchIdAndBusinessDateBetweenAndStatus(UUID branchId, LocalDate from,
+                                                                                LocalDate to, String status);
+
     /** Dòng tồn mới nhất của variant tại chi nhánh (để carryover số dư sang ngày mới). */
     Optional<BranchVariantDailyStock> findFirstByBranchIdAndVariantIdAndStatusOrderByBusinessDateDesc(
         UUID branchId, UUID variantId, String status);

@@ -111,7 +111,7 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(ApiResponse.success(purchaseOrderService.reject(id, reason)));
     }
 
-    /** Ghi nhận số lượng thực nhận từ phân hệ Kho (INV), cập nhật trạng thái nhận hàng. */
+    /** Ghi nhận nhận hàng — ĐÃ CHẶN ghi tay: chỉ nhận qua phiếu nhập kho (xem service). */
     @PostMapping("/{id}/receive")
     @PreAuthorize("hasAuthority('proc:purchase_order:update')")
     public ResponseEntity<ApiResponse<PurchaseOrderResponse>> receive(

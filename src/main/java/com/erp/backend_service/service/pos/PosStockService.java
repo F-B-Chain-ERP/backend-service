@@ -47,7 +47,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -63,11 +62,13 @@ import java.nio.charset.StandardCharsets;
  *   Không cần cron/job, lần check đầu tiên trong ngày tự tạo dòng.
  * - check/reserve/release: giữ PESSIMISTIC_WRITE + ghi stock_log để trace.
  *
- * Chốt luồng trừ kho POS (tồn ngày theo variant):
- * - Giỏ + chốt đơn (PENDING): chỉ checkAvailable, CHƯA trừ.
- * - CONFIRMED (auto lúc tạo hoặc staff bấm tay): reserve 1 LẦN duy nhất.
- * - CANCELLED/REJECTED: release CHỈ khi đơn đã từng reserve (từ CONFIRMED trở đi).
- * - PREPARING/READY/DELIVERING/COMPLETED: không trừ thêm (chống double-deduct).
+ * Chốt luồng trừ kho POS (Mức 2: bán theo năng lực NVL, không chốt tồn ly mỗi ngày):
+ * - Giỏ + chốt đơn (PENDING): chỉ checkSaleable theo NVL, CHƯA trừ.
+ * - CONFIRMED (auto lúc tạo hoặc staff bấm tay): trừ NVL realtime 1 LẦN duy nhất
+ *   (PosMaterialConsumptionService) + ghi log SALE để tra soát.
+ * - CANCELLED/REJECTED sớm: hoàn NVL + ghi log ADJUSTMENT.
+ * - Tồn ly ngày (opening/remaining) không còn là cửa ải: reserve/release chỉ ghi
+ *   log, không trừ/không yêu cầu restock. Màn Tồn sản phẩm còn dùng để giám sát.
  * - Topping/material (BOM kho tổng): không trừ ở POS, theo dõi ở module kho.
  */
 @Service
@@ -88,6 +89,7 @@ public class PosStockService {
     private final ProductRecipeItemRepository recipeRepository;
     private final StockTransferService stockTransferService;
     private final UnitConversionService unitConversionService;
+    private final PosCapabilityService capabilityService;
 
     public PosStockService(BranchVariantDailyStockRepository stockRepository,
                            BranchVariantStockLogRepository logRepository,
@@ -103,7 +105,8 @@ public class PosStockService {
                            WarehouseRepository warehouseRepository,
                            ProductRecipeItemRepository recipeRepository,
                            StockTransferService stockTransferService,
-                           UnitConversionService unitConversionService) {
+                           UnitConversionService unitConversionService,
+                           PosCapabilityService capabilityService) {
         this.stockRepository = stockRepository;
         this.logRepository = logRepository;
         this.businessDay = businessDay;
@@ -119,6 +122,7 @@ public class PosStockService {
         this.recipeRepository = recipeRepository;
         this.stockTransferService = stockTransferService;
         this.unitConversionService = unitConversionService;
+        this.capabilityService = capabilityService;
     }
 
     /**
@@ -180,18 +184,20 @@ public class PosStockService {
         return locked;
     }
 
+    /**
+     * Kiểm tra bán được theo năng lực NVL (Mức 2). Không yêu cầu restock tồn ly.
+     * Không xác định được năng lực (chưa BOM/kho) thì cho qua, chốt chặn cuối ở trừ NVL.
+     */
     @Transactional
     public void checkAvailable(UUID branchId, UUID variantId, int quantity) {
-        if (variantId == null) {
-            return;
-        }
-        BranchVariantDailyStock stock = ensureToday(branchId, variantId);
-        if (quantity > stock.getRemainingQuantity()) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY,
-                "Sản phẩm đã hết hàng (còn " + stock.getRemainingQuantity() + ", cần " + quantity + ").");
-        }
+        capabilityService.checkSaleable(branchId, variantId, quantity);
     }
 
+    /**
+     * Mức 2: tồn ly ngày chỉ để THEO DÕI chuyển động bán (không phải cửa ải).
+     * Tự gieo dòng hôm nay nếu chưa có, cộng dồn đã bán/trừ còn lại (âm = vượt
+     * kế hoạch, vẫn bán tiếp theo NVL) + ghi log SALE. KHÔNG ném lỗi bao giờ.
+     */
     @Transactional
     public void reserve(UUID branchId, UUID variantId, int quantity, UUID orderId) {
         if (variantId == null || quantity <= 0) {
@@ -201,18 +207,21 @@ public class PosStockService {
         LocalDate today = businessDay.today(branchId);
         BranchVariantDailyStock stock = stockRepository
             .lockByBranchVariantDate(branchId, variantId, today, "ACTIVE")
-            .orElseThrow(() -> new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY,
-                "Sản phẩm chưa có tồn trong ngày, vui lòng restock."));
-        if (stock.getRemainingQuantity() < quantity) {
-            throw new BaseException(ErrorCode.ORDER_400_INVALID_QUANTITY,
-                "Tồn không đủ để xác nhận đơn (còn " + stock.getRemainingQuantity() + ", cần " + quantity + ").");
+            .orElse(null);
+        if (stock == null) {
+            writeLog(branchId, variantId, -quantity, orderId, "SALE", "Xác nhận bán đơn " + orderId + " (bán theo NVL)");
+            return;
         }
         stock.setRemainingQuantity(stock.getRemainingQuantity() - quantity);
         stock.setSoldQuantity(stock.getSoldQuantity() + quantity);
         stockRepository.save(stock);
-        writeLog(branchId, variantId, -quantity, orderId, "SALE", "Reserve khi CONFIRMED đơn " + orderId);
+        writeLog(branchId, variantId, -quantity, orderId, "SALE", "Xác nhận bán đơn " + orderId + " (bán theo NVL)");
     }
 
+    /**
+     * Mức 2: đảo chuyển động của reserve khi hủy/từ chối sớm (cộng trả còn lại,
+     * trừ đã bán) + ghi log ADJUSTMENT. Không ném lỗi.
+     */
     @Transactional
     public void release(UUID branchId, UUID variantId, int quantity, UUID orderId) {
         if (variantId == null || quantity <= 0) {
@@ -230,7 +239,7 @@ public class PosStockService {
         stock.setRemainingQuantity(stock.getRemainingQuantity() + quantity);
         stock.setSoldQuantity(Math.max(0, stock.getSoldQuantity() - quantity));
         stockRepository.save(stock);
-        writeLog(branchId, variantId, quantity, orderId, "ADJUSTMENT", "Hoàn tồn khi hủy/từ chối đơn " + orderId);
+        writeLog(branchId, variantId, quantity, orderId, "ADJUSTMENT", "Hoàn bán khi hủy/từ chối đơn " + orderId);
     }
 
     private void writeLog(UUID branchId, UUID variantId, int qtyChange, UUID referenceId, String changeType,
@@ -360,44 +369,54 @@ public class PosStockService {
     }
 
     /**
-     * Bảng đối soát NVL ngày của chi nhánh cho màn Tồn sản phẩm (tab NVL &amp; Cấp hàng).
-     * Kế hoạch = mở bán × BOM, đã dùng = đã bán × BOM (quy về đơn vị gốc),
-     * tồn = khả dụng tại kho bán hàng, thiếu = max(0, kế hoạch - tồn).
+     * Bảng ước lượng NVL của chi nhánh cho màn Tồn sản phẩm (tab NVL &amp; Cấp hàng).
+     * TB dùng/ngày = tổng bán N ngày gần nhất × BOM / N; ước cần = TB × số ngày
+     * kế hoạch × hệ số an toàn; thiếu = max(0, ước cần - tồn khả dụng kho quán).
      */
     @Transactional(readOnly = true)
-    public MaterialShortageResponse materialShortage(UUID branchId, LocalDate date) {
-        ShortageComputed computed = computeShortage(branchId, date);
+    public MaterialShortageResponse materialShortage(UUID branchId, Integer planDays, BigDecimal safetyFactor,
+                                                     Integer historyDays) {
+        ShortageComputed computed = computePlan(branchId, planDays, safetyFactor, historyDays);
         return new MaterialShortageResponse(branchId, computed.businessDate(),
             computed.warehouse().getId(), computed.warehouse().getCode(),
             computed.central().getId(), computed.central().getCode(), computed.lines());
     }
 
     /**
-     * Tạo yêu cầu cấp hàng từ kho tổng về kho quán theo số thiếu (trạng thái REQUESTED,
-     * đi tiếp luồng duyệt 2 phe). Không thiếu gì thì từ chối để khỏi phiếu rỗng.
+     * Tạo yêu cầu cấp hàng từ kho tổng về kho quán theo số thiếu ước tính
+     * (trạng thái REQUESTED, đi tiếp luồng duyệt 2 phe). Không thiếu gì thì từ chối.
      */
     @Transactional
-    public StockTransferResponse requestReplenishment(UUID branchId, LocalDate date) {
-        ShortageComputed computed = computeShortage(branchId, date);
+    public StockTransferResponse requestReplenishment(UUID branchId, Integer planDays, BigDecimal safetyFactor,
+                                                      Integer historyDays) {
+        ShortageComputed computed = computePlan(branchId, planDays, safetyFactor, historyDays);
         List<StockTransferItemRequest> items = computed.lines().stream()
             .filter(l -> l.shortageQuantity() != null && l.shortageQuantity().signum() > 0)
             .map(l -> new StockTransferItemRequest(l.materialId(), l.shortageQuantity(), null))
             .toList();
         if (items.isEmpty()) {
             throw new BaseException(ErrorCode.INVALID_REQUEST,
-                "Kho quán đủ NVL cho kế hoạch ngày " + computed.businessDate() + ", không cần xin cấp.");
+                "Chưa phát sinh nhu cầu nhập (quán đủ NVL cho kế hoạch hoặc chưa có lịch sử bán).");
         }
-        String note = "Xin cấp NVL ngày " + computed.businessDate() + " cho "
-            + computed.warehouse().getCode() + " (" + items.size() + " NVL thiếu)";
+        String note = "Xin cấp NVL cho kế hoạch (" + items.size() + " NVL thiếu) về "
+            + computed.warehouse().getCode();
         // Người quán thiếu quyền kho tổng -> create() tự rẽ REQUESTED (phe quán xin, phe kho duyệt).
         return stockTransferService.create(new CreateStockTransferRequest(
             null, computed.central().getId(), computed.warehouse().getId(),
             computed.businessDate(), note, items));
     }
 
-    private ShortageComputed computeShortage(UUID branchId, LocalDate date) {
+    private ShortageComputed computePlan(UUID branchId, Integer planDays, BigDecimal safetyFactor,
+                                         Integer historyDays) {
         if (branchId == null) {
             throw new BaseException(ErrorCode.INVALID_REQUEST, "Chi nhánh không được để trống.");
+        }
+        int safePlanDays = planDays == null ? 7 : planDays;
+        BigDecimal safeFactor = safetyFactor == null ? new BigDecimal("1.5") : safetyFactor;
+        int safeHistoryDays = historyDays == null ? 14 : historyDays;
+        if (safePlanDays < 1 || safePlanDays > 90 || safeHistoryDays < 1 || safeHistoryDays > 60
+            || safeFactor.compareTo(BigDecimal.ONE) < 0 || safeFactor.compareTo(new BigDecimal("5")) > 0) {
+            throw new BaseException(ErrorCode.INVALID_REQUEST, "Số ngày kế hoạch (1-90) / lịch sử (1-60) / hệ số an toàn (1-5) không hợp lệ.");
         }
         UUID effectiveBranch = dataScopeHelper.resolveEffectiveBranchId(branchId);
         var branch = branchRepository.findById(effectiveBranch)
@@ -405,23 +424,26 @@ public class PosStockService {
         if (!"ACTIVE".equals(branch.getStatus())) {
             throw new BaseException(ErrorCode.INV_400_BRANCH_INACTIVE);
         }
-        LocalDate businessDate = date != null ? date : businessDay.today(effectiveBranch);
+        LocalDate today = businessDay.today(effectiveBranch);
+        LocalDate from = today.minusDays(safeHistoryDays - 1);
         Warehouse warehouse = resolveSellingWarehouse(effectiveBranch);
         Warehouse central = resolveCentralWarehouse();
-        List<BranchVariantDailyStock> lines =
-            stockRepository.findByBranchIdAndBusinessDateAndStatus(effectiveBranch, businessDate, "ACTIVE");
+        List<BranchVariantDailyStock> history =
+            stockRepository.findByBranchIdAndBusinessDateBetweenAndStatus(effectiveBranch, from, today, "ACTIVE");
+        Map<UUID, Integer> soldByVariant = new HashMap<>();
+        for (BranchVariantDailyStock s : history) {
+            if (s.getVariantId() != null) {
+                soldByVariant.merge(s.getVariantId(), nvlInt(s.getSoldQuantity()), Integer::sum);
+            }
+        }
         Map<UUID, List<ProductRecipeItem>> recipesByVariant = Map.of();
         Set<UUID> materialIds = Set.of();
-        if (!lines.isEmpty()) {
-            Set<UUID> variantIds = lines.stream().map(BranchVariantDailyStock::getVariantId)
-                .filter(Objects::nonNull).collect(Collectors.toSet());
-            if (!variantIds.isEmpty()) {
-                recipesByVariant = recipeRepository.findByVariantIdInAndStatus(variantIds, "ACTIVE")
-                    .stream().collect(Collectors.groupingBy(ProductRecipeItem::getVariantId));
-                materialIds = recipesByVariant.values().stream().flatMap(List::stream)
-                    .map(ProductRecipeItem::getMaterialId).filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-            }
+        if (!soldByVariant.isEmpty()) {
+            recipesByVariant = recipeRepository.findByVariantIdInAndStatus(soldByVariant.keySet(), "ACTIVE")
+                .stream().collect(Collectors.groupingBy(ProductRecipeItem::getVariantId));
+            materialIds = recipesByVariant.values().stream().flatMap(List::stream)
+                .map(ProductRecipeItem::getMaterialId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
         }
         Map<UUID, Material> materials = materialIds.isEmpty() ? Map.of()
             : materialRepository.findAllById(materialIds).stream()
@@ -432,11 +454,10 @@ public class PosStockService {
             .stream().collect(Collectors.toMap(MaterialStockBalance::getMaterialId,
                 b -> nvlDecimal(b.getQuantityOnHand()).subtract(nvlDecimal(b.getQuantityReserved())),
                 BigDecimal::add));
-        Map<UUID, BigDecimal> planned = new HashMap<>();
-        Map<UUID, BigDecimal> consumed = new HashMap<>();
+        Map<UUID, BigDecimal> totalUsed = new HashMap<>();
         Map<UUID, Boolean> unitMismatch = new HashMap<>();
-        for (BranchVariantDailyStock s : lines) {
-            List<ProductRecipeItem> recipeLines = recipesByVariant.get(s.getVariantId());
+        for (Map.Entry<UUID, Integer> e : soldByVariant.entrySet()) {
+            List<ProductRecipeItem> recipeLines = recipesByVariant.get(e.getKey());
             if (recipeLines == null) {
                 continue;
             }
@@ -450,41 +471,37 @@ public class PosStockService {
                 BigDecimal factor = BigDecimal.ONE.add(
                     wastage.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP));
                 BigDecimal perCup = bomQuantity.multiply(factor);
-                BigDecimal plannedAdd = toBaseUnit(perCup, recipe.getUnitId(), material,
+                BigDecimal perCupBase = toBaseUnit(perCup, recipe.getUnitId(), material,
                     recipe.getMaterialId(), unitMismatch);
-                BigDecimal consumedAdd = toBaseUnit(perCup, recipe.getUnitId(), material,
-                    recipe.getMaterialId(), unitMismatch);
-                planned.merge(recipe.getMaterialId(),
-                    plannedAdd.multiply(BigDecimal.valueOf(nvlInt(s.getOpeningQuantity()))), BigDecimal::add);
-                consumed.merge(recipe.getMaterialId(),
-                    consumedAdd.multiply(BigDecimal.valueOf(nvlInt(s.getSoldQuantity()))), BigDecimal::add);
+                totalUsed.merge(recipe.getMaterialId(),
+                    perCupBase.multiply(BigDecimal.valueOf(e.getValue())), BigDecimal::add);
             }
         }
-        Set<UUID> allMaterialIds = new HashSet<>(planned.keySet());
-        allMaterialIds.addAll(consumed.keySet());
         List<MaterialShortageLineResponse> result = new ArrayList<>();
-        for (UUID materialId : allMaterialIds) {
+        BigDecimal days = BigDecimal.valueOf(safeHistoryDays);
+        for (UUID materialId : totalUsed.keySet()) {
             Material material = materials.get(materialId);
             if (material == null) {
                 continue;
             }
-            BigDecimal plannedQty = planned.getOrDefault(materialId, BigDecimal.ZERO)
-                .setScale(3, RoundingMode.HALF_UP);
-            BigDecimal consumedQty = consumed.getOrDefault(materialId, BigDecimal.ZERO)
-                .setScale(3, RoundingMode.HALF_UP);
+            BigDecimal avgDaily = totalUsed.getOrDefault(materialId, BigDecimal.ZERO)
+                .divide(days, 3, RoundingMode.HALF_UP);
+            BigDecimal need = avgDaily.multiply(BigDecimal.valueOf(safePlanDays))
+                .multiply(safeFactor).setScale(3, RoundingMode.HALF_UP);
             BigDecimal onHand = availableByMaterial.getOrDefault(materialId, BigDecimal.ZERO)
                 .setScale(3, RoundingMode.HALF_UP);
-            BigDecimal shortage = plannedQty.subtract(onHand);
+            BigDecimal shortage = need.subtract(onHand);
             if (shortage.signum() < 0) {
                 shortage = BigDecimal.ZERO;
             }
             result.add(new MaterialShortageLineResponse(material.getId(), material.getCode(),
-                material.getName(), unitCodes.get(material.getBaseUnitId()), plannedQty, consumedQty,
+                material.getName(), unitCodes.get(material.getBaseUnitId()), need.setScale(3, RoundingMode.HALF_UP),
+                avgDaily.setScale(3, RoundingMode.HALF_UP),
                 onHand, shortage.setScale(3, RoundingMode.HALF_UP),
                 unitMismatch.getOrDefault(materialId, false)));
         }
         result.sort((a, b) -> compareNullLast(a.materialCode(), b.materialCode()));
-        return new ShortageComputed(businessDate, warehouse, central, result);
+        return new ShortageComputed(today, warehouse, central, result);
     }
 
     /** Số lượng quy về đơn vị gốc; không quy được thì cộng thô + gắn cờ để đối chiếu tay. */

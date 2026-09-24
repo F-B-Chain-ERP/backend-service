@@ -31,14 +31,14 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
     List<Warehouse> findByStatus(String status);
 
     /**
-     * Dropdown cho user chi nhánh: kho thuộc CN đang làm việc + kho CENTRAL
-     * (để chuyển/nhập từ kho tổng), ẩn kho chưa gán chi nhánh, kết hợp lọc trạng thái.
+     * Dropdown cho user chi nhánh: kho thuộc CN đang làm việc + kho CENTRAL (master,
+     * branchId = null nên KHÔNG được lọc `w.branchId IS NOT NULL`).
+     * Ẩn kho của chi nhánh khác, kết hợp lọc trạng thái.
      */
     @Query("""
         SELECT w
         FROM Warehouse w
         WHERE (:status IS NULL OR w.status = :status)
-          AND w.branchId IS NOT NULL
           AND (w.branchId = :branchId OR w.warehouseType = 'CENTRAL')
         ORDER BY w.name ASC
     """)
@@ -49,6 +49,7 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
 
     /**
      * Tìm kiếm phân trang theo mã/tên kho, chi nhánh, loại kho và trạng thái.
+     * Kho CENTRAL (master) luôn hiện kể cả khi lọc theo chi nhánh.
      */
     @Query("""
         SELECT w
@@ -56,7 +57,7 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
         WHERE (:search IS NULL OR :search = ''
             OR LOWER(w.code) LIKE CONCAT('%', LOWER(:search), '%')
             OR LOWER(w.name) LIKE CONCAT('%', LOWER(:search), '%'))
-        AND (:branchId IS NULL OR w.branchId = :branchId)
+        AND (:branchId IS NULL OR w.branchId = :branchId OR w.warehouseType = 'CENTRAL')
         AND (:warehouseType IS NULL OR w.warehouseType = :warehouseType)
         AND (:status IS NULL OR w.status = :status)
     """)

@@ -121,7 +121,7 @@ class DataScopeHelperTest {
     }
 
     @Test
-    @DisplayName("enforceWarehouseAccess() should validate warehouse belongs to user branch")
+    @DisplayName("enforceWarehouseAccess() cho qua kho CN mình + kho CENTRAL, chặn kho CN khác")
     void testEnforceWarehouseAccess() {
         mockAuth(ScopeType.STORE, branchA);
 
@@ -135,7 +135,14 @@ class DataScopeHelperTest {
         whB.setBranchId(branchB);
         when(warehouseRepository.findById(warehouseB)).thenReturn(Optional.of(whB));
 
+        UUID centralId = UUID.randomUUID();
+        Warehouse whCentral = new Warehouse();
+        whCentral.setId(centralId);
+        whCentral.setBranchId(null);
+        when(warehouseRepository.findById(centralId)).thenReturn(Optional.of(whCentral));
+
         assertDoesNotThrow(() -> dataScopeHelper.enforceWarehouseAccess(warehouseA));
+        assertDoesNotThrow(() -> dataScopeHelper.enforceWarehouseAccess(centralId));
 
         BaseException ex = assertThrows(BaseException.class,
                 () -> dataScopeHelper.enforceWarehouseAccess(warehouseB));
@@ -143,19 +150,32 @@ class DataScopeHelperTest {
     }
 
     @Test
-    @DisplayName("getAllowedWarehouseIds() should return branch warehouses for STORE scope")
+    @DisplayName("getAllowedWarehouseIds() trả kho CN mình + CENTRAL, chặn kho CN khác")
     void testGetAllowedWarehouseIds() {
         mockAuth(ScopeType.STORE, branchA);
 
+        UUID centralId = UUID.randomUUID();
         Warehouse whA = new Warehouse();
         whA.setId(warehouseA);
         whA.setBranchId(branchA);
-        when(warehouseRepository.findByBranchId(branchA)).thenReturn(List.of(whA));
+        Warehouse whCentral = new Warehouse();
+        whCentral.setId(centralId);
+        whCentral.setBranchId(null);
+        when(warehouseRepository.findVisibleForBranch(branchA, null)).thenReturn(List.of(whA, whCentral));
 
         Collection<UUID> allowed = dataScopeHelper.getAllowedWarehouseIds(null);
         assertNotNull(allowed);
-        assertEquals(1, allowed.size());
+        assertEquals(2, allowed.size());
         assertTrue(allowed.contains(warehouseA));
+        assertTrue(allowed.contains(centralId));
+
+        // Kho CENTRAL được yêu cầu tường minh -> cho qua.
+        assertEquals(List.of(centralId), dataScopeHelper.getAllowedWarehouseIds(centralId));
+
+        // Kho CN khác -> chặn.
+        BaseException ex = assertThrows(BaseException.class,
+                () -> dataScopeHelper.getAllowedWarehouseIds(warehouseB));
+        assertEquals(ErrorCode.CROSS_SCOPE_DENIED, ex.getErrorCode());
     }
 
     @Test

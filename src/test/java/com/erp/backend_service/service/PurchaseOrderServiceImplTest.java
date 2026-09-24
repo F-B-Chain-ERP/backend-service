@@ -89,7 +89,9 @@ class PurchaseOrderServiceImplTest {
                 accountsPayableService
         );
         // Mặc định cho qua kiểm tra scope (test sinh mã không test phân quyền).
+        // PO chỉ được nhập về kho tổng nên stub mặc định là kho CENTRAL.
         warehouseStub = new Warehouse();
+        warehouseStub.setWarehouseType("CENTRAL");
         lenient().when(dataScopeHelper.enforceWarehouseAccess(any())).thenAnswer(inv -> warehouseStub);
     }
 
@@ -210,6 +212,37 @@ class PurchaseOrderServiceImplTest {
         verify(purchaseOrderRepository, atLeastOnce()).save(captor.capture());
         assertTrue(captor.getAllValues().stream()
                 .anyMatch(po -> ("PO-" + period + "-0028").equals(po.getPoCode())));
+    }
+
+    @Test
+    @DisplayName("create chặn PO nhập thẳng về kho chi nhánh (chỉ kho tổng được nhập NCC)")
+    void testCreate_RejectsBranchWarehouse() {
+        Supplier supplier = new Supplier();
+        supplier.setId(supplierId);
+        supplier.setStatus("ACTIVE");
+        when(supplierRepository.findById(supplierId)).thenReturn(Optional.of(supplier));
+
+        Warehouse branchWarehouse = new Warehouse();
+        branchWarehouse.setId(warehouseB);
+        branchWarehouse.setStatus("ACTIVE");
+        branchWarehouse.setWarehouseType("BRANCH");
+        branchWarehouse.setBranchId(UUID.randomUUID());
+        when(dataScopeHelper.enforceWarehouseAccess(warehouseB)).thenReturn(branchWarehouse);
+
+        CreatePurchaseOrderRequest request = new CreatePurchaseOrderRequest(
+                null,
+                supplierId,
+                warehouseB,
+                null,
+                null,
+                null,
+                List.of(new PurchaseOrderItemRequest(
+                        UUID.randomUUID(), BigDecimal.valueOf(5), UUID.randomUUID(), BigDecimal.valueOf(10000)))
+        );
+
+        BaseException ex = assertThrows(BaseException.class, () -> purchaseOrderService.create(request));
+        assertEquals(ErrorCode.PROC_400_PO_WAREHOUSE_MUST_BE_CENTRAL, ex.getErrorCode());
+        verify(purchaseOrderRepository, never()).save(any(PurchaseOrder.class));
     }
 
     @Test

@@ -164,6 +164,8 @@ public enum ErrorCode {
     MENU_404_CATEGORY_NOT_FOUND(404, "MENU_404_CATEGORY_NOT_FOUND", "Không tìm thấy danh mục sản phẩm."),
     MENU_400_CATEGORY_INACTIVE(400, "MENU_400_CATEGORY_INACTIVE",
                                "Danh mục đã ngừng hoạt động, không thể thêm sản phẩm."),
+    MENU_400_INVALID_PRODUCT_CATEGORY(400, "MENU_400_INVALID_PRODUCT_CATEGORY",
+                                      "Danh mục sản phẩm/Combo bán trên POS phải thuộc nhóm PRODUCT."),
     MENU_400_PRODUCT_IMAGE_REQUIRED(400, "MENU_400_PRODUCT_IMAGE_REQUIRED", "Vui lòng chọn ảnh sản phẩm."),
     MENU_400_PRODUCT_IMAGE_TOO_LARGE(400, "MENU_400_PRODUCT_IMAGE_TOO_LARGE", "Ảnh sản phẩm không được vượt quá 5 MB."),
     MENU_400_PRODUCT_IMAGE_INVALID_TYPE(400, "MENU_400_PRODUCT_IMAGE_INVALID_TYPE",

@@ -51,6 +51,11 @@ public class PosComboService {
     public void validateForSale(Product product, UUID variantId, int quantity, UUID branchId) {
         UUID productId = product.getId();
         if (!product.isCombo()) {
+            if (variantId == null) {
+                throw new BaseException(ErrorCode.ORDER_400_RECIPE_REQUIRED,
+                    "Món " + product.getName()
+                        + " chưa có biến thể/công thức, không thể bán.");
+            }
             stockService.checkAvailable(branchId, variantId, quantity);
             return;
         }

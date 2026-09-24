@@ -229,7 +229,7 @@ public class OrderServiceImpl implements OrderService {
                 throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
             }
             BranchProductAvailability productAvailability = availabilityByProduct.get(p.getId());
-            if (!com.erp.backend_service.service.BranchAvailabilityPolicy.isProductSellable(productAvailability)) {
+            if (productAvailability != null && !productAvailability.isAvailable()) {
                 throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
             }
             if (ci.getVariantId() != null) {
@@ -838,6 +838,8 @@ public class OrderServiceImpl implements OrderService {
             if (product == null) {
                 throw new BaseException(ErrorCode.ORDER_404_PRODUCT_NOT_FOUND);
             }
+            // Chốt lại cấu hình/BOM/tồn ngay tại CONFIRMED; dữ liệu có thể đã đổi sau lúc thêm giỏ.
+            posComboService.validateForSale(product, oi.getVariantId(), oi.getQuantity(), order.getBranchId());
             lines.add(new PosComboService.SaleLine(oi.getProductId(), oi.getVariantId(), oi.getQuantity(),
                 product.isCombo()));
         }

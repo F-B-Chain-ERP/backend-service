@@ -47,7 +47,8 @@ public class ProductMapper {
     /**
      * Ánh xạ sang ProductSalesResponse dùng cho kênh bán hàng (public, thông tin món chi tiết).
      */
-    public ProductSalesResponse toSalesResponse(Product p, String categoryName, int comboItemCount) {
+    public ProductSalesResponse toSalesResponse(Product p, String categoryName, int comboItemCount,
+                                                 boolean saleable, String unavailableReason) {
         return new ProductSalesResponse(
                 p.getId() != null ? p.getId().toString() : null,
                 p.getCode(),
@@ -64,7 +65,9 @@ public class ProductMapper {
                 p.getAvailableIceLevels(),
                 p.getAvailableSugarLevels(),
                 comboItemCount,
-                p.getStatus()
+                p.getStatus(),
+                saleable,
+                unavailableReason
         );
     }
 
@@ -72,6 +75,10 @@ public class ProductMapper {
      * Ánh xạ từ ProductVariant entity sang ProductVariantResponse DTO.
      */
     public ProductVariantResponse toVariantResponse(ProductVariant v) {
+        return toVariantResponse(v, true, null);
+    }
+
+    public ProductVariantResponse toVariantResponse(ProductVariant v, boolean saleable, String unavailableReason) {
         if (v == null) return null;
         return new ProductVariantResponse(
                 v.getId() != null ? v.getId().toString() : null,
@@ -80,7 +87,9 @@ public class ProductMapper {
                 v.getSizeLabel(),
                 v.getPriceDelta(),
                 v.getDisplayOrder(),
-                v.getStatus()
+                v.getStatus(),
+                saleable,
+                unavailableReason
         );
     }
 
@@ -89,6 +98,12 @@ public class ProductMapper {
      */
     public ProductDetailResponse toDetailResponse(Product p, String categoryName, List<ProductVariantResponse> variants,
                                                   List<ComboItemResponse> comboItems) {
+        return toDetailResponse(p, categoryName, variants, comboItems, true, null);
+    }
+
+    public ProductDetailResponse toDetailResponse(Product p, String categoryName, List<ProductVariantResponse> variants,
+                                                  List<ComboItemResponse> comboItems,
+                                                  boolean saleable, String unavailableReason) {
         return new ProductDetailResponse(
                 p.getId() != null ? p.getId().toString() : null,
                 p.getCode(),
@@ -110,7 +125,9 @@ public class ProductMapper {
                 p.getCreatedBy(),
                 p.getCreatedAt(),
                 p.getUpdatedBy(),
-                p.getUpdatedAt()
+                p.getUpdatedAt(),
+                saleable,
+                unavailableReason
         );
     }
 }

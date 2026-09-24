@@ -216,6 +216,7 @@ public enum ErrorCode {
     ORDER_404_ORDER_NOT_FOUND(404, "ORDER_404_ORDER_NOT_FOUND", "Không tìm thấy đơn hàng."),
     ORDER_404_DELIVERY_NOT_FOUND(404, "ORDER_404_DELIVERY_NOT_FOUND", "Không tìm thấy thông tin giao hàng."),
     ORDER_400_INVALID_QUANTITY(400, "ORDER_400_INVALID_QUANTITY", "Số lượng không hợp lệ hoặc vượt tồn kho."),
+    ORDER_400_RECIPE_REQUIRED(400, "ORDER_400_RECIPE_REQUIRED", "Món pha chế chưa có công thức, không thể bán."),
     ORDER_400_CART_EMPTY(400, "ORDER_400_CART_EMPTY", "Không thể tạo đơn khi giỏ hàng trống."),
     ORDER_400_INVALID_RECEIVER_DATA(400, "ORDER_400_INVALID_RECEIVER_DATA", "Thông tin người nhận không hợp lệ."),
     ORDER_400_INVALID_STATUS_TRANSITION(400, "ORDER_400_INVALID_STATUS_TRANSITION",

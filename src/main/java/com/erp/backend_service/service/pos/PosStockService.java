@@ -186,7 +186,7 @@ public class PosStockService {
 
     /**
      * Kiểm tra bán được theo năng lực NVL (Mức 2). Không yêu cầu restock tồn ly.
-     * Không xác định được năng lực (chưa BOM/kho) thì cho qua, chốt chặn cuối ở trừ NVL.
+     * Thiếu BOM thì chặn; thiếu cấu hình kho vẫn để chốt trừ NVL xử lý.
      */
     @Transactional
     public void checkAvailable(UUID branchId, UUID variantId, int quantity) {
